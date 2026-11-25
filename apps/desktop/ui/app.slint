@@ -1,0 +1,3476 @@
+import { LineEdit } from "std-widgets.slint";
+import { Theme, Clock } from "theme.slint";
+import { Icon, Icons } from "icons.slint";
+import { Fmt, IconButton, PillButton, SeekBar, Slider, MenuRow, MenuHeader } from "controls.slint";
+import { CastDevice, PlaylistItem, TrackItem, CheckItem, DriveChoice, PaletteItem, SignalStage, TranscriptLine, NavState, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark } from "types.slint";
+import { MediaLibrary } from "media.slint";
+import { PictureCard, MediaInfoPanel, SubSearchPanel, LibraryPanel } from "basics.slint";
+import { NavPanel, NavWindow, Chip } from "nav.slint";
+import { PlaylistList } from "playlist.slint";
+import { TitleBar, WindowEdges, MenuBarWidth } from "titlebar.slint";
+import { CompactView } from "compact.slint";
+import { ClassicView, PlaylistWindow, Classic } from "classic.slint";
+import { SilverView, Silver } from "silver.slint";
+import { SettingsPanel } from "settings.slint";
+import { MusicInfoPanel } from "musicinfo.slint";
+import { EqualizerPanel } from "equalizer.slint";
+import { SystemCheckPanel } from "doctor.slint";
+import { MakeMkvPanel } from "makemkv.slint";
+import { RipCard, AskCard } from "rip.slint";
+import { CommandPalette, SignalPathPanel, KaraokeView, SubSyncPanel, TranscriptPanel, ClipPanel, RemotePanel, CastPanel, DvdBar, CastBanner, PartyPanel, SkipButton, CompareSplit } from "extras.slint";
+
+export { Theme, Clock, Classic, Silver, PlaylistItem, TrackItem, PlaylistWindow, NavWindow, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark }
+
+// Slowly drifting colored glows behind the UI when no video is shown.
+component AmbientBackground inherits Rectangle {
+    in property <bool> playing;
+    property <float> t: Clock.ms;
+    background: @linear-gradient(160deg, Theme.bg-2 0%, Theme.bg 70%);
+
+    Rectangle {
+        width: root.width * 0.9;
+        height: self.width;
+        x: root.width * 0.05 + Math.sin(root.t * 0.004deg) * 40px;
+        y: -root.height * 0.45 + Math.cos(root.t * 0.003deg) * 30px;
+        background: @radial-gradient(circle, Theme.accent.with-alpha(0.19) 0%, Theme.accent.with-alpha(0.00) 65%);
+    }
+    Rectangle {
+        width: root.width * 0.8;
+        height: self.width;
+        x: root.width * 0.35 + Math.cos(root.t * 0.0036deg) * 50px;
+        y: root.height * 0.35 + Math.sin(root.t * 0.0045deg) * 40px;
+        background: @radial-gradient(circle, Theme.accent-2.with-alpha(0.16) 0%, Theme.accent-2.with-alpha(0.00) 65%);
+    }
+}
+
+// Spinning disc with an animated light streak, shown for audio playback.
+component SpinningDisc inherits Rectangle {
+    in property <bool> playing;
+    property <float> t: Clock.ms;
+    property <angle> spin: root.t * 0.045deg;
+    // Smaller when the window leaves less room (the navigation dock, say).
+    in property <length> size: 260px;
+
+    width: root.size;
+    height: root.size;
+    border-radius: self.width / 2;
+    drop-shadow-blur: 60px;
+    drop-shadow-color: root.playing ? Theme.accent.with-alpha(0.33) : #00000080;
+    animate drop-shadow-color { duration: 600ms; }
+    background: @radial-gradient(circle, #1b2030 0%, #0c0f18 70%, #05060a 100%);
+    clip: true;
+
+    for r[i] in [0.92, 0.82, 0.72, 0.62, 0.52]: Rectangle {
+        width: root.width * r;
+        height: self.width;
+        border-radius: self.width / 2;
+        border-width: 1px;
+        border-color: #ffffff10;
+    }
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        transform-rotation: root.spin;
+        Rectangle {
+            x: root.width / 2 - 2px;
+            y: 0;
+            width: root.width * 0.5;
+            height: root.height * 0.5;
+            background: @linear-gradient(135deg, #ffffff22 0%, #ffffff00 60%);
+        }
+    }
+    // Label in the middle
+    Rectangle {
+        width: root.width * 0.34;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.accent-gradient;
+        transform-rotation: root.spin;
+        Rectangle {
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            background: Theme.bg;
+        }
+        Rectangle {
+            x: parent.width * 0.62;
+            y: parent.height * 0.2;
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: #ffffff90;
+        }
+    }
+}
+
+// Spectrum bars under the disc, mirrored so the bass sits in the middle.
+// `levels` are live band heights (0..1, bass first) from meter.rs.
+component PulseBars inherits Rectangle {
+    in property <bool> playing;
+    in property <[float]> levels;
+    property <int> half: max(1, root.levels.length);
+    height: 40px;
+    width: 330px;
+    HorizontalLayout {
+        spacing: 4px;
+        alignment: center;
+        for i in root.half * 2: Rectangle {
+            property <float> a: root.playing ? root.levels[i < root.half ? root.half - 1 - i : i - root.half] : 0;
+            width: 4px;
+            height: 4px + (root.height - 4px) * self.a;
+            y: (root.height - self.height) / 2;
+            border-radius: 2px;
+            background: Theme.accent-gradient;
+            opacity: 0.45 + 0.55 * self.a;
+        }
+    }
+}
+
+// A heart-monitor line scrolling right to left across the music view: about
+// 25 s of the song, fading out at the old (left) end, with a glowing head.
+// `commands` come from pulse.rs in a viewbox 750 wide and as tall as this
+// line's shape (`pulse-aspect`), so the trace is not stretched.
+component PulseLine inherits Rectangle {
+    in property <string> commands;
+    in property <float> beat;
+    // Newest value, -1 (bottom) .. 1 (top): where the pen is.
+    in property <float> head;
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 750;
+        viewbox-height: 750 * root.height / Math.max(1px, root.width);
+        commands: root.commands;
+        stroke: @linear-gradient(90deg, Theme.accent.transparentize(100%) 0%, Theme.accent.transparentize(75%) 35%, Theme.accent.mix(Theme.accent-2, 50%).transparentize(25%) 75%, Theme.accent-2 100%);
+        stroke-width: 2px + 1.5px * root.beat;
+        fill: transparent;
+    }
+    // The pen at the right edge, brighter on a beat.
+    Rectangle {
+        x: root.width - self.width / 2 - 1px;
+        y: root.height / 2 * (1 - root.head * 0.92) - self.height / 2;
+        width: 8px + 6px * root.beat;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.accent-2.brighter(40%);
+        opacity: 0.55 + 0.45 * root.beat;
+        drop-shadow-blur: 12px + 10px * root.beat;
+        drop-shadow-color: Theme.accent-2;
+    }
+}
+
+// Particles streaming out from the middle, thrown outwards and brightened by
+// every beat; a glowing core breathes with the loudness. Drawn by the UI, so
+// it is smooth and costs no video decoding.
+component ParticleField inherits Rectangle {
+    in property <bool> playing;
+    in property <float> beat;
+    in property <float> energy;
+    property <float> t: animation-tick() / 1000ms;
+    property <length> reach: Math.min(root.width, root.height) * 0.62;
+    clip: true;
+    // Core glow.
+    Rectangle {
+        property <length> d: 70px + 60px * root.energy + 50px * root.beat;
+        x: (root.width - self.d) / 2;
+        y: (root.height - self.d) / 2;
+        width: self.d;
+        height: self.d;
+        border-radius: self.d / 2;
+        background: @radial-gradient(circle, Theme.accent-2.with-alpha(0.63) 0%, Theme.accent.with-alpha(0.25) 45%, Theme.accent.with-alpha(0.00) 70%);
+    }
+    for i in 90: Rectangle {
+        // Fixed per particle: direction (golden angle), speed, start offset.
+        property <angle> dir: i * 137.508deg;
+        property <float> speed: 0.07 + Math.mod(i * 0.618034, 1) * 0.11;
+        property <float> life: Math.mod(root.t * self.speed + Math.mod(i * 0.371, 1), 1);
+        property <length> r: root.reach * (0.08 + self.life * self.life * 0.92)
+            + 46px * root.beat * (1 - self.life);
+        property <length> size: (2px + Math.mod(i * 0.29, 1) * 3px) * (1 + 1.6 * root.beat);
+        x: root.width / 2 + self.r * Math.cos(self.dir) - self.size / 2;
+        y: root.height / 2 + self.r * Math.sin(self.dir) - self.size / 2;
+        width: self.size;
+        height: self.size;
+        border-radius: self.size / 2;
+        background: Math.mod(i, 3) == 0 ? Theme.accent-2 : Math.mod(i, 3) == 1 ? Theme.accent : #e6dcff;
+        opacity: root.playing
+            ? (1 - self.life) * (0.25 + 0.55 * root.energy + 0.4 * root.beat)
+            : 0.15 * (1 - self.life);
+    }
+}
+
+// Timed lyrics: the line being sung, bright, between the last and the next.
+component LyricLines inherits VerticalLayout {
+    in property <string> prev;
+    in property <string> current;
+    in property <string> next;
+    spacing: 4px;
+    width: 640px;
+    Text {
+        text: root.prev;
+        color: Theme.text-faint;
+        horizontal-alignment: center;
+        overflow: elide;
+        font-size: 14px;
+    }
+    Text {
+        text: root.current;
+        color: Theme.text;
+        horizontal-alignment: center;
+        overflow: elide;
+        font-size: 19px;
+        font-weight: 700;
+    }
+    Text {
+        text: root.next;
+        color: Theme.text-dim;
+        horizontal-alignment: center;
+        overflow: elide;
+        font-size: 14px;
+    }
+}
+
+// Three dots pulsing in sequence: "something is loading".
+component LoadingDots inherits HorizontalLayout {
+    in property <length> size: 7px;
+    spacing: self.size * 0.7;
+    property <float> phase: mod(animation-tick() / 1200ms, 1);
+    for i in 3: Rectangle {
+        width: root.size;
+        height: root.size;
+        border-radius: self.width / 2;
+        background: Theme.accent-gradient;
+        // Each dot peaks a third of a cycle after the previous one.
+        opacity: 0.25 + 0.75 * Math.max(0, 1 - Math.abs(mod(root.phase - i / 3 + 1, 1) - 0.5) * 3);
+    }
+}
+
+export component AppWindow inherits Window {
+    title: root.media-title != "" ? root.media-title + " — Super Media Player" : "Super Media Player";
+    icon: @image-url("../../../packaging/linux/super-media-player.svg");
+    min-width: root.view == 1 ? 400px : root.view == 2 ? 470px : root.view == 3 ? 560px : root.nav-docked ? 760px : root.own-bar ? max(520px, menu-width.total + 180px) : 520px;
+    // 420px: the longest menu (Playback) must fit below the menu bar; Slint
+    // menus can't scroll, so a shorter window cut it off.
+    min-height: root.view == 1 ? 210px : root.view == 2 ? (root.classic-docked ? 196px + 120px : 196px)
+        : root.view == 3 ? (root.playlist-open ? 340px + 120px : 340px) : root.nav-docked ? 420px + root.nav-dock-height : 420px;
+    // The classic deck on its own only resizes horizontally. (Anything at or
+    // above i32::MAX means "no limit" to Slint: no size hint goes to the
+    // window manager, so maximizing keeps working in the other views.)
+    // An open panel needs more room than they have (main.rs `fit_panel`).
+    max-height: root.panel-open ? 10000000000px
+        : root.view == 2 && !root.classic-docked ? 196px
+        : root.view == 3 && !root.playlist-open ? 340px : 10000000000px;
+    // The silver deck is drawn for its width; only its playlist drawer
+    // resizes (downwards).
+    max-width: root.view == 3 ? 600px : 10000000000px;
+    // The skinned players are the whole window: no title bar, no menu bar;
+    // each skin has its own menu, window buttons and drag area. The media
+    // player draws its title bar into the menu bar (titlebar.slint).
+    no-frame: root.compact || root.own-bar;
+    preferred-width: 1100px;
+    preferred-height: 680px;
+    // Transparent so the video rendered underneath shows through.
+    background: transparent;
+    default-font-size: Theme.font-normal;
+    forward-focus: keys;
+
+    // ---- state pushed from Rust ----
+    in property <bool> idle: true;
+    in property <bool> paused: true;
+    in property <bool> has-video: false;
+    // A music visualizer is drawing (mpv renders it like video).
+    in property <bool> visual-active: false;
+    // Live spectrum bar heights (0..1, bass first), from meter.rs.
+    in property <[float]> spectrum;
+    // Beat (1 on a bass hit, decaying) and loudness, 0..1, plus the pulse
+    // line's path (pulse.rs).
+    in property <float> beat;
+    in property <float> energy;
+    in property <string> pulse-path;
+    in property <float> pulse-head;
+    // Height / width of the pulse line, so pulse.rs draws it unstretched.
+    out property <float> pulse-aspect: root.pulse-height / Math.max(1px, root.pulse-width);
+    property <length> pulse-width: root.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+    property <length> pulse-height: Math.min(180px, root.height * 0.22);
+    in property <float> position: 0;
+    in property <float> duration: 0;
+    in property <float> volume: 100;
+    in property <bool> muted: false;
+    in property <float> speed: 1;
+    in property <string> media-title;
+    in property <string> media-subtitle;
+    in property <string> media-artist;
+    in property <string> tech-info;
+    in property <string> audio-info;
+    in property <string> buffering-text;
+    // Longer work started by the user, e.g. "Reading the disc…".
+    in property <string> busy-text;
+    in property <bool> starting: true;
+    in property <image> artist-image;
+    in property <bool> has-artist-image: false;
+    // The song beyond its title (musicinfo.rs): album cover, tags, a short
+    // artist summary and lyrics. Timed lyrics show the sung line and its
+    // neighbours.
+    in property <string> media-album;
+    in property <string> media-year;
+    in property <string> media-genre;
+    in property <string> media-track;
+    in property <image> cover-image;
+    in property <bool> has-cover: false;
+    in property <string> about-text;
+    in property <string> about-source;
+    in property <string> lyrics-text;
+    in property <bool> lyrics-synced: false;
+    in property <string> lyric-prev;
+    in property <string> lyric-current;
+    in property <string> lyric-next;
+    // A panel is open over a skinned player, which is too small for it.
+    out property <bool> panel-open: root.compact && (root.info-open || root.signal-open || root.library-open
+        || root.subsearch-open || root.subsync-open || root.media-info-open || root.transcript-open || root.clip-open || root.remote-open
+        || root.cast-open || root.party-open || root.palette-open || root.eq-open || root.settings-open
+        || root.ask-open || root.makemkv-open || root.check-open);
+    // A skin with nothing over it: right-clicks are for its menu, not for a
+    // dialog's text field.
+    out property <bool> skin-alone: root.compact && !root.panel-open && !drive-popup.is-open && !url-popup.is-open
+        && !jump-popup.is-open && !about-popup.is-open && !shortcuts-popup.is-open && !disc-popup.is-open
+        && !tracks-popup.is-open;
+    in-out property <bool> info-open: false;
+    property <bool> show-lyric-lines: root.s-show-lyrics && root.lyrics-synced
+        && (root.lyric-current != "" || root.lyric-next != "");
+    // About box
+    in property <string> app-version;
+    in property <string> app-author;
+    in property <string> build-date;
+    in property <string> build-year;
+    in property <string> engine-info;
+    in property <bool> fullscreen: false;
+    in property <bool> shuffle: false;
+    // 0 = off, 1 = repeat playlist, 2 = repeat one
+    in property <int> repeat-mode: 0;
+    in property <[PlaylistItem]> playlist;
+    in property <[TrackItem]> audio-tracks;
+    in property <[TrackItem]> subtitle-tracks;
+    in property <bool> subtitles-off: true;
+    in-out property <string> toast;
+    in-out property <bool> playlist-open: false;
+    // The classic deck's playlist is in its own window (main.rs).
+    in-out property <bool> playlist-detached: false;
+    property <bool> classic-docked: root.playlist-open && !root.playlist-detached;
+    in-out property <bool> drop-hover: false;
+
+    // ---- settings (indices into the option lists in main.rs) ----
+    in-out property <int> s-view-mode: 0;
+    // Skins (skins.rs): their names, the view (layout) each one dresses, and
+    // the chosen one. The first four are the plain views, in view order.
+    in property <[string]> skin-names: ["Media player", "Compact", "Classic deck (Winamp-style)", "Silver deck (MMD3-style)"];
+    in property <[int]> skin-views: [0, 1, 2, 3];
+    in-out property <int> s-skin: 0;
+    callback reload-skins();
+    callback open-skins-folder();
+    in-out property <int> s-visualizer: 0;
+    in-out property <int> s-artist-pos: 2;
+    in-out property <bool> s-artist-online: false;
+    in-out property <bool> s-pulse-line: true;
+    in-out property <bool> s-lyrics-online: false;
+    in-out property <bool> s-show-lyrics: true;
+    in-out property <bool> s-gapless: true;
+    in-out property <int> s-crossfade: 0;
+    in-out property <int> s-replaygain: 0;
+    in-out property <bool> s-resume: true;
+    in-out property <bool> s-remember-pace: true;
+    in-out property <bool> s-bit-perfect: false;
+    in-out property <bool> s-eq-enabled: false;
+    // Equalizer gains (dB, 10 bands) and preset names, from main.rs.
+    in property <[float]> eq-gains;
+    in property <[string]> eq-preset-names;
+    in-out property <bool> eq-open: false;
+    callback set-eq-band(int, float);
+    callback eq-preset(int);
+    callback set-eq-enabled(bool);
+    callback ab-loop();
+    callback frame-step(bool);
+    callback start-over();
+    in-out property <int> s-stream-quality: 2;
+    in-out property <bool> s-hw-decoding: true;
+    in-out property <int> s-bluray-decryption: 0;
+    in-out property <int> s-window-system: 0;
+    in-out property <bool> s-auto-update: true;
+    in property <string> ytdlp-status;
+    in property <string> keydb-status;
+    in property <string> disc-status;
+    // ---- everyday basics (basics.rs) ----
+    // One action for the small things: ("audio-delay", +0.1), ("chapter", 3),
+    // ("aspect", 1), ("sleep", 2), ("recent", 0), ...
+    callback basic(string, float);
+    // Jump to a typed time ("1:23:45", "90", "50%"); false if it can't be read.
+    callback jump-to(string) -> bool;
+    pure callback chapter-name(float) -> string;
+    in property <[float]> chapter-times;
+    in property <[string]> chapter-titles;
+    in property <int> chapter-current: -1;
+    in property <[string]> recent-files;
+    in property <[string]> audio-devices;
+    in-out property <int> s-audio-device;
+    in property <string> audio-delay-text: "0 ms";
+    in property <string> sub-delay-text: "0 ms";
+    // 0 off, 1..5: 15/30/45/60/90 minutes, 6: at the end of this file.
+    in property <int> sleep-choice: 0;
+    in property <string> sleep-left;
+    in property <PictureState> picture;
+    in-out property <bool> picture-open;
+    in property <[InfoRow]> media-info-rows;
+    in-out property <bool> media-info-open;
+    in property <string> media-info-text;
+    in-out property <bool> s-always-on-top;
+    // 0 = the player's own title bar, 1 = the desktop's.
+    in-out property <int> s-title-bar: 0;
+    // Where the menu bar is the desktop's own (macOS), there's no row to put it in.
+    in property <bool> own-bar-possible: true;
+    in property <bool> window-focused: true;
+    in property <bool> window-maximized;
+    property <bool> own-bar: root.s-title-bar == 0 && root.own-bar-possible;
+    // Our own frame is showing: rounded corners, and edges that resize.
+    out property <bool> own-frame: root.own-bar && !root.compact && !root.fullscreen && !root.window-maximized;
+    out property <color> bar-color: Theme.bg-2;
+    callback toggle-maximize();
+    callback system-window-menu(length, length) -> bool;
+    in-out property <bool> s-single-instance: true;
+    in-out property <int> s-sub-size: 1;
+    in-out property <int> s-sub-pos: 0;
+    in-out property <int> s-sub-color: 0;
+    in-out property <int> s-sub-style: 1;
+    in-out property <int> s-passthrough: 0;
+    in-out property <bool> s-dvd-menus: true;
+    in-out property <bool> s-sub-auto-sync: true;
+    // DVD menus (dvdmenu/): a disc is being played with its own program; its
+    // menu is up; the menu has buttons, and one is under the mouse.
+    in property <bool> dvd-disc;
+    in property <bool> dvd-menu;
+    in property <bool> dvd-buttons;
+    in property <bool> dvd-over-button;
+    in property <bool> dvd-can-return;
+    // A menu with buttons: the picture keeps clear of the bars, so that they
+    // never cover a button.
+    property <bool> dvd-fit: root.dvd-menu && root.dvd-buttons && !root.compact;
+    property <bool> dvd-playing: root.media-playing == "dvd://" || root.media-playing.starts-with("dvd://");
+    callback dvd(string);
+    callback dvd-mouse(float, float, bool);
+    // Bookmarks in the current file (basics.rs).
+    in property <[float]> bookmark-times;
+    in property <[string]> bookmark-titles;
+    public function show-jump() { open-jump.running = true; }
+    public function show-settings-tab(t: int) { root.settings-tab = t; root.show-settings(); }
+
+    // ---- your shortcuts and mouse actions (shortcuts.rs) ----
+    // A key press: true when one of your shortcuts took it.
+    callback key-binding(string, bool, bool, bool) -> bool;
+    // The skins' menu at this place, or far enough to the left that a
+    // sub-menu (280px each) has room beside it: Slint keeps menus inside the
+    // window, so it would open over the first one. Also called by main.rs, for
+    // right-clicks.
+    public function show-skin-menu(x: length, y: length) {
+        skin-menu.show({ x: Math.max(0px, Math.min(x, root.width - 560px)), y: y });
+    }
+    // A key was released, or the keyboard went elsewhere.
+    callback key-let-go();
+    // The user's mpv scripts (scripts.rs): "folder", "refresh", "toggle" a file.
+    callback scripts-action(string, string);
+    in property <[ScriptRow]> script-rows;
+    in property <string> scripts-off;
+    in-out property <bool> s-scripts: true;
+    changed settings-open => { if (root.settings-open) { root.scripts-action("show", ""); } }
+    callback shortcut-capture(string, bool, bool, bool) -> string;
+    callback shortcut-add(string, int);
+    callback shortcut-remove(int);
+    callback mouse-action(string);
+    in property <[ShortcutRow]> shortcut-rows;
+    in property <[string]> shortcut-actions;
+    in-out property <int> s-mouse-wheel: 0;
+    in-out property <int> s-mouse-double: 0;
+    in-out property <int> s-mouse-middle: 0;
+
+    // Recording a stream as it plays (basics.rs).
+    in property <bool> recording;
+    in property <bool> can-record;
+    in property <string> recording-text;
+
+    // ---- the Library (library.rs) ----
+    in-out property <bool> library-open;
+    in-out property <int> library-tab;
+    in-out property <int> library-group;
+    in-out property <string> library-country;
+    in property <[LibraryRow]> library-rows;
+    in property <string> library-status;
+    in property <bool> library-busy;
+    in property <bool> library-episodes;
+    callback library-show();
+    callback library-search(string);
+    callback library-activate(int);
+    callback library-toggle-save(int);
+    callback library-add(string, string);
+    callback library-save-current();
+    callback library-play-all();
+    callback library-back();
+    callback library-rescan();
+    callback library-connect(string, string, string);
+    in-out property <string> library-user;
+    in-out property <string> library-password;
+    public function show-library(tab: int) { root.library-tab = tab; root.library-open = true; root.library-show(); }
+
+    // ---- the media library (collection.rs) ----
+    in-out property <bool> media-open;
+    // 0 Home, 1 Albums, 2 Artists, 3 Genres, 4 Songs, 5 Videos, 6 Folders,
+    // 7 managing the folders, -1 search.
+    in property <int> media-page;
+    in property <string> media-heading;
+    in property <string> media-subheading;
+    in property <bool> media-can-back;
+    in property <bool> media-can-play;
+    in property <MediaCard> media-head;
+    in property <bool> media-has-head;
+    in property <[MediaCard]> media-cards;
+    in property <[MediaLine]> media-lines;
+    in property <[string]> media-sorts;
+    in property <int> media-sort;
+    in property <[string]> media-folders;
+    in property <string> media-status;
+    in property <bool> media-scanning;
+    in property <bool> media-loading;
+    in property <bool> media-empty;
+    // The file being played, to mark it in the lists.
+    in property <string> media-playing;
+    in-out property <string> media-query;
+    in-out property <length> media-scroll;
+    property <int> media-focus-search;
+    callback media-shown();
+    callback media-closed();
+    callback media-nav(int);
+    callback media-back();
+    callback media-search(string);
+    callback media-sort-by(int);
+    callback media-open-card(int);
+    callback media-play-card(int);
+    callback media-remove-card(int);
+    callback media-play-song(int);
+    callback media-add-song(int);
+    callback media-play-all(string);
+    callback media-layout(float);
+    callback media-add-folder();
+    callback media-add-defaults();
+    callback media-remove-folder(int);
+    callback media-rescan();
+    // Open the library at a page. The skinned players are too small for it.
+    public function show-media(page: int) {
+        if (root.compact) { root.set-view(0); }
+        root.media-open = true;
+        root.media-shown();
+        root.media-nav(page);
+    }
+    public function toggle-media() { if (root.media-open) { root.close-media(); } else { root.show-media(0); } }
+    public function close-media() {
+        root.media-open = false;
+        root.media-closed();
+        keys.focus();
+    }
+
+    // ---- subtitles online (opensubs.rs) ----
+    callback show-sub-search();
+    callback subsearch-search(string, string);
+    callback subsearch-download(int);
+    callback load-subtitle-path(string);
+    in-out property <bool> subsearch-open;
+    in-out property <string> subsearch-query;
+    in-out property <string> subsearch-languages;
+    in property <[SubHit]> subsearch-hits;
+    in property <string> subsearch-status;
+    in property <bool> subsearch-working;
+    in property <string> opensubs-status;
+    callback save-opensubs(string, string, string);
+
+    // ---- playlist tools (playlists.rs) ----
+    // ("up", i), ("down", i), ("title"|"file"|"folder"|"reverse", 0),
+    // ("shuffle"|"dedupe"|"missing"|"save"|"open", 0)
+    callback playlist-action(string, int);
+    callback playlist-search(string);
+    in-out property <string> playlist-query;
+    in property <[bool]> playlist-shown;
+
+    // The settings tab last open.
+    in-out property <int> settings-tab;
+    in-out property <bool> settings-open: false;
+
+    // 0 = media player, 1 = compact, 2 = classic deck, 3 = silver deck.
+    property <int> view: root.s-view-mode;
+    // One of the small skinned players, rather than the full media player.
+    property <bool> compact: root.view != 0;
+    // Visualizer index 0 is the spinning disc, 1 particles, 7 "none".
+    property <bool> show-disc: root.s-visualizer == 0;
+    property <bool> show-particles: root.s-visualizer == 1;
+
+    // Where mpv should draw video or the visualizer, in this window's content
+    // coordinates; main.rs turns it into mpv's video margins.
+    out property <length> content-height: root.height;
+    out property <length> video-x: root.view == 1 ? compact-view.vis-x : root.view == 2 ? classic-view.vis-x : root.view == 3 ? silver-view.vis-x : 0px;
+    out property <length> video-y: root.view == 1 ? compact-view.vis-y : root.view == 2 ? classic-view.vis-y : root.view == 3 ? silver-view.vis-y : root.dvd-fit ? 56px : 0px;
+    out property <length> video-width: root.view == 1 ? compact-view.vis-width : root.view == 2 ? classic-view.vis-width : root.view == 3 ? silver-view.vis-width : root.width;
+    out property <length> video-height: root.view == 1 ? compact-view.vis-height : root.view == 2 ? classic-view.vis-height : root.view == 3 ? silver-view.vis-height
+        : root.nav-docked ? root.height - bar.height - 2 * bar.margin : root.dvd-fit ? root.height - 56px - root.bar-height - 28px : root.height;
+
+    // ---- actions handled in Rust ----
+    callback open-files();
+    callback open-folder();
+    // Paths, file:// URIs or URLs, one per line.
+    callback open-location(string);
+    callback open-disc(string);
+    callback toggle-pause();
+    callback stop();
+    callback next();
+    callback prev();
+    callback seek(float);
+    callback scrub(float);
+    callback seek-relative(float);
+    callback set-volume(float);
+    callback toggle-mute();
+    callback play-index(int);
+    callback remove-index(int);
+    callback clear-playlist();
+    callback toggle-shuffle();
+    callback set-repeat(int);
+    callback toggle-fullscreen();
+    callback select-audio(int);
+    callback select-subtitle(int);
+    callback add-subtitle();
+    callback set-speed(float);
+    // Pauses in the sound are left out (silence.rs); how much so far ("": none).
+    in-out property <bool> skip-silence: false;
+    in property <string> silence-saved;
+    callback toggle-skip-silence();
+    callback screenshot();
+    callback settings-changed();
+    callback install-ytdlp();
+    callback install-keydb();
+    // System check (doctor.rs): run it, and a fix button was pressed.
+    callback run-check();
+    callback check-action(string);
+    in-out property <bool> check-open: false;
+    in property <[CheckItem]> check-items;
+    in property <bool> check-running: false;
+    in property <string> check-summary;
+    in property <string> check-report;
+    callback quit();
+    callback minimize-window();
+    // Resize the frameless (skinned) window from an edge: 0 right, 1 bottom, 2 corner.
+    callback start-window-resize(int);
+    // Rip & play with MakeMKV (ripper.rs), its key, and stopping a rip.
+    callback rip-disc();
+    callback update-ffmpeg();
+    callback register-makemkv(string);
+    in property <bool> busy-cancellable: false;
+    callback cancel-busy();
+    // A MakeMKV rip in progress (rip.slint shows it).
+    in property <bool> rip-active: false;
+    in property <float> rip-percent: 0;
+    in property <string> rip-title;
+    in property <string> rip-drive;
+    in property <string> rip-stage;
+    in property <string> rip-eta;
+    in property <string> rip-heading;
+    // A question asked inside the player (main.rs `ask`).
+    in property <bool> ask-open: false;
+    in property <string> ask-title;
+    in property <string> ask-text;
+    in property <string> ask-ok-label: "OK";
+    in property <string> ask-cancel-label: "Cancel";
+    callback ask-answer(bool);
+    // Drives holding a disc, to pick the one to rip from.
+    in property <[DriveChoice]> drive-choices;
+    callback rip-from-drive(string, string);
+    // The drive picker either rips (above) or plays the disc in the chosen drive.
+    in property <bool> drive-picker-play;
+    callback play-from-drive(string);
+    public function show-drive-picker() { drive-popup.show(); }
+    // MakeMKV help panel (makemkv.slint); Rust fills in the status.
+    in-out property <bool> makemkv-open: false;
+    in property <string> makemkv-status;
+    in property <bool> makemkv-ready: false;
+    in property <bool> makemkv-installed: false;
+    in property <string> makemkv-install-command;
+    in property <string> makemkv-update-command;
+    in property <string> makemkv-key-page;
+    callback refresh-makemkv();
+    callback install-makemkv();
+    callback open-url(string);
+    public function show-makemkv-key() {
+        root.makemkv-open = true;
+        root.refresh-makemkv();
+    }
+    // Tone (silver deck knobs), -12..12 dB.
+    in-out property <float> bass: 0;
+    in-out property <float> treble: 0;
+    callback set-bass(float);
+    callback set-treble(float);
+    // From Rust: a link failed because yt-dlp is missing.
+    callback ytdlp-missing(string);
+
+    // ---- beyond playback (extras.slint) ----
+    // Seek bar previews (thumbs.rs) and the intro of an episode (intro.rs).
+    in property <image> thumb-image;
+    in property <bool> has-thumb: false;
+    callback hover-seek(float);
+    in property <float> intro-start: -1;
+    in property <float> intro-end: -1;
+    // Sponsors and the like (sponsor.rs), shown on the seek bar.
+    in property <[SeekMark]> sponsor-marks;
+    in property <string> skip-text;
+    in property <float> skip-countdown: -1;
+    callback skip-pressed();
+    in-out property <bool> s-seek-thumbnails: true;
+    in-out property <int> s-skip-intro: 0;
+    in-out property <int> s-sponsor-skip: 0;
+    in-out property <int> s-sponsor-kinds: 1;
+    in-out property <bool> s-next-episode: true;
+    // Sound for films and singing along.
+    in-out property <bool> s-night-mode: false;
+    in-out property <bool> s-dialogue-boost: false;
+    in-out property <bool> karaoke: false;
+    in-out property <bool> karaoke-open: false;
+    in property <float> lyric-progress: 0;
+    // Command palette (palette.rs).
+    in property <[PaletteItem]> palette-items;
+    in-out property <bool> palette-open: false;
+    callback palette-query(string);
+    callback palette-run(string);
+    // Signal path (signal.rs).
+    in-out property <bool> signal-open: false;
+    in property <[SignalStage]> signal-stages;
+    in property <string> signal-verdict;
+    in property <int> signal-level;
+    in property <bool> signal-can-fix;
+    callback signal-fix-rates();
+    // Lining subtitles up with the speech (subsync.rs).
+    in-out property <bool> subsync-open: false;
+    in property <string> subsync-status;
+    in property <float> subsync-progress: -1;
+    in property <bool> subsync-working;
+    in property <bool> subsync-done;
+    callback sub-sync();
+    callback sub-sync-auto(string);
+    callback sub-sync-cancel();
+    callback sub-sync-keep();
+    callback sub-sync-undo();
+
+    // Subtitles from speech (transcribe.rs).
+    in-out property <bool> transcript-open: false;
+    in property <string> transcript-status;
+    in property <float> transcript-progress: -1;
+    in property <bool> transcript-working;
+    in property <bool> has-transcript;
+    in property <bool> can-transcribe;
+    in property <[TranscriptLine]> transcript-results;
+    in property <[string]> whisper-models: ["Tiny (fastest)", "Base", "Small", "Medium", "Large v3 turbo (best)"];
+    in-out property <int> s-whisper-model: 1;
+    callback transcribe(bool);
+    callback transcribe-cancel();
+    callback transcript-search(string);
+    // Clips (clip.rs).
+    in-out property <bool> clip-open: false;
+    in-out property <float> clip-start: 0;
+    in-out property <float> clip-end: 0;
+    in property <string> clip-status;
+    in property <float> clip-progress: -1;
+    in property <bool> clip-working;
+    in-out property <int> clip-format: 0;
+    callback clip-save();
+    callback clip-cancel();
+    callback clip-open-folder();
+    // Phone remote (remote.rs).
+    in-out property <bool> remote-open: false;
+    in property <bool> remote-running;
+    in property <string> remote-address;
+    in property <image> remote-qr;
+    in property <string> remote-status;
+    callback remote-start();
+    callback remote-stop();
+    // Casting (cast/).
+    in-out property <bool> cast-open: false;
+    in property <bool> cast-active: false;
+    in property <bool> cast-searching;
+    in property <[CastDevice]> cast-devices;
+    in property <string> cast-name;
+    in property <string> cast-state;
+    in property <string> cast-status;
+    in-out property <int> cast-quality: 0;
+    in-out property <bool> cast-burn-subs: false;
+    in-out property <string> cast-address;
+    callback cast-search();
+    callback cast-connect(int);
+    callback cast-add(string);
+    callback cast-stop();
+    callback cast-options-changed();
+    // Open the list, and look for devices.
+    public function show-cast() {
+        root.cast-open = true;
+        root.cast-search();
+    }
+    // Watch together (party.rs).
+    in-out property <bool> party-open: false;
+    in property <int> party-mode: 0;
+    in property <string> party-status;
+    in property <string> party-invite;
+    in property <[string]> party-people;
+    in-out property <string> party-join-address;
+    in-out property <string> party-name;
+    callback party-host();
+    callback party-join();
+    callback party-leave();
+    // Video enhancement (enhance.rs).
+    in-out property <int> s-video-enhance: 0;
+    in-out property <bool> s-smooth-motion: false;
+    in-out property <bool> s-auto-crop: false;
+    in-out property <int> s-tone-map: 0;
+    in-out property <bool> s-hdr-peak: true;
+    in-out property <bool> s-cd-online: true;
+    in property <bool> milkdrop-available: false;
+    in-out property <bool> compare-on: false;
+    in-out property <float> compare-split: 0.5;
+    callback compare-moved(float);
+    callback set-enhance(int);
+    callback set-tone-map(int);
+
+    // ---- advanced navigation (nav.slint, navigation.rs) ----
+    in-out property <bool> s-nav-enabled: false;
+    in-out property <bool> s-nav-docked: true;
+    in property <NavState> nav-state;
+    in property <[string]> nav-step-labels;
+    in property <[string]> nav-turn-labels;
+    callback nav-act(string, float);
+    callback nav-text(string, string);
+    // Docked under the control bar: only the media player view has one.
+    property <bool> nav-docked: root.s-nav-enabled && root.s-nav-docked && !root.compact;
+    property <length> nav-dock-height: 156px;
+    // The control bar, taller with the docked panel.
+    property <length> bar-height: 104px + (root.nav-docked ? root.nav-dock-height : 0px);
+    public function toggle-nav() {
+        root.s-nav-enabled = !root.s-nav-enabled;
+        root.settings-changed();
+    }
+
+    public function show-palette() { root.palette-open = true; palette.open(); }
+    // Menus and buttons open the dialogs through these: shown from a menu
+    // entry, a dialog's is-open (see skin-alone) stays true, as Slint keeps
+    // it up to date through the entry, which is gone by then.
+    // The keyboard goes to the player first, as it returns to where it was
+    // when the dialog closes: not to a menu that is gone. Those with a text
+    // field open once the menu has closed, as it takes the keyboard back then.
+    public function show-url() { open-url.running = true; }
+    open-url := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => { self.running = false; keys.focus(); url-popup.show(); }
+    }
+    open-jump := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => { self.running = false; keys.focus(); jump-popup.show(); }
+    }
+    public function show-shortcuts() { keys.focus(); shortcuts-popup.show(); }
+    public function show-tracks() { keys.focus(); tracks-popup.show(); }
+    public function show-disc-menu() { keys.focus(); disc-popup.show(); }
+    public function toggle-night() { root.s-night-mode = !root.s-night-mode; root.settings-changed(); }
+    public function toggle-dialogue() { root.s-dialogue-boost = !root.s-dialogue-boost; root.settings-changed(); }
+    public function toggle-karaoke() {
+        root.karaoke = !root.karaoke;
+        root.karaoke-open = root.karaoke && !root.has-video && !root.idle;
+    }
+    public function toggle-auto-crop() { root.s-auto-crop = !root.s-auto-crop; root.settings-changed(); }
+    public function toggle-smooth() { root.s-smooth-motion = !root.s-smooth-motion; root.settings-changed(); }
+    public function toggle-compare() {
+        root.compare-on = !root.compare-on && root.s-video-enhance > 0;
+        root.compare-moved(root.compare-on ? root.compare-split : -1);
+    }
+    public function choose-visual(v: int) { root.set-visual(v); }
+    public function choose-skin(i: int) { root.set-skin(i); }
+    public function choose-view(m: int) { root.set-view(m); }
+
+    public function show-about() { keys.focus(); about-popup.show(); }
+    public function show-settings() { root.settings-open = true; }
+    // Switch to a plain view (its default skin).
+    function set-view(mode: int) {
+        if (root.s-view-mode != mode || root.s-skin != mode) {
+            root.s-view-mode = mode;
+            root.s-skin = mode;
+            root.settings-changed();
+        }
+    }
+    function set-skin(i: int) {
+        if (root.s-skin != i) {
+            root.s-skin = i;
+            root.s-view-mode = root.skin-views[i];
+            root.settings-changed();
+        }
+    }
+    function set-pulse-line(on: bool) {
+        root.s-pulse-line = on;
+        root.settings-changed();
+    }
+    function set-visual(v: int) {
+        root.s-visualizer = v;
+        root.settings-changed();
+    }
+    function set-artist-pos(v: int) {
+        root.s-artist-pos = v;
+        root.settings-changed();
+    }
+
+    if !root.fullscreen && !root.compact: MenuBar {
+        Menu {
+            title: "File";
+            MenuItem { title: "Open files…"; shortcut: @keys(Control + O); activated => { root.open-files(); } }
+            MenuItem { title: "Open folder…"; shortcut: @keys(Control + Shift + O); activated => { root.open-folder(); } }
+            MenuItem { title: "Open location (URL or path)…"; shortcut: @keys(Control + U); activated => { root.show-url(); } }
+            Menu {
+                title: "Library";
+                MenuItem { title: "Media library (albums, artists, videos)…"; shortcut: @keys(Control + Shift + M); activated => { root.show-media(0); } }
+                MenuSeparator { }
+                MenuItem { title: "Show saved links…"; shortcut: @keys(Control + Shift + L); activated => { root.show-library(0); } }
+                MenuItem { title: "Internet radio…"; activated => { root.show-library(1); } }
+                MenuItem { title: "Podcasts…"; activated => { root.show-library(2); } }
+                MenuItem { title: "Network (DLNA, SMB, SFTP)…"; activated => { root.show-library(3); } }
+                MenuSeparator { }
+                MenuItem { title: "Save what's playing"; enabled: !root.idle; activated => { root.library-save-current(); } }
+            }
+            Menu {
+                title: "Playlist file";
+                MenuItem { title: "Open playlist…"; activated => { root.playlist-action("open", 0); } }
+                MenuItem { title: "Save playlist…"; shortcut: @keys(Control + S); activated => { root.playlist-action("save", 0); } }
+            }
+            Menu {
+                title: "Open recent";
+                enabled: root.recent-files.length > 0;
+                for f[i] in root.recent-files: MenuItem {
+                    title: f;
+                    activated => { root.basic("recent", i); }
+                }
+                MenuSeparator { }
+                MenuItem { title: "Clear the list"; activated => { root.basic("recent-clear", 0); } }
+            }
+            MenuSeparator { }
+            Menu {
+                title: "Play disc";
+                MenuItem { title: "Detect disc in drive"; shortcut: @keys(Control + D); activated => { root.open-disc("auto"); } }
+                MenuItem { title: "DVD"; activated => { root.open-disc("dvd"); } }
+                MenuItem { title: "DVD, main film (no menu)"; activated => { root.open-disc("dvd-film"); } }
+                MenuItem { title: "Blu-ray"; activated => { root.open-disc("bluray"); } }
+                MenuItem { title: "Rip & play with MakeMKV…"; activated => { root.rip-disc(); } }
+                MenuItem { title: "Audio CD"; activated => { root.open-disc("cd"); } }
+                MenuItem { title: "Rip audio CD to FLAC…"; activated => { root.open-disc("rip-cd"); } }
+                MenuSeparator { }
+                MenuItem { title: "Disc image (ISO)…"; activated => { root.open-disc("image"); } }
+                MenuItem { title: "Disc folder (VIDEO_TS / BDMV)…"; activated => { root.open-disc("folder"); } }
+            }
+            MenuItem { title: "Load subtitle file…"; activated => { root.add-subtitle(); } }
+            MenuSeparator { }
+            MenuItem { title: "Quit"; shortcut: @keys(Control + Q); activated => { root.quit(); } }
+        }
+        Menu {
+            title: "Playback";
+            Menu {
+                title: "Go to";
+                enabled: !root.idle;
+                MenuItem { title: "Jump to time…"; shortcut: @keys(Control + T); activated => { root.show-jump(); } }
+                MenuItem { title: "Forward 10 seconds"; activated => { root.seek-relative(10); } }
+                MenuItem { title: "Back 10 seconds"; activated => { root.seek-relative(-10); } }
+                MenuItem { title: "Start over"; activated => { root.start-over(); } }
+                MenuSeparator { }
+                MenuItem { title: "Next frame"; enabled: root.has-video; activated => { root.frame-step(true); } }
+                MenuItem { title: "Previous frame"; enabled: root.has-video; activated => { root.frame-step(false); } }
+            }
+            MenuItem { title: "A-B repeat (mark A, B, off)"; enabled: !root.idle; activated => { root.ab-loop(); } }
+            Menu {
+                title: "Bookmarks";
+                enabled: !root.idle;
+                MenuItem { title: "Add a bookmark here"; shortcut: @keys(Control + B); activated => { root.basic("bookmark-add", 0); } }
+                MenuSeparator { }
+                for b[i] in root.bookmark-titles: MenuItem {
+                    title: b;
+                    activated => { root.basic("bookmark", i); }
+                }
+                MenuSeparator { }
+                MenuItem { title: "Remove this file's bookmarks"; enabled: root.bookmark-titles.length > 0; activated => { root.basic("bookmarks-clear", 0); } }
+            }
+            Menu {
+                title: "Chapters";
+                enabled: root.chapter-titles.length > 0;
+                MenuItem { title: "Previous chapter  [PgUp]"; activated => { root.basic("chapter-step", -1); } }
+                MenuItem { title: "Next chapter  [PgDn]"; activated => { root.basic("chapter-step", 1); } }
+                MenuSeparator { }
+                for c[i] in root.chapter-titles: MenuItem {
+                    title: c;
+                    checked: i == root.chapter-current;
+                    activated => { root.basic("chapter", i); }
+                }
+            }
+            MenuItem { title: root.skip-text != "" ? root.skip-text : "Skip intro"; enabled: root.skip-text != ""; activated => { root.skip-pressed(); } }
+            MenuItem { title: "Disc menu"; shortcut: @keys(Control + Shift + D); enabled: root.dvd-disc || root.dvd-playing; activated => { root.dvd("menu"); } }
+            Menu {
+                title: "Speed";
+                for s in [0.5, 0.75, 1, 1.25, 1.5, 2]: MenuItem {
+                    title: s + "×";
+                    checked: root.speed == s;
+                    activated => { root.set-speed(s); }
+                }
+            }
+            MenuItem { title: root.silence-saved != "" ? "Skip silence (" + root.silence-saved + " so far)" : "Skip silence"; checked: root.skip-silence; activated => { root.toggle-skip-silence(); } }
+            MenuSeparator { }
+            Menu {
+                title: root.sleep-left != "" ? "Sleep timer (" + root.sleep-left + ")" : "Sleep timer";
+                for v[i] in ["Off", "In 15 minutes", "In 30 minutes", "In 45 minutes", "In 1 hour", "In 1½ hours", "At the end of this file"]: MenuItem {
+                    title: v;
+                    checked: root.sleep-choice == i;
+                    activated => { root.basic("sleep", i); }
+                }
+            }
+            Menu {
+                title: "Shuffle & repeat";
+                MenuItem { title: "Shuffle"; checked: root.shuffle; activated => { root.toggle-shuffle(); } }
+                MenuSeparator { }
+                MenuItem { title: "Repeat off"; checked: root.repeat-mode == 0; activated => { root.set-repeat(0); } }
+                MenuItem { title: "Repeat the whole playlist"; checked: root.repeat-mode == 1; activated => { root.set-repeat(1); } }
+                MenuItem { title: "Repeat the current item"; checked: root.repeat-mode == 2; activated => { root.set-repeat(2); } }
+            }
+        }
+        Menu {
+            title: "Audio & Subtitles";
+            Menu {
+                title: "Audio track";
+                for t in root.audio-tracks: MenuItem {
+                    title: t.label;
+                    checked: t.selected;
+                    activated => { root.select-audio(t.id); }
+                }
+            }
+            MenuItem { title: "Equalizer…"; activated => { root.eq-open = true; } }
+            Menu {
+                title: "Output device";
+                for d[i] in root.audio-devices: MenuItem {
+                    title: d;
+                    checked: i == root.s-audio-device;
+                    activated => { root.basic("audio-device", i); }
+                }
+            }
+            Menu {
+                title: "Audio delay (" + root.audio-delay-text + ")";
+                MenuItem { title: "Sound later (+100 ms)  [Ctrl +]"; activated => { root.basic("audio-delay", 0.1); } }
+                MenuItem { title: "Sound earlier (−100 ms)  [Ctrl −]"; activated => { root.basic("audio-delay", -0.1); } }
+                MenuItem { title: "Reset"; activated => { root.basic("audio-delay-reset", 0); } }
+            }
+            Menu {
+                title: "Subtitles";
+                MenuItem { title: "Off"; checked: root.subtitles-off; activated => { root.select-subtitle(-1); } }
+                for t in root.subtitle-tracks: MenuItem {
+                    title: t.label;
+                    checked: t.selected;
+                    activated => { root.select-subtitle(t.id); }
+                }
+                MenuSeparator { }
+                MenuItem { title: "Load subtitle file…"; activated => { root.add-subtitle(); } }
+                MenuItem { title: "Find subtitles online…"; enabled: !root.idle; activated => { root.show-sub-search(); } }
+                MenuItem { title: "Subtitles from speech, and search…"; activated => { root.transcript-open = true; } }
+                MenuSeparator { }
+                MenuItem { title: "Subtitles later (+100 ms)  [X]"; activated => { root.basic("sub-delay", 0.1); } }
+                MenuItem { title: "Subtitles earlier (−100 ms)  [Z]"; activated => { root.basic("sub-delay", -0.1); } }
+                MenuItem { title: "Reset subtitle delay (" + root.sub-delay-text + ")"; activated => { root.basic("sub-delay-reset", 0); } }
+                MenuItem { title: "Line up with the speech…"; enabled: !root.idle; activated => { root.subsync-open = true; root.sub-sync(); } }
+                MenuItem { title: "Subtitle look…"; activated => { root.show-settings-tab(5); } }
+            }
+            MenuItem { title: root.muted ? "Unmute" : "Mute"; activated => { root.toggle-mute(); } }
+            MenuSeparator { }
+            MenuItem { title: "Night mode (even out loud and quiet)"; checked: root.s-night-mode; activated => { root.toggle-night(); } }
+            MenuItem { title: "Dialogue boost"; checked: root.s-dialogue-boost; activated => { root.toggle-dialogue(); } }
+            MenuItem { title: "Karaoke (remove vocals, big lyrics)"; checked: root.karaoke; activated => { root.toggle-karaoke(); } }
+            MenuItem { title: "Signal path…"; activated => { root.signal-open = true; } }
+        }
+        Menu {
+            title: "View";
+            Menu {
+                title: "Skin";
+                MenuItem { title: "Next skin"; shortcut: @keys(Control + M); activated => { root.set-skin(Math.mod(root.s-skin + 1, root.skin-names.length)); } }
+                MenuSeparator { }
+                for name[i] in root.skin-names: MenuItem {
+                    title: name;
+                    checked: root.s-skin == i;
+                    activated => { root.set-skin(i); }
+                }
+                MenuSeparator { }
+                MenuItem { title: "Reload skins"; activated => { root.reload-skins(); } }
+                MenuItem { title: "Open skins folder"; activated => { root.open-skins-folder(); } }
+            }
+            Menu {
+                title: "Music visualization";
+                for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
+                    title: v;
+                    checked: root.s-visualizer == i;
+                    activated => { root.set-visual(i); }
+                }
+            }
+            MenuItem { title: "Pulse line (beat)"; checked: root.s-pulse-line; activated => { root.set-pulse-line(!root.s-pulse-line); } }
+            Menu {
+                title: "Artist picture";
+                for v[i] in ["Off", "Top left", "Top right"]: MenuItem {
+                    title: v;
+                    checked: root.s-artist-pos == i;
+                    activated => { root.set-artist-pos(i); }
+                }
+            }
+            MenuSeparator { }
+            Menu {
+                title: "Video enhancement";
+                for v[i] in ["Off", "Sharpen (CAS)", "Upscale (AMD FSR)", "Anime (Anime4K)"]: MenuItem {
+                    title: v;
+                    checked: root.s-video-enhance == i;
+                    activated => { root.set-enhance(i); }
+                }
+            }
+            MenuItem { title: "Compare before / after"; checked: root.compare-on; enabled: root.s-video-enhance > 0; activated => { root.toggle-compare(); } }
+            MenuItem { title: "Smooth motion"; checked: root.s-smooth-motion; activated => { root.toggle-smooth(); } }
+            Menu {
+                title: "HDR tone-mapping";
+                for v[i] in ["Automatic", "Balanced (BT.2390)", "Smooth (spline)", "Filmic (Hable)", "Bright (Mobius)", "Clip (no tone-mapping)"]: MenuItem {
+                    title: v;
+                    checked: root.s-tone-map == i;
+                    activated => { root.set-tone-map(i); }
+                }
+                MenuSeparator { }
+                MenuItem { title: "Scene brightness detection"; checked: root.s-hdr-peak; activated => { root.s-hdr-peak = !root.s-hdr-peak; root.settings-changed(); } }
+            }
+            Menu {
+                title: "Picture";
+                MenuItem { title: "Adjust picture…"; activated => { root.picture-open = true; } }
+                Menu {
+                    title: "Aspect ratio";
+                    for v[i] in ["Automatic", "16:9", "4:3", "21:9 (2.35:1)", "1.85:1", "1:1", "Stretch to window"]: MenuItem {
+                        title: v;
+                        checked: root.picture.aspect == i;
+                        activated => { root.basic("aspect", i); }
+                    }
+                }
+                Menu {
+                    title: "Rotate";
+                    for v[i] in ["None", "90° right", "180°", "90° left"]: MenuItem {
+                        title: v;
+                        checked: root.picture.rotate == i;
+                        activated => { root.basic("rotate", i); }
+                    }
+                }
+                MenuItem { title: "Zoom in  [Alt +]"; activated => { root.basic("zoom", 0.1); } }
+                MenuItem { title: "Zoom out  [Alt −]"; activated => { root.basic("zoom", -0.1); } }
+                MenuItem { title: "Crop black bars  [C]"; checked: root.s-auto-crop; activated => { root.toggle-auto-crop(); } }
+                MenuItem { title: "Deinterlace"; checked: root.picture.deinterlace; activated => { root.basic("deinterlace", root.picture.deinterlace ? 0 : 1); } }
+                MenuItem { title: "Reset picture  [Alt+Backspace]"; activated => { root.basic("reset", 0); } }
+            }
+            MenuItem { title: "Always on top"; checked: root.s-always-on-top; activated => { root.s-always-on-top = !root.s-always-on-top; root.settings-changed(); } }
+            MenuSeparator { }
+            MenuItem { title: "Playlist"; checked: root.playlist-open; shortcut: @keys(Control + L); activated => { root.playlist-open = !root.playlist-open; } }
+            MenuItem { title: "Fullscreen"; activated => { root.toggle-fullscreen(); } }
+        }
+        Menu {
+            title: "Tools";
+            MenuItem { title: "Command palette…"; shortcut: @keys(Control + K); activated => { root.show-palette(); } }
+            MenuItem { title: "Advanced navigation"; checked: root.s-nav-enabled; shortcut: @keys(Control + J); activated => { root.toggle-nav(); } }
+            MenuItem { title: "Settings…"; shortcut: @keys(Control + P); activated => { root.show-settings(); } }
+            MenuItem { title: "Media information…"; shortcut: @keys(Control + I); activated => { root.media-info-open = true; root.basic("media-info", 0); } }
+            Menu {
+                title: "Setup & updates";
+                MenuItem { title: "System check…"; activated => { root.check-open = true; root.run-check(); } }
+                MenuSeparator { }
+                MenuItem { title: "Install / update yt-dlp (online video)"; activated => { root.install-ytdlp(); } }
+                MenuItem { title: "Download Blu-ray key database"; activated => { root.install-keydb(); } }
+                MenuItem { title: "Update FFmpeg (playback engine)…"; activated => { root.update-ffmpeg(); } }
+                MenuItem { title: "MakeMKV (key & help)…"; activated => { root.show-makemkv-key(); } }
+            }
+            MenuSeparator { }
+            MenuItem { title: "Take screenshot"; enabled: root.has-video; activated => { root.screenshot(); } }
+            MenuItem { title: "Save a clip or convert…"; enabled: !root.idle; activated => { root.clip-open = true; } }
+            MenuItem { title: root.recording ? "Stop recording" : "Record this stream"; checked: root.recording; enabled: root.can-record || root.recording; activated => { root.basic("record", 0); } }
+            MenuItem { title: root.cast-active ? "Casting to " + root.cast-name + "…" : "Cast to a TV or speaker…"; activated => { root.show-cast(); } }
+            MenuItem { title: "Stop casting"; enabled: root.cast-active; activated => { root.cast-stop(); } }
+            MenuItem { title: "Phone remote…"; activated => { root.remote-open = true; } }
+            MenuItem { title: "Watch together…"; activated => { root.party-open = true; } }
+        }
+        Menu {
+            title: "Help";
+            MenuItem { title: "Keyboard shortcuts"; activated => { root.show-shortcuts(); } }
+            MenuItem { title: "About Super Media Player"; shortcut: @keys(F1); activated => { root.show-about(); } }
+        }
+    }
+
+    // Controls auto-hide during video playback. Any mouse movement shows them
+    // and restarts the countdown. While the pointer rests on the control bar
+    // (to click the seek bar, say) they stay up for 30 s without movement;
+    // anywhere else they hide after 2.5 s.
+    property <bool> mouse-active: true;
+    property <bool> over-controls: bar-touch.has-hover || top-touch.has-hover;
+    property <bool> show-controls: !root.has-video || root.paused || root.dvd-fit || root.mouse-active
+        || root.playlist-open || root.nav-docked || root.media-open;
+
+    function poke-controls() {
+        root.mouse-active = true;
+        hide-timer.restart();
+    }
+
+    hide-timer := Timer {
+        interval: root.over-controls ? 30s : 2500ms;
+        running: root.has-video && root.mouse-active;
+        triggered => { root.mouse-active = false; }
+    }
+    // Each message gets its full time.
+    changed toast => {
+        if (root.toast != "") { toast-timer.restart(); }
+    }
+    toast-timer := Timer {
+        // Longer messages stay up longer.
+        interval: Math.max(3500, root.toast.character-count * 70) * 1ms;
+        running: root.toast != "";
+        triggered => { root.toast = ""; }
+    }
+
+    keys := FocusScope {
+        key-released(e) => { root.key-let-go(); reject }
+        focus-lost(reason) => { root.key-let-go(); }
+        key-pressed(e) => {
+            root.poke-controls();
+            if (root.key-binding(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift)) { return accept; }
+            // Advanced navigation: steps of the chosen size, frames, the
+            // J / K / L shuttle and fine speed. Everything else as usual.
+            if (root.s-nav-enabled && !root.idle) {
+                if (e.text == " ") { root.nav-act("pause", 0); return accept; }
+                if (e.text == Key.RightArrow) {
+                    root.nav-act(e.modifiers.control ? "frame" : "step", e.modifiers.control ? 1 : e.modifiers.shift ? 10 : 1);
+                    return accept;
+                }
+                if (e.text == Key.LeftArrow) {
+                    root.nav-act(e.modifiers.control ? "frame" : "step", e.modifiers.control ? -1 : e.modifiers.shift ? -10 : -1);
+                    return accept;
+                }
+                if (e.text == "j" && !e.modifiers.control) { root.nav-act("shuttle-key", -1); return accept; }
+                if (e.text == "k" && !e.modifiers.control) { root.nav-act("shuttle-key", 0); return accept; }
+                if (e.text == "l" && !e.modifiers.control) { root.nav-act("shuttle-key", 1); return accept; }
+                if (e.text == "[") { root.nav-act("speed-nudge", -1); return accept; }
+                if (e.text == "]") { root.nav-act("speed-nudge", 1); return accept; }
+            }
+            // A DVD's menu: its buttons.
+            if (root.dvd-menu && root.dvd-buttons && !e.modifiers.control && !e.modifiers.alt) {
+                if (e.text == Key.UpArrow) { root.dvd("up"); return accept; }
+                if (e.text == Key.DownArrow) { root.dvd("down"); return accept; }
+                if (e.text == Key.LeftArrow) { root.dvd("left"); return accept; }
+                if (e.text == Key.RightArrow) { root.dvd("right"); return accept; }
+                if (e.text == Key.Return) { root.dvd("press"); return accept; }
+            }
+            if (root.dvd-menu && e.text == Key.Escape && root.dvd-can-return && !root.settings-open && !root.palette-open && !root.fullscreen) { root.dvd("return"); return accept; }
+            // Delays, picture and chapters (basics.rs).
+            if (e.text == "z" && !e.modifiers.control && !e.modifiers.alt) { root.basic("sub-delay", -0.1); return accept; }
+            if (e.text == "x" && !e.modifiers.control && !e.modifiers.alt) { root.basic("sub-delay", 0.1); return accept; }
+            if (e.modifiers.control && !e.modifiers.alt && (e.text == "+" || e.text == "=")) { root.basic("audio-delay", 0.1); return accept; }
+            if (e.modifiers.control && !e.modifiers.alt && (e.text == "-" || e.text == "_")) { root.basic("audio-delay", -0.1); return accept; }
+            if (e.modifiers.alt && !e.modifiers.control) {
+                if (e.text == "+" || e.text == "=") { root.basic("zoom", 0.1); return accept; }
+                if (e.text == "-" || e.text == "_") { root.basic("zoom", -0.1); return accept; }
+                if (e.text == Key.LeftArrow) { root.basic("pan-x", 0.05); return accept; }
+                if (e.text == Key.RightArrow) { root.basic("pan-x", -0.05); return accept; }
+                if (e.text == Key.UpArrow) { root.basic("pan-y", 0.05); return accept; }
+                if (e.text == Key.DownArrow) { root.basic("pan-y", -0.05); return accept; }
+                if (e.text == Key.Backspace) { root.basic("reset", 0); return accept; }
+            }
+            if (e.text == Key.PageUp && !root.idle) { root.basic("chapter-step", -1); return accept; }
+            if (e.text == Key.PageDown && !root.idle) { root.basic("chapter-step", 1); return accept; }
+            if (e.text == Key.Escape && root.picture-open) { root.picture-open = false; return accept; }
+            if (e.text == Key.Escape && root.media-info-open) { root.media-info-open = false; return accept; }
+            if (e.text == Key.Escape && root.subsearch-open) { root.subsearch-open = false; return accept; }
+            if (e.text == Key.Escape && root.library-open) { root.library-open = false; return accept; }
+            if (root.media-open && !root.compact) {
+                if (e.text == Key.Escape && !root.settings-open && !root.palette-open) {
+                    keys.focus();
+                    if (root.media-can-back) { root.media-back(); } else { root.close-media(); }
+                    return accept;
+                }
+                if (e.text == "f" && e.modifiers.control) { root.media-focus-search += 1; return accept; }
+            }
+            if (e.text == " " || e.text == "k") { root.toggle-pause(); return accept; }
+            if (e.text == Key.RightArrow) { root.seek-relative(e.modifiers.shift ? 30 : 5); return accept; }
+            if (e.text == Key.LeftArrow) { root.seek-relative(e.modifiers.shift ? -30 : -5); return accept; }
+            if (e.text == Key.UpArrow) { root.set-volume(Math.min(root.volume + 5, 150)); return accept; }
+            if (e.text == Key.DownArrow) { root.set-volume(Math.max(root.volume - 5, 0)); return accept; }
+            if (e.text == "f" || e.text == Key.F11) { root.toggle-fullscreen(); return accept; }
+            if (e.text == Key.Escape && root.settings-open) { root.settings-open = false; return accept; }
+            if (e.text == Key.Escape && root.palette-open) { root.palette-open = false; return accept; }
+            if (e.text == Key.Escape && root.signal-open) { root.signal-open = false; return accept; }
+            if (e.text == Key.Escape && root.subsync-open) { root.subsync-open = false; return accept; }
+            if (e.text == Key.Escape && root.transcript-open) { root.transcript-open = false; return accept; }
+            if (e.text == Key.Escape && root.clip-open) { root.clip-open = false; return accept; }
+            if (e.text == Key.Escape && root.remote-open) { root.remote-open = false; return accept; }
+            if (e.text == Key.Escape && root.cast-open) { root.cast-open = false; return accept; }
+            if (e.text == Key.Escape && root.party-open) { root.party-open = false; return accept; }
+            if (e.text == Key.Escape && root.karaoke-open) { root.karaoke-open = false; return accept; }
+            if (e.text == Key.Escape && root.compare-on) { root.toggle-compare(); return accept; }
+            if (e.text == Key.Escape && root.info-open) { root.info-open = false; return accept; }
+            if (e.text == Key.Escape && root.eq-open) { root.eq-open = false; return accept; }
+            if (e.text == "e" && !e.modifiers.control) { root.eq-open = !root.eq-open; return accept; }
+            if (e.text == "a" && !e.modifiers.control && !root.idle) { root.ab-loop(); return accept; }
+            if (e.text == "." && root.has-video) { root.frame-step(true); return accept; }
+            if (e.text == "," && root.has-video) { root.frame-step(false); return accept; }
+            if (e.text == Key.Home && !root.idle) { root.start-over(); return accept; }
+            if (e.text == "i" && !e.modifiers.control && !root.has-video && !root.idle) { root.info-open = !root.info-open; return accept; }
+            if (e.text == Key.Escape && root.fullscreen) { root.toggle-fullscreen(); return accept; }
+            if (e.text == "m" && !e.modifiers.control) { root.toggle-mute(); return accept; }
+            if (e.text == "n") { root.next(); return accept; }
+            if (e.text == "p" && !e.modifiers.control) { root.prev(); return accept; }
+            if (e.text == "l" && !e.modifiers.control) { root.playlist-open = !root.playlist-open; return accept; }
+            if (e.text == "c" && !e.modifiers.control && !e.modifiers.alt && (root.has-video || root.s-auto-crop)) { root.toggle-auto-crop(); return accept; }
+            if (e.text == "s" && !e.modifiers.control) { root.screenshot(); return accept; }
+            if (e.text == "v" && e.modifiers.control) { root.paste-on-open = true; root.show-url(); return accept; }
+            // The menu bar handles these, except where it is hidden: in
+            // fullscreen and in the skinned players.
+            if ((root.fullscreen || root.compact) && e.modifiers.control) {
+                if (e.text == "o" && !e.modifiers.shift) { root.open-files(); return accept; }
+                if (e.text == "O" || (e.text == "o" && e.modifiers.shift)) { root.open-folder(); return accept; }
+                if (e.text == "u") { root.show-url(); return accept; }
+                if (e.text == "q") { root.quit(); return accept; }
+                if (e.text == "d") { root.open-disc("auto"); return accept; }
+                if (e.text == "l") { root.playlist-open = !root.playlist-open; return accept; }
+                if (e.text == "M" || (e.text == "m" && e.modifiers.shift)) { root.toggle-media(); return accept; }
+                if (e.text == "m") { root.set-skin(Math.mod(root.s-skin + 1, root.skin-names.length)); return accept; }
+                if (e.text == "p") { root.show-settings(); return accept; }
+                if (e.text == "k") { root.show-palette(); return accept; }
+                if (e.text == "j") { root.toggle-nav(); return accept; }
+                if (e.text == "t" && !root.idle) { root.show-jump(); return accept; }
+                if (e.text == "s") { root.playlist-action("save", 0); return accept; }
+                if (e.text == "b" && !root.idle) { root.basic("bookmark-add", 0); return accept; }
+                if (e.text == "i") { root.media-info-open = true; root.basic("media-info", 0); return accept; }
+                if (e.text == "L" || (e.text == "l" && e.modifiers.shift)) { root.show-library(0); return accept; }
+            }
+            if (root.compact && e.text == Key.F1) { root.show-about(); return accept; }
+            if (e.text == "[") { root.set-speed(Math.max(root.speed - 0.25, 0.25)); return accept; }
+            if (e.text == "]") { root.set-speed(Math.min(root.speed + 0.25, 4)); return accept; }
+            reject
+        }
+
+        // ---- background / content layer ----
+        if !root.has-video && !root.visual-active && !root.compact && !root.media-open: AmbientBackground {
+            playing: !root.paused && !root.idle;
+        }
+
+        // Catch-all area: mouse movement shows controls, double-click toggles fullscreen.
+        video-touch := TouchArea {
+            mouse-cursor: root.dvd-menu && root.dvd-over-button ? pointer : root.show-controls ? default : none;
+            changed mouse-x => { root.poke-controls(); if (root.dvd-menu) { root.dvd-mouse(self.mouse-x / 1px, self.mouse-y / 1px, false); } }
+            changed mouse-y => { root.poke-controls(); if (root.dvd-menu) { root.dvd-mouse(self.mouse-x / 1px, self.mouse-y / 1px, false); } }
+            double-clicked => { if (!(root.dvd-menu && root.dvd-over-button)) { root.mouse-action("double"); } }
+            clicked => {
+                keys.focus();
+                if (root.dvd-menu) { root.dvd-mouse(self.mouse-x / 1px, self.mouse-y / 1px, true); }
+            }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.middle) { root.mouse-action("middle"); }
+            }
+            scroll-event(e) => {
+                if (e.delta-y > 0) { root.mouse-action("wheel-up"); return accept; }
+                if (e.delta-y < 0) { root.mouse-action("wheel-down"); return accept; }
+                reject
+            }
+        }
+
+        // Welcome screen
+        if root.idle && !root.compact: VerticalLayout {
+            alignment: center;
+            spacing: 18px;
+            Text {
+                text: "Super Media Player";
+                font-size: 44px;
+                font-weight: 800;
+                horizontal-alignment: center;
+                color: Theme.text;
+            }
+            Text {
+                text: "Files · Folders · Streams · DVD · Blu-ray · Audio CD";
+                horizontal-alignment: center;
+                color: Theme.text-dim;
+            }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 12px;
+                PillButton {
+                    text: "Open files";
+                    icon: Icons.folder;
+                    filled: true;
+                    clicked => { root.open-files(); }
+                }
+                PillButton {
+                    text: "Open folder";
+                    icon: Icons.folder;
+                    clicked => { root.open-folder(); }
+                }
+                PillButton {
+                    text: "Media library";
+                    icon: Icons.library;
+                    clicked => { root.show-media(0); }
+                }
+                PillButton {
+                    text: "Open URL";
+                    icon: Icons.globe;
+                    stroked: true;
+                    clicked => { root.show-url(); }
+                }
+                PillButton {
+                    text: "Play disc";
+                    icon: Icons.disc;
+                    clicked => { root.open-disc("auto"); }
+                }
+            }
+            Text {
+                text: "Drop files here, or paste a file or link with Ctrl+V";
+                horizontal-alignment: center;
+                color: Theme.text-dim;
+                font-size: Theme.font-small;
+            }
+            Text {
+                text: "Ctrl+O open · Ctrl+U URL · Space play/pause · ←/→ seek · ↑/↓ volume · F fullscreen · L playlist · Ctrl+M next skin";
+                horizontal-alignment: center;
+                color: Theme.text-faint;
+                font-size: Theme.font-small;
+            }
+        }
+
+        // Music drawn by the UI: particles, and the pulse line (behind the disc).
+        if !root.idle && !root.has-video && !root.visual-active && !root.compact && !root.media-open && root.show-particles: ParticleField {
+            width: parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            height: parent.height - root.bar-height - 16px;
+            playing: !root.paused;
+            beat: root.beat;
+            energy: root.energy;
+        }
+        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.s-pulse-line: PulseLine {
+            x: 0;
+            width: root.pulse-width;
+            height: root.pulse-height;
+            // Across the middle of the free area, between the top bar and the controls.
+            y: (parent.height - root.bar-height - 16px) * 0.5 - self.height / 2 + 28px;
+            commands: root.pulse-path;
+            beat: root.beat;
+            head: root.pulse-head;
+            opacity: root.paused ? 0.45 : 0.9;
+            animate opacity { duration: Theme.normal; }
+        }
+
+        // Now playing (music): the spinning disc, or a visualizer behind the title.
+        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.show-disc: disc-view := VerticalLayout {
+            // What is left for the disc once the title and the lyric lines
+            // (or the pulse bars) have their room.
+            property <length> disc-room: self.height - self.padding-top - self.padding-bottom
+                - title-block.preferred-height - 2 * self.spacing - (root.show-lyric-lines ? 84px : 40px);
+            alignment: center;
+            spacing: root.show-lyric-lines ? 14px : 22px;
+            padding-top: root.show-lyric-lines ? 24px : 40px;
+            padding-bottom: root.bar-height + 16px;
+            padding-right: root.playlist-open ? playlist-panel.width : 0px;
+            animate padding-right { duration: Theme.normal; easing: ease-in-out; }
+            HorizontalLayout {
+                alignment: center;
+                SpinningDisc { playing: !root.paused; size: clamp(disc-view.disc-room, 140px, 260px); }
+            }
+            // Room for the lyrics instead: the pulse line shows the beat.
+            if !root.show-lyric-lines: HorizontalLayout {
+                alignment: center;
+                PulseBars { playing: !root.paused && !root.idle; levels: root.spectrum; }
+            }
+            title-block := VerticalLayout {
+                spacing: 6px;
+                padding-left: 24px;
+                padding-right: 24px;
+                Text {
+                    text: root.media-title;
+                    font-size: Theme.font-title;
+                    font-weight: 700;
+                    color: Theme.text;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.media-subtitle;
+                    color: Theme.text-dim;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+            }
+            if root.show-lyric-lines: HorizontalLayout {
+                alignment: center;
+                LyricLines {
+                    prev: root.lyric-prev;
+                    current: root.lyric-current;
+                    next: root.lyric-next;
+                }
+            }
+        }
+        if !root.idle && !root.has-video && !root.compact && !root.show-disc && root.show-lyric-lines: LyricLines {
+            x: (parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px) - self.width) / 2;
+            y: parent.height - root.bar-height - 14px - 76px - 12px - self.height - 8px;
+            height: self.preferred-height;
+            prev: root.lyric-prev;
+            current: root.lyric-current;
+            next: root.lyric-next;
+        }
+        if !root.idle && !root.has-video && !root.compact && !root.show-disc: Rectangle {
+            // Title over the bottom of the visualizer, above the control bar.
+            y: parent.height - root.bar-height - 14px - self.height - 12px;
+            width: parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            x: 0;
+            height: 76px;
+            background: root.visual-active ? @linear-gradient(0deg, #000000a0 0%, #00000000 100%) : transparent;
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                padding-left: 24px;
+                padding-right: 24px;
+                Text {
+                    text: root.media-title;
+                    font-size: Theme.font-title;
+                    font-weight: 700;
+                    color: Theme.text;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.media-subtitle;
+                    color: Theme.text-dim;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // Artist picture (else the album cover) in a corner of the music
+        // view; click it for more about the song.
+        if !root.idle && !root.has-video && !root.compact && (root.has-artist-image || root.has-cover) && root.s-artist-pos > 0: Rectangle {
+            property <length> size: Math.min(150px, root.height * 0.22);
+            width: self.size;
+            height: self.size;
+            y: 66px;
+            x: root.s-artist-pos == 1 ? 18px
+                : parent.width - self.width - 18px - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            animate x { duration: Theme.normal; easing: ease-in-out; }
+            border-radius: 12px;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000090;
+            background: Theme.surface;
+            Rectangle {
+                border-radius: parent.border-radius;
+                clip: true;
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.has-artist-image ? root.artist-image : root.cover-image;
+                    image-fit: cover;
+                }
+            }
+            // The album cover as a small badge when the big picture is the artist.
+            if root.has-artist-image && root.has-cover: Rectangle {
+                x: parent.width - self.width - 6px;
+                y: 6px;
+                width: parent.width * 0.32;
+                height: self.width;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: #ffffff40;
+                drop-shadow-blur: 8px;
+                drop-shadow-color: #000000a0;
+                clip: true;
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.cover-image;
+                    image-fit: cover;
+                }
+            }
+            corner-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.info-open = true; }
+            }
+            Rectangle {
+                border-radius: 12px;
+                border-width: corner-touch.has-hover ? 2px : 0px;
+                border-color: Theme.accent;
+            }
+            if root.media-artist != "": Rectangle {
+                y: parent.height - self.height;
+                height: 24px;
+                border-radius: 12px;
+                background: @linear-gradient(0deg, #000000c0 0%, #00000000 100%);
+                Text {
+                    text: root.media-artist;
+                    color: Theme.text;
+                    font-size: 11px;
+                    font-weight: 600;
+                    overflow: elide;
+                    width: parent.width - 12px;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
+        // The skins' menu: their menu button, or a right-click anywhere on
+        // them. The same entries as the menu bar (kept in sync by a test in
+        // main.rs).
+        skin-menu := ContextMenuArea {
+            enabled: root.compact;
+            width: parent.width;
+            height: parent.height;
+            Menu {
+            // ---- skin menu entries ----
+                Menu {
+                    title: "File";
+                    MenuItem { title: "Open files…"; activated => { root.open-files(); } }
+                    MenuItem { title: "Open folder…"; activated => { root.open-folder(); } }
+                    MenuItem { title: "Open location (URL or path)…"; activated => { root.show-url(); } }
+                    Menu {
+                        title: "Library";
+                        MenuItem { title: "Media library (albums, artists, videos)…"; activated => { root.show-media(0); } }
+                        MenuSeparator { }
+                        MenuItem { title: "Show saved links…"; activated => { root.show-library(0); } }
+                        MenuItem { title: "Internet radio…"; activated => { root.show-library(1); } }
+                        MenuItem { title: "Podcasts…"; activated => { root.show-library(2); } }
+                        MenuItem { title: "Network (DLNA, SMB, SFTP)…"; activated => { root.show-library(3); } }
+                        MenuSeparator { }
+                        MenuItem { title: "Save what's playing"; enabled: !root.idle; activated => { root.library-save-current(); } }
+                    }
+                    Menu {
+                        title: "Playlist file";
+                        MenuItem { title: "Open playlist…"; activated => { root.playlist-action("open", 0); } }
+                        MenuItem { title: "Save playlist…"; activated => { root.playlist-action("save", 0); } }
+                    }
+                    Menu {
+                        title: "Open recent";
+                        enabled: root.recent-files.length > 0;
+                        for f[i] in root.recent-files: MenuItem {
+                            title: f;
+                            activated => { root.basic("recent", i); }
+                        }
+                        MenuSeparator { }
+                        MenuItem { title: "Clear the list"; activated => { root.basic("recent-clear", 0); } }
+                    }
+                    MenuSeparator { }
+                    Menu {
+                        title: "Play disc";
+                        MenuItem { title: "Detect disc in drive"; activated => { root.open-disc("auto"); } }
+                        MenuItem { title: "DVD"; activated => { root.open-disc("dvd"); } }
+                        MenuItem { title: "DVD, main film (no menu)"; activated => { root.open-disc("dvd-film"); } }
+                        MenuItem { title: "Blu-ray"; activated => { root.open-disc("bluray"); } }
+                        MenuItem { title: "Rip & play with MakeMKV…"; activated => { root.rip-disc(); } }
+                        MenuItem { title: "Audio CD"; activated => { root.open-disc("cd"); } }
+                        MenuItem { title: "Rip audio CD to FLAC…"; activated => { root.open-disc("rip-cd"); } }
+                        MenuSeparator { }
+                        MenuItem { title: "Disc image (ISO)…"; activated => { root.open-disc("image"); } }
+                        MenuItem { title: "Disc folder (VIDEO_TS / BDMV)…"; activated => { root.open-disc("folder"); } }
+                    }
+                    MenuItem { title: "Load subtitle file…"; activated => { root.add-subtitle(); } }
+                    MenuSeparator { }
+                    MenuItem { title: "Quit"; activated => { root.quit(); } }
+                }
+                Menu {
+                    title: "Playback";
+                    Menu {
+                        title: "Go to";
+                        enabled: !root.idle;
+                        MenuItem { title: "Jump to time…"; activated => { root.show-jump(); } }
+                        MenuItem { title: "Forward 10 seconds"; activated => { root.seek-relative(10); } }
+                        MenuItem { title: "Back 10 seconds"; activated => { root.seek-relative(-10); } }
+                        MenuItem { title: "Start over"; activated => { root.start-over(); } }
+                        MenuSeparator { }
+                        MenuItem { title: "Next frame"; enabled: root.has-video; activated => { root.frame-step(true); } }
+                        MenuItem { title: "Previous frame"; enabled: root.has-video; activated => { root.frame-step(false); } }
+                    }
+                    MenuItem { title: "A-B repeat (mark A, B, off)"; enabled: !root.idle; activated => { root.ab-loop(); } }
+                    Menu {
+                        title: "Bookmarks";
+                        enabled: !root.idle;
+                        MenuItem { title: "Add a bookmark here"; activated => { root.basic("bookmark-add", 0); } }
+                        MenuSeparator { }
+                        for b[i] in root.bookmark-titles: MenuItem {
+                            title: b;
+                            activated => { root.basic("bookmark", i); }
+                        }
+                        MenuSeparator { }
+                        MenuItem { title: "Remove this file's bookmarks"; enabled: root.bookmark-titles.length > 0; activated => { root.basic("bookmarks-clear", 0); } }
+                    }
+                    Menu {
+                        title: "Chapters";
+                        enabled: root.chapter-titles.length > 0;
+                        MenuItem { title: "Previous chapter  [PgUp]"; activated => { root.basic("chapter-step", -1); } }
+                        MenuItem { title: "Next chapter  [PgDn]"; activated => { root.basic("chapter-step", 1); } }
+                        MenuSeparator { }
+                        for c[i] in root.chapter-titles: MenuItem {
+                            title: c;
+                            checked: i == root.chapter-current;
+                            activated => { root.basic("chapter", i); }
+                        }
+                    }
+                    MenuItem { title: root.skip-text != "" ? root.skip-text : "Skip intro"; enabled: root.skip-text != ""; activated => { root.skip-pressed(); } }
+                    MenuItem { title: "Disc menu"; enabled: root.dvd-disc || root.dvd-playing; activated => { root.dvd("menu"); } }
+                    Menu {
+                        title: "Speed";
+                        for s in [0.5, 0.75, 1, 1.25, 1.5, 2]: MenuItem {
+                            title: s + "×";
+                            checked: root.speed == s;
+                            activated => { root.set-speed(s); }
+                        }
+                    }
+                    MenuItem { title: root.silence-saved != "" ? "Skip silence (" + root.silence-saved + " so far)" : "Skip silence"; checked: root.skip-silence; activated => { root.toggle-skip-silence(); } }
+                    MenuSeparator { }
+                    Menu {
+                        title: root.sleep-left != "" ? "Sleep timer (" + root.sleep-left + ")" : "Sleep timer";
+                        for v[i] in ["Off", "In 15 minutes", "In 30 minutes", "In 45 minutes", "In 1 hour", "In 1½ hours", "At the end of this file"]: MenuItem {
+                            title: v;
+                            checked: root.sleep-choice == i;
+                            activated => { root.basic("sleep", i); }
+                        }
+                    }
+                    Menu {
+                        title: "Shuffle & repeat";
+                        MenuItem { title: "Shuffle"; checked: root.shuffle; activated => { root.toggle-shuffle(); } }
+                        MenuSeparator { }
+                        MenuItem { title: "Repeat off"; checked: root.repeat-mode == 0; activated => { root.set-repeat(0); } }
+                        MenuItem { title: "Repeat the whole playlist"; checked: root.repeat-mode == 1; activated => { root.set-repeat(1); } }
+                        MenuItem { title: "Repeat the current item"; checked: root.repeat-mode == 2; activated => { root.set-repeat(2); } }
+                    }
+                }
+                Menu {
+                    title: "Audio & Subtitles";
+                    Menu {
+                        title: "Audio track";
+                        for t in root.audio-tracks: MenuItem {
+                            title: t.label;
+                            checked: t.selected;
+                            activated => { root.select-audio(t.id); }
+                        }
+                    }
+                    MenuItem { title: "Equalizer…"; activated => { root.eq-open = true; } }
+                    Menu {
+                        title: "Output device";
+                        for d[i] in root.audio-devices: MenuItem {
+                            title: d;
+                            checked: i == root.s-audio-device;
+                            activated => { root.basic("audio-device", i); }
+                        }
+                    }
+                    Menu {
+                        title: "Audio delay (" + root.audio-delay-text + ")";
+                        MenuItem { title: "Sound later (+100 ms)  [Ctrl +]"; activated => { root.basic("audio-delay", 0.1); } }
+                        MenuItem { title: "Sound earlier (−100 ms)  [Ctrl −]"; activated => { root.basic("audio-delay", -0.1); } }
+                        MenuItem { title: "Reset"; activated => { root.basic("audio-delay-reset", 0); } }
+                    }
+                    Menu {
+                        title: "Subtitles";
+                        MenuItem { title: "Off"; checked: root.subtitles-off; activated => { root.select-subtitle(-1); } }
+                        for t in root.subtitle-tracks: MenuItem {
+                            title: t.label;
+                            checked: t.selected;
+                            activated => { root.select-subtitle(t.id); }
+                        }
+                        MenuSeparator { }
+                        MenuItem { title: "Load subtitle file…"; activated => { root.add-subtitle(); } }
+                        MenuItem { title: "Find subtitles online…"; enabled: !root.idle; activated => { root.show-sub-search(); } }
+                        MenuItem { title: "Subtitles from speech, and search…"; activated => { root.transcript-open = true; } }
+                        MenuSeparator { }
+                        MenuItem { title: "Subtitles later (+100 ms)  [X]"; activated => { root.basic("sub-delay", 0.1); } }
+                        MenuItem { title: "Subtitles earlier (−100 ms)  [Z]"; activated => { root.basic("sub-delay", -0.1); } }
+                        MenuItem { title: "Reset subtitle delay (" + root.sub-delay-text + ")"; activated => { root.basic("sub-delay-reset", 0); } }
+                        MenuItem { title: "Line up with the speech…"; enabled: !root.idle; activated => { root.subsync-open = true; root.sub-sync(); } }
+                        MenuItem { title: "Subtitle look…"; activated => { root.show-settings-tab(5); } }
+                    }
+                    MenuItem { title: root.muted ? "Unmute" : "Mute"; activated => { root.toggle-mute(); } }
+                    MenuSeparator { }
+                    MenuItem { title: "Night mode (even out loud and quiet)"; checked: root.s-night-mode; activated => { root.toggle-night(); } }
+                    MenuItem { title: "Dialogue boost"; checked: root.s-dialogue-boost; activated => { root.toggle-dialogue(); } }
+                    MenuItem { title: "Karaoke (remove vocals, big lyrics)"; checked: root.karaoke; activated => { root.toggle-karaoke(); } }
+                    MenuItem { title: "Signal path…"; activated => { root.signal-open = true; } }
+                }
+                Menu {
+                    title: "View";
+                    Menu {
+                        title: "Skin";
+                        MenuItem { title: "Next skin"; activated => { root.set-skin(Math.mod(root.s-skin + 1, root.skin-names.length)); } }
+                        MenuSeparator { }
+                        for name[i] in root.skin-names: MenuItem {
+                            title: name;
+                            checked: root.s-skin == i;
+                            activated => { root.set-skin(i); }
+                        }
+                        MenuSeparator { }
+                        MenuItem { title: "Reload skins"; activated => { root.reload-skins(); } }
+                        MenuItem { title: "Open skins folder"; activated => { root.open-skins-folder(); } }
+                    }
+                    Menu {
+                        title: "Music visualization";
+                        for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
+                            title: v;
+                            checked: root.s-visualizer == i;
+                            activated => { root.set-visual(i); }
+                        }
+                    }
+                    MenuItem { title: "Pulse line (beat)"; checked: root.s-pulse-line; activated => { root.set-pulse-line(!root.s-pulse-line); } }
+                    Menu {
+                        title: "Artist picture";
+                        for v[i] in ["Off", "Top left", "Top right"]: MenuItem {
+                            title: v;
+                            checked: root.s-artist-pos == i;
+                            activated => { root.set-artist-pos(i); }
+                        }
+                    }
+                    MenuSeparator { }
+                    Menu {
+                        title: "Video enhancement";
+                        for v[i] in ["Off", "Sharpen (CAS)", "Upscale (AMD FSR)", "Anime (Anime4K)"]: MenuItem {
+                            title: v;
+                            checked: root.s-video-enhance == i;
+                            activated => { root.set-enhance(i); }
+                        }
+                    }
+                    MenuItem { title: "Compare before / after"; checked: root.compare-on; enabled: root.s-video-enhance > 0; activated => { root.toggle-compare(); } }
+                    MenuItem { title: "Smooth motion"; checked: root.s-smooth-motion; activated => { root.toggle-smooth(); } }
+                    Menu {
+                        title: "HDR tone-mapping";
+                        for v[i] in ["Automatic", "Balanced (BT.2390)", "Smooth (spline)", "Filmic (Hable)", "Bright (Mobius)", "Clip (no tone-mapping)"]: MenuItem {
+                            title: v;
+                            checked: root.s-tone-map == i;
+                            activated => { root.set-tone-map(i); }
+                        }
+                        MenuSeparator { }
+                        MenuItem { title: "Scene brightness detection"; checked: root.s-hdr-peak; activated => { root.s-hdr-peak = !root.s-hdr-peak; root.settings-changed(); } }
+                    }
+                    Menu {
+                        title: "Picture";
+                        MenuItem { title: "Adjust picture…"; activated => { root.picture-open = true; } }
+                        Menu {
+                            title: "Aspect ratio";
+                            for v[i] in ["Automatic", "16:9", "4:3", "21:9 (2.35:1)", "1.85:1", "1:1", "Stretch to window"]: MenuItem {
+                                title: v;
+                                checked: root.picture.aspect == i;
+                                activated => { root.basic("aspect", i); }
+                            }
+                        }
+                        Menu {
+                            title: "Rotate";
+                            for v[i] in ["None", "90° right", "180°", "90° left"]: MenuItem {
+                                title: v;
+                                checked: root.picture.rotate == i;
+                                activated => { root.basic("rotate", i); }
+                            }
+                        }
+                        MenuItem { title: "Zoom in  [Alt +]"; activated => { root.basic("zoom", 0.1); } }
+                        MenuItem { title: "Zoom out  [Alt −]"; activated => { root.basic("zoom", -0.1); } }
+                        MenuItem { title: "Crop black bars  [C]"; checked: root.s-auto-crop; activated => { root.toggle-auto-crop(); } }
+                        MenuItem { title: "Deinterlace"; checked: root.picture.deinterlace; activated => { root.basic("deinterlace", root.picture.deinterlace ? 0 : 1); } }
+                        MenuItem { title: "Reset picture  [Alt+Backspace]"; activated => { root.basic("reset", 0); } }
+                    }
+                    MenuItem { title: "Always on top"; checked: root.s-always-on-top; activated => { root.s-always-on-top = !root.s-always-on-top; root.settings-changed(); } }
+                    MenuSeparator { }
+                    MenuItem { title: "Playlist"; checked: root.playlist-open; activated => { root.playlist-open = !root.playlist-open; } }
+                    MenuItem { title: "Fullscreen"; activated => { root.toggle-fullscreen(); } }
+                }
+                Menu {
+                    title: "Tools";
+                    MenuItem { title: "Command palette…"; activated => { root.show-palette(); } }
+                    MenuItem { title: "Advanced navigation"; checked: root.s-nav-enabled; activated => { root.toggle-nav(); } }
+                    MenuItem { title: "Settings…"; activated => { root.show-settings(); } }
+                    MenuItem { title: "Media information…"; activated => { root.media-info-open = true; root.basic("media-info", 0); } }
+                    Menu {
+                        title: "Setup & updates";
+                        MenuItem { title: "System check…"; activated => { root.check-open = true; root.run-check(); } }
+                        MenuSeparator { }
+                        MenuItem { title: "Install / update yt-dlp (online video)"; activated => { root.install-ytdlp(); } }
+                        MenuItem { title: "Download Blu-ray key database"; activated => { root.install-keydb(); } }
+                        MenuItem { title: "Update FFmpeg (playback engine)…"; activated => { root.update-ffmpeg(); } }
+                        MenuItem { title: "MakeMKV (key & help)…"; activated => { root.show-makemkv-key(); } }
+                    }
+                    MenuSeparator { }
+                    MenuItem { title: "Take screenshot"; enabled: root.has-video; activated => { root.screenshot(); } }
+                    MenuItem { title: "Save a clip or convert…"; enabled: !root.idle; activated => { root.clip-open = true; } }
+                    MenuItem { title: root.recording ? "Stop recording" : "Record this stream"; checked: root.recording; enabled: root.can-record || root.recording; activated => { root.basic("record", 0); } }
+                    MenuItem { title: root.cast-active ? "Casting to " + root.cast-name + "…" : "Cast to a TV or speaker…"; activated => { root.show-cast(); } }
+                    MenuItem { title: "Stop casting"; enabled: root.cast-active; activated => { root.cast-stop(); } }
+                    MenuItem { title: "Phone remote…"; activated => { root.remote-open = true; } }
+                    MenuItem { title: "Watch together…"; activated => { root.party-open = true; } }
+                }
+                Menu {
+                    title: "Help";
+                    MenuItem { title: "Keyboard shortcuts"; activated => { root.show-shortcuts(); } }
+                    MenuItem { title: "About Super Media Player"; activated => { root.show-about(); } }
+                }
+            // ---- end of skin menu entries ----
+            }
+
+            // ---- compact view ----
+            compact-view := CompactView {
+                visible: root.view == 1;
+                active: root.view == 1;
+                width: parent.width;
+                height: parent.height;
+                idle: root.idle;
+                paused: root.paused;
+                has-video: root.has-video;
+                visual-active: root.visual-active;
+                levels: root.spectrum;
+                position: root.position;
+                duration: root.duration;
+                volume: root.volume;
+                muted: root.muted;
+                media-title: root.media-title;
+                media-subtitle: root.media-subtitle;
+                audio-info: root.audio-info;
+                tech-info: root.tech-info;
+                shuffle: root.shuffle;
+                repeat-mode: root.repeat-mode;
+                playlist: root.playlist;
+                artist-image: root.artist-image;
+                has-artist-image: root.has-artist-image;
+                show-artist-image: root.s-artist-pos > 0;
+                playlist-open <=> root.playlist-open;
+                toggle-pause => { root.toggle-pause(); }
+                stop => { root.stop(); }
+                next => { root.next(); }
+                prev => { root.prev(); }
+                seek(t) => { root.seek(t); }
+                scrub(t) => { root.scrub(t); }
+                set-volume(v) => { root.set-volume(v); }
+                toggle-mute => { root.toggle-mute(); }
+                toggle-shuffle => { root.toggle-shuffle(); }
+                cycle-repeat => { root.set-repeat(Math.mod(root.repeat-mode + 1, 3)); }
+                open-files => { root.open-files(); }
+                play-index(i) => { root.play-index(i); }
+                remove-index(i) => { root.remove-index(i); }
+                expand => { root.set-view(0); }
+                show-menu(p) => { root.show-skin-menu(p.x, p.y); }
+                minimize => { root.minimize-window(); }
+                close => { root.quit(); }
+            }
+
+            classic-view := ClassicView {
+                visible: root.view == 2;
+                active: root.view == 2;
+                width: parent.width;
+                height: parent.height;
+                idle: root.idle;
+                paused: root.paused;
+                has-video: root.has-video;
+                visual-active: root.visual-active;
+                levels: root.spectrum;
+                position: root.position;
+                duration: root.duration;
+                volume: root.volume;
+                muted: root.muted;
+                media-title: root.media-title;
+                media-subtitle: root.media-subtitle;
+                audio-info: root.audio-info;
+                tech-info: root.tech-info;
+                shuffle: root.shuffle;
+                repeat-mode: root.repeat-mode;
+                playlist: root.playlist;
+                playlist-open <=> root.playlist-open;
+                playlist-detached <=> root.playlist-detached;
+                toggle-pause => { root.toggle-pause(); }
+                stop => { root.stop(); }
+                next => { root.next(); }
+                prev => { root.prev(); }
+                seek(t) => { root.seek(t); }
+                scrub(t) => { root.scrub(t); }
+                set-volume(v) => { root.set-volume(v); }
+                toggle-mute => { root.toggle-mute(); }
+                toggle-shuffle => { root.toggle-shuffle(); }
+                cycle-repeat => { root.set-repeat(Math.mod(root.repeat-mode + 1, 3)); }
+                open-files => { root.open-files(); }
+                play-index(i) => { root.play-index(i); }
+                remove-index(i) => { root.remove-index(i); }
+                expand => { root.set-view(0); }
+                show-menu(p) => { root.show-skin-menu(p.x, p.y); }
+                minimize => { root.minimize-window(); }
+                close => { root.quit(); }
+                start-resize(d) => { root.start-window-resize(d); }
+            }
+
+            silver-view := SilverView {
+                visible: root.view == 3;
+                active: root.view == 3;
+                speed: root.speed;
+                set-speed(s) => { root.set-speed(s); }
+                width: parent.width;
+                height: parent.height;
+                idle: root.idle;
+                paused: root.paused;
+                has-video: root.has-video;
+                visual-active: root.visual-active;
+                levels: root.spectrum;
+                position: root.position;
+                duration: root.duration;
+                volume: root.volume;
+                muted: root.muted;
+                media-title: root.media-title;
+                media-subtitle: root.media-subtitle;
+                audio-info: root.audio-info;
+                tech-info: root.tech-info;
+                shuffle: root.shuffle;
+                repeat-mode: root.repeat-mode;
+                playlist: root.playlist;
+                playlist-open <=> root.playlist-open;
+                toggle-pause => { root.toggle-pause(); }
+                stop => { root.stop(); }
+                next => { root.next(); }
+                prev => { root.prev(); }
+                seek(t) => { root.seek(t); }
+                scrub(t) => { root.scrub(t); }
+                set-volume(v) => { root.set-volume(v); }
+                toggle-mute => { root.toggle-mute(); }
+                toggle-shuffle => { root.toggle-shuffle(); }
+                cycle-repeat => { root.set-repeat(Math.mod(root.repeat-mode + 1, 3)); }
+                open-files => { root.open-files(); }
+                play-index(i) => { root.play-index(i); }
+                remove-index(i) => { root.remove-index(i); }
+                expand => { root.set-view(0); }
+                show-menu(p) => { root.show-skin-menu(p.x, p.y); }
+                minimize => { root.minimize-window(); }
+                close => { root.quit(); }
+                bass: root.bass;
+                treble: root.treble;
+                set-bass(v) => { root.bass = v; root.set-bass(v); }
+                set-treble(v) => { root.treble = v; root.set-treble(v); }
+                seek-relative(d) => { root.seek-relative(d); }
+                start-resize(d) => { root.start-window-resize(d); }
+                cycle-visual => { root.set-visual(Math.mod(root.s-visualizer + 1, 9)); }
+                open-settings => { root.show-settings(); }
+            }
+        }
+
+        // Casting: what plays where.
+        if root.cast-active && !root.compact && !root.media-open && !(root.idle && root.cast-open): CastBanner {
+            width: parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            x: 0;
+            full: root.has-video && !root.idle;
+            name: root.cast-name;
+            state: root.cast-state;
+            media-title: root.media-title;
+            stop => { root.cast-stop(); keys.focus(); }
+            open => { root.show-cast(); }
+        }
+
+        // Buffering / busy indicator
+        if (root.buffering-text != "" || root.busy-text != "") && !root.rip-active: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: root.compact ? 40px : parent.height * 0.4;
+            width: status-row.preferred-width;
+            height: 34px;
+            border-radius: 17px;
+            background: Theme.surface-hi;
+            status-row := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 18px;
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    LoadingDots { }
+                }
+                Text {
+                    text: root.busy-text != "" ? root.busy-text : root.buffering-text;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+                if root.busy-cancellable && root.busy-text != "": Rectangle {
+                    width: cancel-label.preferred-width + 20px;
+                    height: 24px;
+                    y: 5px;
+                    border-radius: 12px;
+                    background: cancel-touch.has-hover ? #ffffff26 : #ffffff14;
+                    cancel-label := Text {
+                        text: "Cancel";
+                        color: Theme.text;
+                        font-size: Theme.font-small;
+                    }
+                    cancel-touch := TouchArea {
+                        clicked => { root.cancel-busy(); }
+                    }
+                }
+            }
+        }
+
+        // ---- top bar ----
+        top-bar := Rectangle {
+            visible: !root.compact && !root.media-open;
+            x: 0;
+            width: parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            animate width { duration: Theme.normal; easing: ease-in-out; }
+            y: root.show-controls ? 0px : -self.height - 8px;
+            height: 56px;
+            opacity: root.show-controls ? 1 : 0;
+            animate y, opacity { duration: Theme.normal; easing: ease-in-out; }
+            background: root.has-video ? @linear-gradient(180deg, #000000d8 0%, #00000070 60%, #00000000 100%) : transparent;
+
+            top-touch := TouchArea { 
+                // Wraps the whole bar so hovering any control in it counts.
+                changed mouse-x => { root.poke-controls(); }
+                changed mouse-y => { root.poke-controls(); }
+
+            HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 14px;
+                spacing: 10px;
+                Text {
+                    text: root.idle ? "" : root.media-title;
+                    color: Theme.text;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                if root.tech-info != "" && !root.dvd-menu: Text {
+                    text: root.tech-info;
+                    color: Theme.text-faint;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                }
+                IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.library;
+                    clicked => { root.toggle-media(); }
+                }
+                IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.folder;
+                    clicked => { root.open-files(); }
+                }
+                IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.globe;
+                    stroked: true;
+                    clicked => { root.show-url(); }
+                }
+                IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.disc;
+                    clicked => { root.show-disc-menu(); }
+                }
+                IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.cast;
+                    stroked: true;
+                    active: root.cast-active;
+                    clicked => { root.show-cast(); }
+                }
+                IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.settings;
+                    stroked: true;
+                    clicked => { root.show-settings(); }
+                }
+            }
+            }
+        }
+
+        // A DVD's menu: what to press, and the ways out of it.
+        if root.dvd-menu && !root.compact && !root.media-open && root.show-controls: DvdBar {
+            x: (parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px) - self.width) / 2;
+            y: root.dvd-buttons ? 8px : 60px;
+            buttons: root.dvd-buttons;
+            can-return: root.dvd-can-return;
+            skip => { root.dvd("skip"); keys.focus(); }
+            back => { root.dvd("return"); keys.focus(); }
+            film => { root.dvd("main-film"); keys.focus(); }
+        }
+
+        // ---- the media library ----
+        if root.media-open && !root.compact: MediaLibrary {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            right: root.playlist-open ? playlist-panel.width + 14px : 0px;
+            bottom: root.bar-height + bar.margin + 8px;
+            page: root.media-page;
+            title: root.media-heading;
+            subtitle: root.media-subheading;
+            can-back: root.media-can-back;
+            can-play: root.media-can-play;
+            head: root.media-head;
+            has-head: root.media-has-head;
+            cards: root.media-cards;
+            lines: root.media-lines;
+            sorts: root.media-sorts;
+            sort: root.media-sort;
+            folders: root.media-folders;
+            status: root.media-status;
+            scanning: root.media-scanning;
+            loading: root.media-loading;
+            empty: root.media-empty;
+            playing: root.media-playing;
+            query <=> root.media-query;
+            scroll <=> root.media-scroll;
+            focus-search: root.media-focus-search;
+            nav(i) => { keys.focus(); root.media-nav(i); }
+            back => { keys.focus(); root.media-back(); }
+            search(t) => { root.media-search(t); }
+            sort-by(i) => { root.media-sort-by(i); }
+            open-card(i) => { keys.focus(); root.media-open-card(i); }
+            play-card(i) => { keys.focus(); root.media-play-card(i); }
+            remove-card(i) => { root.media-remove-card(i); }
+            play-song(i) => { keys.focus(); root.media-play-song(i); }
+            add-song(i) => { root.media-add-song(i); }
+            play-all(how) => { keys.focus(); root.media-play-all(how); }
+            layout(w) => { root.media-layout(w); }
+            add-folder => { root.media-add-folder(); }
+            add-defaults => { root.media-add-defaults(); }
+            remove-folder(i) => { root.media-remove-folder(i); }
+            rescan => { root.media-rescan(); }
+            close => { root.close-media(); }
+        }
+
+        // ---- bottom control bar ----
+        bar := Rectangle {
+            visible: !root.compact;
+            property <length> margin: root.fullscreen ? 24px : 14px;
+            x: self.margin;
+            width: parent.width - 2 * self.margin - (root.playlist-open ? playlist-panel.width + 8px : 0px);
+            height: root.bar-height;
+            y: root.show-controls ? parent.height - self.height - self.margin : parent.height + 8px;
+            opacity: root.show-controls ? 1 : 0;
+            animate y, opacity, width { duration: Theme.normal; easing: ease-in-out; }
+            border-radius: Theme.radius + 4px;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 30px;
+            drop-shadow-color: #00000090;
+
+            bar-touch := TouchArea { 
+                // Wraps the whole bar so hovering any control in it counts.
+                changed mouse-x => { root.poke-controls(); }
+                changed mouse-y => { root.poke-controls(); }
+
+
+            VerticalLayout {
+                padding-left: 18px;
+                padding-right: 18px;
+                padding-top: 12px;
+                padding-bottom: 10px;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: Fmt.time(root.position);
+                        color: Theme.text-dim;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        min-width: 44px;
+                    }
+                    SeekBar {
+                        position: root.position;
+                        duration: root.duration;
+                        thumb: root.thumb-image;
+                        has-thumb: root.has-thumb && root.s-seek-thumbnails;
+                        mark-start: root.intro-start;
+                        mark-end: root.intro-end;
+                        marks: root.sponsor-marks;
+                        chapters: root.chapter-times;
+                        bookmarks: root.bookmark-times;
+                        chapter-name(t) => { return root.chapter-name(t); }
+                        scrub(t) => { root.scrub(t); }
+                        seek(t) => { root.seek(t); }
+                        hover(t) => { root.hover-seek(t); }
+                    }
+                    Text {
+                        text: Fmt.time(root.duration);
+                        color: Theme.text-dim;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        min-width: 44px;
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    // Left: tracks / speed
+                    HorizontalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 6px;
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: Icons.tracks;
+                            stroked: true;
+                            clicked => { root.show-tracks(); }
+                        }
+                        // Not part of the layout: it must not move the buttons.
+                        Rectangle {
+                            Text {
+                                x: 0;
+                                height: parent.height;
+                                // Room for more than the speed only in a wide window.
+                                property <bool> quiet: root.skip-silence && root.width >= 900px;
+                                text: (root.speed != 1 ? Math.round(root.speed * 100) / 100 + "×" : "") + (root.speed != 1 && self.quiet ? " · " : "") + (self.quiet ? "no silence" : "");
+                                color: Theme.accent;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    // Center: transport
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: center;
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: Icons.shuffle;
+                            stroked: true;
+                            icon-size: 18px;
+                            active: root.shuffle;
+                            clicked => { root.toggle-shuffle(); }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: Icons.prev;
+                            clicked => { root.prev(); }
+                        }
+                        IconButton {
+                            icon: root.paused || root.idle ? Icons.play : Icons.pause;
+                            primary: true;
+                            size: 50px;
+                            icon-size: 24px;
+                            clicked => { root.toggle-pause(); }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: Icons.next;
+                            clicked => { root.next(); }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: Icons.stop;
+                            icon-size: 18px;
+                            clicked => { root.stop(); }
+                        }
+                        Rectangle {
+                            width: 36px;
+                            IconButton {
+                                y: (parent.height - self.height) / 2;
+                                icon: Icons.repeat;
+                                stroked: true;
+                                icon-size: 18px;
+                                active: root.repeat-mode > 0;
+                                clicked => { root.set-repeat(Math.mod(root.repeat-mode + 1, 3)); }
+                            }
+                            if root.repeat-mode == 2: Text {
+                                x: 23px;
+                                y: 6px;
+                                text: "1";
+                                font-size: 10px;
+                                font-weight: 800;
+                                color: Theme.accent;
+                            }
+                        }
+                    }
+                    // Right: volume, playlist, fullscreen
+                    HorizontalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 6px;
+                        alignment: end;
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: root.muted || root.volume == 0 ? Icons.mute : Icons.volume;
+                            clicked => { root.toggle-mute(); }
+                        }
+                        Slider {
+                            y: (parent.height - self.height) / 2;
+                            value: root.volume;
+                            maximum: 150;
+                            changed(v) => { root.set-volume(v); }
+                        }
+                        Text {
+                            text: Math.round(root.volume) + "%";
+                            color: Theme.text-faint;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                            min-width: 34px;
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: Icons.playlist;
+                            active: root.playlist-open;
+                            clicked => { root.playlist-open = !root.playlist-open; }
+                        }
+                        IconButton {
+                            y: (parent.height - self.height) / 2;
+                            icon: root.fullscreen ? Icons.exit-fullscreen : Icons.fullscreen;
+                            clicked => { root.toggle-fullscreen(); }
+                        }
+                    }
+                }
+                if root.nav-docked: Rectangle {
+                    height: root.nav-dock-height - 8px;
+                    // A hairline between the transport and the panel.
+                    Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    NavPanel {
+                        y: 8px;
+                        height: parent.height - 8px;
+                        state: root.nav-state;
+                        step-labels: root.nav-step-labels;
+                        turn-labels: root.nav-turn-labels;
+                        docked: true;
+                        act(id, v) => { root.nav-act(id, v); keys.focus(); }
+                        text(id, t) => { root.nav-text(id, t); keys.focus(); }
+                    }
+                }
+            }
+            }
+        }
+
+        // ---- playlist panel ----
+        playlist-panel := Rectangle {
+            // Fully hidden once slid out, so its shadow can't show at the edge.
+            visible: !root.compact && self.slide > 0;
+            width: Math.min(340px, root.width * 0.45);
+            height: parent.height - 28px;
+            y: 14px;
+            // Animate how far it is slid in, not `x` itself: x follows the
+            // window's width, so animating it made a hidden panel slide
+            // across the window while it was being resized.
+            property <float> slide: root.playlist-open && !root.compact ? 1 : 0;
+            animate slide { duration: Theme.normal; easing: ease-in-out; }
+            x: parent.width + 10px - self.slide * (self.width + 24px);
+            border-radius: Theme.radius + 4px;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 30px;
+            drop-shadow-color: #00000090;
+
+            TouchArea { }
+            VerticalLayout {
+                padding: 14px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: "Playlist";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.playlist.length > 0 ? "  " + root.playlist.length : "";
+                        color: Theme.text-faint;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    IconButton {
+                        icon: Icons.plus;
+                        size: 32px;
+                        icon-size: 18px;
+                        clicked => { root.open-files(); }
+                    }
+                    IconButton {
+                        icon: Icons.folder;
+                        size: 32px;
+                        icon-size: 17px;
+                        clicked => { root.open-folder(); }
+                    }
+                    IconButton {
+                        icon: Icons.more;
+                        size: 32px;
+                        icon-size: 18px;
+                        clicked => { playlist-menu.show(); }
+                    }
+                    IconButton {
+                        icon: Icons.trash;
+                        stroked: true;
+                        size: 32px;
+                        icon-size: 18px;
+                        clicked => { root.clear-playlist(); }
+                    }
+                    IconButton {
+                        icon: Icons.close;
+                        stroked: true;
+                        size: 32px;
+                        icon-size: 16px;
+                        clicked => { root.playlist-open = false; }
+                    }
+                }
+                if root.playlist.length == 0: Text {
+                    text: "Nothing queued. Add files with + or Ctrl+O, a folder with Ctrl+Shift+O, or drop them here.";
+                    color: Theme.text-faint;
+                    wrap: word-wrap;
+                }
+                if root.playlist.length > 1: LineEdit {
+                    placeholder-text: "Search the playlist";
+                    text: root.playlist-query;
+                    edited(t) => { root.playlist-search(t); }
+                }
+                PlaylistList {
+                    vertical-stretch: 1;
+                    items: root.playlist;
+                    shown: root.playlist-shown;
+                    can-move: root.playlist-query == "";
+                    play(i) => { root.play-index(i); }
+                    remove(i) => { root.remove-index(i); }
+                    move-up(i) => { root.playlist-action("up", i); }
+                    move-down(i) => { root.playlist-action("down", i); }
+                }
+            }
+        }
+
+        // Recording a stream.
+        if root.recording: Rectangle {
+            x: 16px;
+            y: root.compact ? 8px : 56px;
+            width: rec-text.preferred-width + 24px;
+            height: 26px;
+            border-radius: 13px;
+            background: #c8283cd8;
+            rec-text := Text {
+                text: "● REC  " + root.recording-text;
+                color: white;
+                font-size: 12px;
+                font-weight: 700;
+            }
+        }
+
+        // ---- toast ----
+        toast-box := Rectangle {
+            property <bool> shown: root.toast != "";
+            x: (parent.width - self.width) / 2;
+            y: self.shown ? (root.compact ? 12px : 70px) : (root.compact ? -40px : 40px);
+            opacity: self.shown ? 1 : 0;
+            animate y, opacity { duration: Theme.normal; easing: ease-out; }
+            width: Math.min(toast-text.preferred-width + 32px, parent.width - 40px);
+            height: Math.max(38px, toast-text.preferred-height + 16px);
+            border-radius: 19px;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            toast-text := Text {
+                width: Math.min(self.preferred-width, root.width - 72px);
+                text: root.toast;
+                color: Theme.text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+
+        // Drag and drop target
+        if root.drop-hover: Rectangle {
+            background: #07080dc0;
+            Rectangle {
+                x: 24px;
+                y: 24px;
+                width: parent.width - 48px;
+                height: parent.height - 48px;
+                border-radius: Theme.radius + 6px;
+                border-width: 2px;
+                border-color: Theme.accent;
+                background: Theme.accent.with-alpha(0.06);
+                Text {
+                    text: root.playlist-open && !root.idle ? "Drop to add to the playlist" : "Drop to play";
+                    font-size: 26px;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+            }
+        }
+
+        if root.info-open: MusicInfoPanel {
+            title: root.media-title;
+            artist: root.media-artist;
+            album: root.media-album;
+            year: root.media-year;
+            genre: root.media-genre;
+            track: root.media-track;
+            audio-info: root.audio-info;
+            cover-image: root.cover-image;
+            has-cover: root.has-cover;
+            artist-image: root.artist-image;
+            has-artist-image: root.has-artist-image;
+            about: root.about-text;
+            about-source: root.about-source;
+            lyrics: root.lyrics-text;
+            online-info: root.s-artist-online;
+            online-lyrics: root.s-lyrics-online;
+            close => { root.info-open = false; keys.focus(); }
+            show-settings => { root.info-open = false; root.settings-open = true; }
+        }
+
+        // Before / after line for video enhancement, over the picture.
+        if root.compare-on && root.has-video && !root.compact && !root.media-open: CompareSplit {
+            split <=> root.compare-split;
+            after-label: root.s-video-enhance == 1 ? "Sharpened" : root.s-video-enhance == 2 ? "FSR" : "Anime4K";
+            moved(v) => { root.compare-moved(v); }
+        }
+
+        // "Skip intro" / "Next episode", above the control bar.
+        if root.skip-text != "" && !root.compact && !root.idle && !root.media-open: SkipButton {
+            x: parent.width - self.width - 28px - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            y: parent.height - root.bar-height - 14px - self.height - 18px;
+            text: root.skip-text;
+            countdown: root.skip-countdown;
+            clicked => { root.skip-pressed(); }
+        }
+
+        if root.karaoke-open && !root.compact && !root.idle: KaraokeView {
+            media-title: root.media-title;
+            prev: root.lyric-prev;
+            current: root.lyric-current;
+            next: root.lyric-next;
+            progress: root.lyric-progress;
+            synced: root.lyrics-synced;
+            vocals-removed: root.karaoke && !root.s-bit-perfect;
+            close => { root.karaoke-open = false; keys.focus(); }
+        }
+
+        if root.signal-open: SignalPathPanel {
+            stages: root.signal-stages;
+            verdict: root.signal-verdict;
+            verdict-level: root.signal-level;
+            can-fix-rates: root.signal-can-fix;
+            fix-rates => { root.signal-fix-rates(); }
+            close => { root.signal-open = false; keys.focus(); }
+        }
+
+        if root.picture-open && !root.compact: PictureCard {
+            pic: root.picture;
+            auto-crop: root.s-auto-crop;
+            toggle-auto-crop => { root.toggle-auto-crop(); }
+            set(what, v) => { root.basic(what, v); }
+            close => { root.picture-open = false; keys.focus(); }
+        }
+
+        if root.library-open: LibraryPanel {
+            tab <=> root.library-tab;
+            group <=> root.library-group;
+            country <=> root.library-country;
+            rows: root.library-rows;
+            status: root.library-status;
+            busy: root.library-busy;
+            episodes: root.library-episodes;
+            show => { root.library-show(); }
+            search(t) => { root.library-search(t); }
+            activate(i) => { root.library-activate(i); }
+            toggle-save(i) => { root.library-toggle-save(i); }
+            add(n, u) => { root.library-add(n, u); }
+            save-current => { root.library-save-current(); }
+            play-all => { root.library-play-all(); }
+            back => { root.library-back(); }
+            rescan => { root.library-rescan(); }
+            connect(u, n, pw) => { root.library-connect(u, n, pw); }
+            user <=> root.library-user;
+            password <=> root.library-password;
+            close => { root.library-open = false; keys.focus(); }
+        }
+
+        if root.subsearch-open: SubSearchPanel {
+            query <=> root.subsearch-query;
+            languages <=> root.subsearch-languages;
+            hits: root.subsearch-hits;
+            status: root.subsearch-status;
+            working: root.subsearch-working;
+            search(q, l) => { root.subsearch-search(q, l); }
+            download(i) => { root.subsearch-download(i); }
+            from-speech => { root.subsearch-open = false; root.transcript-open = true; }
+            close => { root.subsearch-open = false; keys.focus(); }
+        }
+
+        if root.media-info-open: MediaInfoPanel {
+            rows: root.media-info-rows;
+            as-text: root.media-info-text;
+            close => { root.media-info-open = false; keys.focus(); }
+        }
+
+        if root.subsync-open: SubSyncPanel {
+            status: root.subsync-status;
+            progress: root.subsync-progress;
+            working: root.subsync-working;
+            done: root.subsync-done;
+            again => { root.sub-sync(); }
+            cancel => { root.sub-sync-cancel(); }
+            keep => { root.sub-sync-keep(); }
+            undo => { root.sub-sync-undo(); }
+            close => { root.subsync-open = false; keys.focus(); }
+        }
+
+        if root.transcript-open: TranscriptPanel {
+            status: root.transcript-status;
+            progress: root.transcript-progress;
+            working: root.transcript-working;
+            has-transcript: root.has-transcript;
+            can-generate: root.can-transcribe;
+            models: root.whisper-models;
+            model <=> root.s-whisper-model;
+            results: root.transcript-results;
+            generate(tr) => { root.transcribe(tr); }
+            cancel => { root.transcribe-cancel(); }
+            search(t) => { root.transcript-search(t); }
+            seek(t) => { root.seek(t); }
+            model-changed => { root.settings-changed(); }
+            close => { root.transcript-open = false; keys.focus(); }
+        }
+
+        if root.clip-open: ClipPanel {
+            start: root.clip-start;
+            end: root.clip-end;
+            position: root.position;
+            status: root.clip-status;
+            progress: root.clip-progress;
+            working: root.clip-working;
+            has-video: root.has-video;
+            format <=> root.clip-format;
+            set-start => { root.clip-start = root.position; }
+            set-end => { root.clip-end = root.position; }
+            duration: root.duration;
+            whole-file => { root.clip-start = 0; root.clip-end = root.duration; }
+            save => { root.clip-save(); }
+            cancel => { root.clip-cancel(); }
+            open-folder => { root.clip-open-folder(); }
+            close => { root.clip-open = false; keys.focus(); }
+        }
+
+        if root.remote-open: RemotePanel {
+            running: root.remote-running;
+            address: root.remote-address;
+            qr: root.remote-qr;
+            status: root.remote-status;
+            start => { root.remote-start(); }
+            stop => { root.remote-stop(); }
+            close => { root.remote-open = false; keys.focus(); }
+        }
+
+        if root.cast-open: CastPanel {
+            devices: root.cast-devices;
+            searching: root.cast-searching;
+            active: root.cast-active;
+            name: root.cast-name;
+            state: root.cast-state;
+            status: root.cast-status;
+            quality <=> root.cast-quality;
+            burn-subs <=> root.cast-burn-subs;
+            address <=> root.cast-address;
+            search => { root.cast-search(); }
+            connect(i) => { root.cast-connect(i); root.cast-open = false; keys.focus(); }
+            add(t) => { root.cast-add(t); }
+            stop => { root.cast-stop(); }
+            options-changed => { root.cast-options-changed(); }
+            close => { root.cast-open = false; keys.focus(); }
+        }
+
+        if root.party-open: PartyPanel {
+            mode: root.party-mode;
+            status: root.party-status;
+            invite: root.party-invite;
+            people: root.party-people;
+            join-address <=> root.party-join-address;
+            your-name <=> root.party-name;
+            host => { root.party-host(); }
+            join => { root.party-join(); }
+            leave => { root.party-leave(); }
+            close => { root.party-open = false; keys.focus(); }
+        }
+
+        palette := CommandPalette {
+            visible: root.palette-open;
+            items: root.palette-items;
+            query(t) => { root.palette-query(t); }
+            run(id) => { root.palette-open = false; keys.focus(); root.palette-run(id); }
+            close => { root.palette-open = false; keys.focus(); }
+        }
+
+        if root.eq-open: EqualizerPanel {
+            gains: root.eq-gains;
+            preset-names: root.eq-preset-names;
+            enabled <=> root.s-eq-enabled;
+            bit-perfect: root.s-bit-perfect;
+            set-band(i, g) => { root.set-eq-band(i, g); }
+            preset(i) => { root.eq-preset(i); }
+            set-enabled(on) => { root.set-eq-enabled(on); }
+            close => { root.eq-open = false; keys.focus(); }
+        }
+
+        if root.settings-open: SettingsPanel {
+            tab <=> root.settings-tab;
+            audio-devices: root.audio-devices;
+            audio-device <=> root.s-audio-device;
+            always-on-top <=> root.s-always-on-top;
+            title-bar <=> root.s-title-bar;
+            title-bar-choice: root.own-bar-possible;
+            single-instance <=> root.s-single-instance;
+            sub-size <=> root.s-sub-size;
+            sub-pos <=> root.s-sub-pos;
+            sub-color <=> root.s-sub-color;
+            sub-style <=> root.s-sub-style;
+            passthrough <=> root.s-passthrough;
+            shortcut-rows: root.shortcut-rows;
+            shortcut-actions: root.shortcut-actions;
+            mouse-wheel <=> root.s-mouse-wheel;
+            mouse-double <=> root.s-mouse-double;
+            mouse-middle <=> root.s-mouse-middle;
+            shortcut-capture(t, c, a, s) => { return root.shortcut-capture(t, c, a, s); }
+            shortcut-add(k, i) => { root.shortcut-add(k, i); }
+            shortcut-remove(i) => { root.shortcut-remove(i); }
+            scripts <=> root.s-scripts;
+            script-rows: root.script-rows;
+            scripts-action(what, file) => { root.scripts-action(what, file); }
+            dvd-menus <=> root.s-dvd-menus;
+            sub-auto-sync <=> root.s-sub-auto-sync;
+            opensubs-status: root.opensubs-status;
+            save-opensubs(k, u, pw) => { root.save-opensubs(k, u, pw); }
+            view-mode <=> root.s-view-mode;
+            skin <=> root.s-skin;
+            skin-names: root.skin-names;
+            skin-views: root.skin-views;
+            reload-skins => { root.reload-skins(); }
+            open-skins-folder => { root.open-skins-folder(); }
+            visualizer <=> root.s-visualizer;
+            artist-pos <=> root.s-artist-pos;
+            artist-online <=> root.s-artist-online;
+            pulse-line <=> root.s-pulse-line;
+            lyrics-online <=> root.s-lyrics-online;
+            show-lyrics <=> root.s-show-lyrics;
+            gapless <=> root.s-gapless;
+            crossfade <=> root.s-crossfade;
+            replaygain <=> root.s-replaygain;
+            resume <=> root.s-resume;
+            remember-pace <=> root.s-remember-pace;
+            bit-perfect <=> root.s-bit-perfect;
+            open-equalizer => { root.settings-open = false; root.eq-open = true; }
+            stream-quality <=> root.s-stream-quality;
+            hw-decoding <=> root.s-hw-decoding;
+            bluray-decryption <=> root.s-bluray-decryption;
+            window-system <=> root.s-window-system;
+            auto-update <=> root.s-auto-update;
+            night-mode <=> root.s-night-mode;
+            dialogue-boost <=> root.s-dialogue-boost;
+            seek-thumbnails <=> root.s-seek-thumbnails;
+            skip-intro <=> root.s-skip-intro;
+            sponsor-skip <=> root.s-sponsor-skip;
+            sponsor-kinds <=> root.s-sponsor-kinds;
+            next-episode <=> root.s-next-episode;
+            video-enhance <=> root.s-video-enhance;
+            smooth-motion <=> root.s-smooth-motion;
+            auto-crop <=> root.s-auto-crop;
+            tone-map <=> root.s-tone-map;
+            hdr-peak <=> root.s-hdr-peak;
+            cd-online <=> root.s-cd-online;
+            whisper-model <=> root.s-whisper-model;
+            whisper-models: root.whisper-models;
+            milkdrop-available: root.milkdrop-available;
+            open-signal-path => { root.settings-open = false; root.signal-open = true; }
+            ytdlp-status: root.ytdlp-status;
+            keydb-status: root.keydb-status;
+            engine-info: root.engine-info;
+            disc-status: root.disc-status;
+            busy: root.busy-text != "";
+            changed => { root.settings-changed(); }
+            install-ytdlp => { root.install-ytdlp(); }
+            install-keydb => { root.install-keydb(); }
+            update-ffmpeg => { root.settings-open = false; root.update-ffmpeg(); }
+            run-check => { root.settings-open = false; root.check-open = true; root.run-check(); }
+            close => { root.settings-open = false; keys.focus(); }
+        }
+
+        if root.rip-active: RipCard {
+            parent-width: parent.width;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            heading: root.rip-heading;
+            progress: root.rip-percent;
+            title: root.rip-title;
+            drive: root.rip-drive;
+            stage: root.rip-stage;
+            eta: root.rip-eta;
+            cancel => { root.cancel-busy(); }
+        }
+
+        if root.ask-open: AskCard {
+            width: parent.width;
+            height: parent.height;
+            title: root.ask-title;
+            text: root.ask-text;
+            ok-label: root.ask-ok-label;
+            cancel-label: root.ask-cancel-label;
+            answer(yes) => { root.ask-answer(yes); }
+        }
+
+        if root.makemkv-open: MakeMkvPanel {
+            status: root.makemkv-status;
+            ready: root.makemkv-ready;
+            installed: root.makemkv-installed;
+            busy: root.busy-text != "";
+            install-command: root.makemkv-install-command;
+            update-command: root.makemkv-update-command;
+            install => { root.install-makemkv(); }
+            open-key-page => { root.open-url(root.makemkv-key-page); }
+            register(key) => { root.register-makemkv(key); }
+            rip => { root.makemkv-open = false; root.rip-disc(); }
+            refresh => { root.refresh-makemkv(); }
+            close => { root.makemkv-open = false; keys.focus(); }
+        }
+
+        if root.check-open: SystemCheckPanel {
+            items: root.check-items;
+            running: root.check-running;
+            summary: root.check-summary;
+            report: root.check-report;
+            busy: root.busy-text != "";
+            action(id) => { root.check-action(id); }
+            rescan => { root.run-check(); }
+            close => { root.check-open = false; keys.focus(); }
+        }
+
+        // Startup: shown until the playback engine is ready.
+        if root.starting: Rectangle {
+            background: Theme.bg;
+            // Swallow clicks so nothing underneath reacts before the player exists.
+            TouchArea {}
+            VerticalLayout {
+                alignment: center;
+                spacing: 20px;
+                Text {
+                    text: "Super Media Player";
+                    font-size: 44px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                    color: Theme.text;
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    LoadingDots { size: 10px; }
+                }
+                Text {
+                    text: "Starting…";
+                    horizontal-alignment: center;
+                    color: Theme.text-dim;
+                }
+            }
+        }
+    }
+
+    // ---- the window's own title bar and edges ----
+    menu-width := MenuBarWidth {
+        x: 0;
+        y: 0;
+        titles: ["File", "Playback", "Audio & Subtitles", "View", "Tools", "Help"];
+    }
+    // The content starts below the menu bar; the title bar goes back up over it.
+    content-top := Rectangle { x: 0; y: 0; width: 0; height: 0; }
+    property <length> menu-height: content-top.absolute-position.y;
+    if root.own-bar && !root.compact && !root.fullscreen: TitleBar {
+        x: menu-width.total;
+        y: -root.menu-height;
+        width: root.width - self.x;
+        height: root.menu-height;
+        // The bar below shows what plays, until it hides.
+        title: root.idle || (root.show-controls && !root.media-open) ? "Super Media Player" : root.media-title;
+        focused: root.window-focused;
+        maximized: root.window-maximized;
+        on-top: root.s-always-on-top;
+        minimize => { root.minimize-window(); }
+        toggle-maximize => { root.toggle-maximize(); }
+        close => { root.quit(); }
+        fullscreen => { root.toggle-fullscreen(); }
+        toggle-on-top => { root.s-always-on-top = !root.s-always-on-top; root.settings-changed(); }
+        system-menu(x, y) => { return root.system-window-menu(x, y); }
+    }
+    if root.own-frame: WindowEdges {
+        x: 0;
+        y: -root.menu-height;
+        width: root.width;
+        height: root.height + root.menu-height;
+        border-width: 1px;
+        border-color: root.window-focused ? #ffffff24 : #ffffff14;
+        border-radius: 10px;
+        start-resize(e) => { root.start-window-resize(e); }
+    }
+
+    // ---- popups ----
+    property <bool> paste-on-open: false;
+    // Rip & play with several discs in: which drive?
+    drive-popup := PopupWindow {
+        x: (root.width - self.width) / 2;
+        y: Math.max(10px, root.height * 0.25);
+        width: Math.min(440px, root.width - 24px);
+        close-policy: close-on-click-outside;
+        Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+                Text {
+                    text: root.drive-picker-play ? "Play the disc in which drive?" : "Rip from which drive?";
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                for d in root.drive-choices: Rectangle {
+                    height: row.preferred-height;
+                    border-radius: 8px;
+                    background: pick.has-hover ? #ffffff14 : #ffffff08;
+                    border-width: 1px;
+                    border-color: pick.has-hover ? Theme.accent : Theme.border;
+                    row := VerticalLayout {
+                        padding: 10px;
+                        spacing: 2px;
+                        Text { text: d.name; color: Theme.text; font-weight: 600; wrap: word-wrap; }
+                        Text { text: d.detail; color: Theme.text-dim; font-size: Theme.font-small; wrap: word-wrap; }
+                    }
+                    pick := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            // Hand over the choice before closing: closing the
+                            // popup tears down this row, and `d` with it.
+                            if (root.drive-picker-play) {
+                                root.play-from-drive(d.device);
+                            } else {
+                                root.rip-from-drive(d.device, d.name);
+                            }
+                            drive-popup.close();
+                            keys.focus();
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    PillButton {
+                        text: "Cancel";
+                        clicked => { drive-popup.close(); keys.focus(); }
+                    }
+                }
+            }
+        }
+    }
+
+    url-popup := PopupWindow {
+        x: (root.width - 460px) / 2;
+        y: root.height * 0.3;
+        width: Math.min(460px, root.width - 24px);
+        close-policy: close-on-click-outside;
+        Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 12px;
+                Text {
+                    text: "Open location";
+                    font-size: 17px;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Text {
+                    text: "A link (HTTP(S), HLS, DASH, RTSP, RTMP, SRT, internet radio, a YouTube/Vimeo/... page) or a file or folder path";
+                    color: Theme.text-dim;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+                url-edit := LineEdit {
+                    placeholder-text: "https://… or /path/to/file";
+                    accepted(text) => {
+                        if (text != "") {
+                            root.open-location(text);
+                            url-popup.close();
+                            keys.focus();
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    PillButton {
+                        text: "Cancel";
+                        clicked => { url-popup.close(); keys.focus(); }
+                    }
+                    PillButton {
+                        text: "Play";
+                        filled: true;
+                        clicked => {
+                            if (url-edit.text != "") {
+                                root.open-location(url-edit.text);
+                                url-popup.close();
+                                keys.focus();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        init => {
+            url-edit.text = "";
+            url-edit.focus();
+            if (root.paste-on-open) {
+                root.paste-on-open = false;
+                url-edit.paste();
+            }
+        }
+    }
+
+    playlist-menu := PopupWindow {
+        x: root.width - 270px;
+        y: 64px;
+        width: 240px;
+        Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 30px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 8px;
+                MenuHeader { text: "PLAYLIST"; }
+                MenuRow { text: "Save playlist…"; detail: "Ctrl+S"; clicked => { root.playlist-action("save", 0); } }
+                MenuRow { text: "Open playlist…"; clicked => { root.playlist-action("open", 0); } }
+                MenuHeader { text: "SORT"; }
+                MenuRow { text: "By title"; clicked => { root.playlist-action("title", 0); } }
+                MenuRow { text: "By file name"; clicked => { root.playlist-action("file", 0); } }
+                MenuRow { text: "By folder"; clicked => { root.playlist-action("folder", 0); } }
+                MenuRow { text: "Reverse"; clicked => { root.playlist-action("reverse", 0); } }
+                MenuRow { text: "Shuffle once"; clicked => { root.playlist-action("shuffle", 0); } }
+                MenuHeader { text: "TIDY UP"; }
+                MenuRow { text: "Remove duplicates"; clicked => { root.playlist-action("dedupe", 0); } }
+                MenuRow { text: "Remove missing files"; clicked => { root.playlist-action("missing", 0); } }
+            }
+        }
+    }
+
+    jump-popup := PopupWindow {
+        x: (root.width - self.width) / 2;
+        y: root.height * 0.3;
+        width: Math.min(380px, root.width - 24px);
+        close-policy: close-on-click-outside;
+        property <bool> bad: false;
+        Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 12px;
+                Text {
+                    text: "Jump to time";
+                    font-size: 17px;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Text {
+                    text: jump-popup.bad ? "Type a time like 1:23:45, 12:30 or 90 (seconds), or a percentage like 50%." : "Now at " + Fmt.time(root.position) + " of " + Fmt.time(root.duration) + ". Type 1:23:45, 12:30, 90 or 50%.";
+                    color: jump-popup.bad ? #ff8a9a : Theme.text-dim;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+                jump-edit := LineEdit {
+                    placeholder-text: "h:mm:ss";
+                    accepted(text) => {
+                        if (root.jump-to(text)) {
+                            jump-popup.close();
+                            keys.focus();
+                        } else {
+                            jump-popup.bad = true;
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    PillButton {
+                        text: "Cancel";
+                        clicked => { jump-popup.close(); keys.focus(); }
+                    }
+                    PillButton {
+                        text: "Go";
+                        filled: true;
+                        clicked => {
+                            if (root.jump-to(jump-edit.text)) {
+                                jump-popup.close();
+                                keys.focus();
+                            } else {
+                                jump-popup.bad = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        init => {
+            jump-popup.bad = false;
+            jump-edit.text = "";
+            jump-edit.focus();
+        }
+    }
+
+    about-popup := PopupWindow {
+        x: (root.width - 440px) / 2;
+        y: Math.max(16px, (root.height - 470px) / 2);
+        width: 440px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            border-radius: Theme.radius + 4px;
+            background: #171c2e; // opaque: text behind would show through
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 26px;
+                padding-top: 30px;
+                spacing: 6px;
+                HorizontalLayout {
+                    alignment: center;
+                    Image {
+                        source: @image-url("../../../packaging/linux/super-media-player.svg");
+                        width: 96px;
+                        height: 96px;
+                    }
+                }
+                Text {
+                    text: "Super Media Player";
+                    font-size: 24px;
+                    font-weight: 800;
+                    color: Theme.text;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Version " + root.app-version;
+                    color: Theme.accent;
+                    horizontal-alignment: center;
+                }
+                Rectangle { height: 8px; }
+                Text {
+                    text: "A fast, modern player for videos, music, internet streams, DVDs, Blu-ray discs and audio CDs, with hardware-accelerated decoding, playlists, subtitles, music visualizers and multiple audio tracks.";
+                    color: Theme.text-dim;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+                Rectangle { height: 10px; }
+                Rectangle { height: 1px; background: Theme.border; }
+                Rectangle { height: 6px; }
+                for row in [
+                    { label: "Created by", value: root.app-author },
+                    { label: "Built", value: root.build-date },
+                    { label: "Engine", value: root.engine-info },
+                    { label: "License", value: "GNU GPL v3 or later" },
+                ]: HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: row.label;
+                        color: Theme.text-faint;
+                        width: 90px;
+                    }
+                    Text {
+                        text: row.value;
+                        color: Theme.text;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                    }
+                }
+                Rectangle { height: 10px; }
+                Text {
+                    text: "© " + root.build-year + " " + root.app-author + ". Powered by mpv and FFmpeg.";
+                    color: Theme.text-faint;
+                    font-size: Theme.font-small;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                Rectangle { height: 8px; }
+                HorizontalLayout {
+                    alignment: center;
+                    PillButton {
+                        text: "Close";
+                        filled: true;
+                        clicked => { about-popup.close(); keys.focus(); }
+                    }
+                }
+            }
+        }
+    }
+
+    shortcuts-popup := PopupWindow {
+        x: (root.width - 460px) / 2;
+        y: 16px;
+        width: 460px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            border-radius: Theme.radius + 4px;
+            background: #171c2e;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 22px;
+                spacing: 4px;
+                Text {
+                    text: "Keyboard shortcuts";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.text;
+                }
+                Rectangle { height: 6px; }
+                // Scrolls when the window is too short for the whole list.
+                Flickable {
+                    height: Math.min(sc-list.preferred-height, root.height - 140px);
+                    content-height: sc-list.preferred-height;
+                    sc-list := VerticalLayout {
+                    spacing: 4px;
+                    width: parent.width;
+                for row in [
+                    { k: "Space / K", v: "Play / pause" },
+                    { k: "← / →", v: "Back / forward 5 s (Shift: 30 s)" },
+                    { k: "↑ / ↓", v: "Volume" },
+                    { k: "M", v: "Mute" },
+                    { k: "N / P", v: "Next / previous" },
+                    { k: "[ / ]", v: "Slower / faster" },
+                    { k: "F / F11, Esc", v: "Fullscreen, leave fullscreen" },
+                    { k: "L", v: "Playlist" },
+                    { k: "I", v: "Song info, lyrics (music)" },
+                    { k: "E", v: "Equalizer" },
+                    { k: "A", v: "A-B repeat: mark A, mark B, off" },
+                    { k: ". / ,", v: "Next / previous frame (video)" },
+                    { k: "Home", v: "Start over (after resuming)" },
+                    { k: "S", v: "Screenshot" },
+                    { k: "PgUp / PgDn", v: "Previous / next chapter" },
+                    { k: "Z / X", v: "Subtitles 100 ms earlier / later" },
+                    { k: "Ctrl+− / Ctrl++", v: "Sound 100 ms earlier / later" },
+                    { k: "Alt+− / Alt++, Alt+arrows", v: "Zoom, move the picture (Alt+Backspace resets)" },
+                    { k: "C", v: "Crop black bars" },
+                    { k: "Ctrl+T", v: "Jump to time" },
+                    { k: "Ctrl+I", v: "Media information" },
+                    { k: "Ctrl+B", v: "Bookmark this moment" },
+                    { k: "Ctrl+S", v: "Save the playlist" },
+                    { k: "Ctrl+O / Ctrl+Shift+O", v: "Open files / folder" },
+                    { k: "Ctrl+U", v: "Open location" },
+                    { k: "Ctrl+V", v: "Play a copied file, folder or link" },
+                    { k: "Ctrl+D", v: "Play the disc in the drive" },
+                    { k: "Ctrl+Shift+D", v: "The DVD's menu (arrows, Enter)" },
+                    { k: "Ctrl+Shift+L", v: "Show saved links (radio stations)" },
+                    { k: "Ctrl+Shift+M", v: "Media library" },
+                    { k: "Ctrl+M", v: "Next skin (player view)" },
+                    { k: "Ctrl+K", v: "Command palette: find any action" },
+                    { k: "Ctrl+P", v: "Settings" },
+                    { k: "Ctrl+Q", v: "Quit" },
+                ]: HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: row.k;
+                        color: Theme.accent;
+                        width: 160px;
+                    }
+                    Text {
+                        text: row.v;
+                        color: Theme.text;
+                        horizontal-stretch: 1;
+                        wrap: word-wrap;
+                    }
+                }
+                    }
+                }
+            }
+        }
+    }
+
+    disc-popup := PopupWindow {
+        x: root.width - 260px;
+        y: 52px;
+        width: 240px;
+        Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 30px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 8px;
+                MenuHeader { text: "PLAY DISC"; }
+                MenuRow { text: "Detect disc in drive"; detail: "Ctrl+D"; clicked => { root.open-disc("auto"); } }
+                if root.dvd-disc || root.dvd-playing: MenuRow { text: "Disc menu"; clicked => { root.dvd("menu"); } }
+                MenuRow { text: "DVD"; clicked => { root.open-disc("dvd"); } }
+                MenuRow { text: "DVD, main film (no menu)"; clicked => { root.open-disc("dvd-film"); } }
+                MenuRow { text: "Blu-ray"; clicked => { root.open-disc("bluray"); } }
+                MenuRow { text: "Audio CD"; clicked => { root.open-disc("cd"); } }
+                MenuRow { text: "Rip audio CD to FLAC…"; clicked => { root.open-disc("rip-cd"); } }
+                MenuRow { text: "Disc image (ISO)…"; clicked => { root.open-disc("image"); } }
+                MenuRow { text: "Disc folder…"; clicked => { root.open-disc("folder"); } }
+            }
+        }
+    }
+
+    tracks-popup := PopupWindow {
+        x: 30px;
+        y: root.height - 130px - self.height;
+        width: 330px;
+        Rectangle {
+            border-radius: Theme.radius;
+            background: Theme.surface-hi;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 30px;
+            drop-shadow-color: #000000a0;
+            VerticalLayout {
+                padding: 8px;
+                MenuHeader { text: "AUDIO"; }
+                if root.audio-tracks.length == 0: MenuRow { text: "No audio tracks"; }
+                for t in root.audio-tracks: MenuRow {
+                    text: t.label;
+                    checked: t.selected;
+                    clicked => { root.select-audio(t.id); }
+                }
+                MenuHeader { text: "SUBTITLES"; }
+                MenuRow {
+                    text: "Off";
+                    checked: root.subtitles-off;
+                    clicked => { root.select-subtitle(-1); }
+                }
+                for t in root.subtitle-tracks: MenuRow {
+                    text: t.label;
+                    checked: t.selected;
+                    clicked => { root.select-subtitle(t.id); }
+                }
+                MenuRow { text: "Load subtitle file…"; clicked => { root.add-subtitle(); } }
+                MenuHeader { text: "PLAYBACK SPEED"; }
+                HorizontalLayout {
+                    padding: 6px;
+                    spacing: 4px;
+                    for s in [0.5, 0.75, 1, 1.25, 1.5, 2]: Chip {
+                        text: s + "×";
+                        active: root.speed == s;
+                        clicked => { root.set-speed(s); }
+                    }
+                }
+                MenuRow {
+                    text: "Skip silence";
+                    detail: root.silence-saved;
+                    checked: root.skip-silence;
+                    clicked => { root.toggle-skip-silence(); }
+                }
+                MenuRow { text: "Take screenshot"; detail: "S"; clicked => { root.screenshot(); } }
+            }
+        }
+    }
+}

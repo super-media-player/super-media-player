@@ -1,0 +1,9 @@
+[package]
+name = "mpv-sys"
+description = "Runtime-loaded FFI bindings to the libmpv client and render API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+libloading.workspace = true

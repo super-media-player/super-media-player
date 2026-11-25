@@ -1,0 +1,289 @@
+import { Theme } from "theme.slint";
+
+// A spinning disc being read: rainbow sheen turning with the disc, a laser
+// sweeping across it, and a ring around it filling with `progress`.
+export component DiscReader inherits Rectangle {
+    // 0..1; below 0 while the length of the job isn't known yet (a
+    // quarter ring spins instead).
+    in property <float> progress;
+    in property <bool> running: true;
+    property <float> t: root.running ? animation-tick() / 1ms : 0;
+    // One turn every 1.6 s.
+    property <angle> spin: Math.mod(root.t * 0.225, 360) * 1deg;
+    property <length> ring: 5px;
+    property <length> disc-size: root.width - 2 * (root.ring + 6px);
+
+    // Progress ring: faint track, then the filled arc.
+    Rectangle {
+        border-radius: self.width / 2;
+        border-width: root.ring;
+        border-color: #ffffff12;
+    }
+    property <float> p: Math.clamp(root.progress, 0, 0.9999);
+    property <float> c: root.width / 2 / 1px;
+    property <float> r: (root.width / 2 - root.ring / 2) / 1px;
+    property <angle> a: 360deg * root.p;
+    // Not known yet: a quarter of the ring going round.
+    property <angle> a0: root.spin * 1.4;
+    if root.progress < 0: Path {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        fit: fill;
+        stroke: @linear-gradient(90deg, Theme.accent 0%, Theme.accent-2 100%);
+        stroke-width: root.ring;
+        stroke-line-cap: round;
+        commands: "M " + (root.c + root.r * Math.sin(root.a0)) + " " + (root.c - root.r * Math.cos(root.a0))
+            + " A " + root.r + " " + root.r + " 0 0 1 "
+            + (root.c + root.r * Math.sin(root.a0 + 90deg)) + " " + (root.c - root.r * Math.cos(root.a0 + 90deg));
+    }
+    if root.progress >= 0 && root.p > 0.001: Path {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        fit: fill;
+        stroke: @linear-gradient(90deg, Theme.accent 0%, Theme.accent-2 100%);
+        stroke-width: root.ring;
+        stroke-line-cap: round;
+        commands: "M " + root.c + " " + (root.c - root.r)
+            + " A " + root.r + " " + root.r + " 0 " + (root.p > 0.5 ? 1 : 0) + " 1 "
+            + (root.c + root.r * Math.sin(root.a)) + " " + (root.c - root.r * Math.cos(root.a));
+    }
+
+    // The disc.
+    disc := Rectangle {
+        width: root.disc-size;
+        height: root.disc-size;
+        border-radius: self.width / 2;
+        background: @conic-gradient(from root.spin,
+            #c9d3e0 0deg, #8fd8ff 40deg, #d7c2ff 85deg, #ffd6e8 120deg, #e9edf2 160deg,
+            #b6f0d8 205deg, #9fc4ff 250deg, #f3d1ff 300deg, #c9d3e0 360deg);
+        drop-shadow-blur: 14px;
+        drop-shadow-color: Theme.accent.with-alpha(0.25);
+        // Data rings.
+        for i in 4: Rectangle {
+            width: parent.width * (0.92 - i * 0.14);
+            height: self.width;
+            border-radius: self.width / 2;
+            border-width: 1px;
+            border-color: #ffffff38;
+        }
+        // Clear centre and hub.
+        Rectangle {
+            width: parent.width * 0.34;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: #dfe6ee;
+            border-width: 1px;
+            border-color: #ffffff80;
+            Rectangle {
+                width: parent.width * 0.42;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: #171c2e;
+            }
+        }
+    }
+
+    // The laser: a glowing dot sweeping in and out along the disc's radius,
+    // like a reading head.
+    property <float> sweep: (Math.sin(root.t * 0.12 * 1deg) + 1) / 2;
+    property <length> inner: root.disc-size * 0.2;
+    property <length> outer: root.disc-size * 0.46;
+    Rectangle {
+        x: root.width / 2 - self.width / 2 + root.inner + (root.outer - root.inner) * root.sweep;
+        y: root.height / 2 - self.height / 2;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: #ff4d6d;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #ff4d6dd0;
+    }
+    // The head's arm.
+    Rectangle {
+        x: root.width / 2 + root.inner + (root.outer - root.inner) * root.sweep;
+        y: root.height / 2 - 1px;
+        width: root.width - self.x - 2px;
+        height: 2px;
+        background: @linear-gradient(90deg, #ff4d6d90 0%, #ffffff10 100%);
+    }
+}
+
+// The card shown while MakeMKV copies a disc: the animation, what is being
+// copied from which drive, how far along, time left, and Cancel.
+export component RipCard inherits Rectangle {
+    // Shown above the title: what is going on ("RIPPING WITH MAKEMKV").
+    in property <string> heading;
+    in property <float> progress;
+    in property <string> title;
+    in property <string> drive;
+    in property <string> stage;
+    in property <string> eta;
+    callback cancel();
+
+    width: Math.min(460px, (self.parent-width) - 20px);
+    in property <length> parent-width: 460px;
+    height: content.preferred-height;
+    border-radius: 16px;
+    background: #121726f0;
+    border-width: 1px;
+    border-color: Theme.accent.with-alpha(0.25);
+    drop-shadow-blur: 30px;
+    drop-shadow-color: #000000b0;
+
+    content := HorizontalLayout {
+        padding: 16px;
+        spacing: 16px;
+        VerticalLayout {
+            alignment: center;
+            DiscReader {
+                width: 112px;
+                height: 112px;
+                progress: root.progress;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 4px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.heading != "" ? root.heading
+                    : root.progress < 0 ? "MAKEMKV IS READING THE DISC" : "RIPPING WITH MAKEMKV";
+                color: Theme.accent;
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 1.5px;
+            }
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 16px;
+                font-weight: 700;
+                overflow: elide;
+            }
+            if root.drive != "": Text {
+                text: "from the " + root.drive;
+                color: Theme.text-dim;
+                font-size: 11px;
+                overflow: elide;
+            }
+            if root.progress >= 0 || root.eta != "": HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.progress < 0 ? "…" : Math.round(root.progress * 100) + "%";
+                    color: Theme.text;
+                    font-size: 26px;
+                    font-weight: 300;
+                    vertical-alignment: bottom;
+                }
+                VerticalLayout {
+                    alignment: end;
+                    padding-bottom: 4px;
+                    Text {
+                        text: root.eta;
+                        color: Theme.text-dim;
+                        font-size: 11px;
+                        overflow: elide;
+                    }
+                }
+            }
+            Text {
+                text: root.stage;
+                color: Theme.text-faint;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                padding-top: 4px;
+                Rectangle {
+                    width: cancel-label.preferred-width + 24px;
+                    height: 26px;
+                    border-radius: 13px;
+                    background: cancel-touch.pressed ? #ff6b6b40 : cancel-touch.has-hover ? #ff6b6b2a : #ffffff14;
+                    border-width: 1px;
+                    border-color: cancel-touch.has-hover ? #ff6b6b80 : Theme.border;
+                    cancel-label := Text {
+                        text: "Cancel";
+                        color: Theme.text;
+                        font-size: 12px;
+                    }
+                    cancel-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.cancel(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A question asked inside the player (not a separate window, which can end
+// up hidden behind it): a title, a message, and two buttons.
+export component AskCard inherits Rectangle {
+    in property <string> title;
+    in property <string> text;
+    in property <string> ok-label: "OK";
+    in property <string> cancel-label: "Cancel";
+    callback answer(bool);
+
+    background: #000000a0;
+    TouchArea { }  // modal: nothing underneath reacts
+    Rectangle {
+        width: Math.min(480px, root.width - 24px);
+        height: Math.min(col.preferred-height, root.height - 24px);
+        border-radius: 16px;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.accent.with-alpha(0.25);
+        drop-shadow-blur: 30px;
+        drop-shadow-color: #000000b0;
+        clip: true;
+        col := VerticalLayout {
+            padding: 18px;
+            spacing: 12px;
+            Text {
+                text: root.title;
+                color: Theme.text;
+                font-size: 17px;
+                font-weight: 700;
+                wrap: word-wrap;
+            }
+            Text {
+                text: root.text;
+                color: Theme.text-dim;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                if root.cancel-label != "": Rectangle {
+                    width: no-label.preferred-width + 28px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: no-touch.has-hover ? #ffffff26 : #ffffff14;
+                    no-label := Text { text: root.cancel-label; color: Theme.text; }
+                    no-touch := TouchArea { mouse-cursor: pointer; clicked => { root.answer(false); } }
+                }
+                Rectangle {
+                    width: yes-label.preferred-width + 28px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: yes-touch.has-hover
+                        ? @linear-gradient(90deg, #5ad9ff 0%, #b88aff 100%)
+                        : @linear-gradient(90deg, Theme.accent 0%, Theme.accent-2 100%);
+                    yes-label := Text { text: root.ok-label; color: #0b0e18; font-weight: 700; }
+                    yes-touch := TouchArea { mouse-cursor: pointer; clicked => { root.answer(true); } }
+                }
+            }
+        }
+    }
+}

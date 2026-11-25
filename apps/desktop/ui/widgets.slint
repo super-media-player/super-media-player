@@ -1,0 +1,329 @@
+// Buttons, check boxes and drop-down lists. They look like Slint's own, but
+// show the hand cursor, which Slint's can't (std-widgets have no
+// mouse-cursor). Import these instead of the std-widgets ones.
+
+import { Palette, ScrollView } from "std-widgets.slint";
+
+component FocusRing inherits Rectangle {
+    border-width: 2px;
+    border-color: #ffffff;
+    border-radius: 4px;
+}
+
+export component Button inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    out property <bool> has-focus: scope.has-focus;
+    callback clicked();
+
+    min-width: max(32px, label.preferred-width + 24px);
+    min-height: max(32px, label.preferred-height + 10px);
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    forward-focus: scope;
+    accessible-role: button;
+    accessible-enabled: root.enabled;
+    accessible-label: root.text;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.primary ? #ffffff14 : #ffffff17;
+    background: root.primary
+        ? (!root.enabled ? #ffffff29 : Palette.accent-background.with-alpha(touch.pressed ? 0.8 : touch.has-hover ? 0.9 : 1))
+        : !root.enabled ? #ffffff0a : touch.pressed ? #ffffff08 : touch.has-hover ? #ffffff1c : #ffffff0f;
+    animate background { duration: 150ms; }
+
+    label := Text {
+        width: min(self.preferred-width, parent.width - 12px);
+        text: root.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        color: root.primary ? (root.enabled ? (touch.pressed ? #00000080 : Palette.accent-foreground) : #ffffff87)
+            : !root.enabled ? #ffffff5e : touch.pressed ? #ffffffc9 : Palette.control-foreground;
+        accessible-role: none;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    scope := FocusScope {
+        x: 0;
+        width: 0;  // doesn't react to clicks
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if (e.text == Key.Space || e.text == Key.Return) {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if root.has-focus && root.enabled: FocusRing { }
+}
+
+export component CheckBox inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in-out property <bool> checked;
+    out property <bool> has-focus: scope.has-focus;
+    callback toggled();
+
+    function flip() {
+        if (root.enabled) {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+
+    min-height: max(18px, row.min-height);
+    min-width: row.min-width;
+    forward-focus: scope;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-enabled: root.enabled;
+    accessible-label: root.text;
+    accessible-action-default => { root.flip(); }
+
+    row := HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: 2px;
+                border-width: root.checked ? 0px : 1px;
+                border-color: root.enabled && !touch.pressed ? #ffffff99 : #ffffff29;
+                background: root.checked
+                    ? (!root.enabled ? #ffffff29 : Palette.accent-background.with-alpha(touch.pressed ? 0.8 : touch.has-hover ? 0.9 : 1))
+                    : touch.pressed ? #ffffff12 : touch.has-hover ? #ffffff0a : #0000001a;
+                animate background { duration: 150ms; }
+                if root.checked: Path {
+                    width: 10px;
+                    height: 8px;
+                    viewbox-width: 10;
+                    viewbox-height: 8;
+                    commands: "M 0.8 4.2 L 3.6 7 L 9.2 1.2";
+                    stroke: root.enabled ? Palette.accent-foreground : #ffffff87;
+                    stroke-width: 1.5px;
+                }
+            }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            color: root.enabled ? Palette.foreground : #ffffff5e;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.flip(); }
+    }
+    scope := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if (e.text == Key.Space || e.text == Key.Return) {
+                root.flip();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if root.has-focus && root.enabled: FocusRing { }
+}
+
+export component ComboBox inherits Rectangle {
+    in property <[string]> model;
+    in property <bool> enabled: true;
+    in-out property <int> current-index: 0;
+    out property <string> current-value: root.current-index >= 0 && root.current-index < root.model.length
+        ? root.model[root.current-index] : "";
+    out property <bool> has-focus: scope.has-focus;
+    callback selected(string);
+
+    property <length> item-height: 32px;
+    property <int> visible-items: min(6, root.model.length);
+
+    function pick(i: int) {
+        if (root.enabled && root.model.length > 0) {
+            root.current-index = Math.clamp(i, 0, root.model.length - 1);
+            root.selected(root.current-value);
+        }
+    }
+
+    min-width: max(160px, row.min-width);
+    min-height: 32px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    forward-focus: scope;
+    accessible-role: combobox;
+    accessible-enabled: root.enabled;
+    accessible-expandable: true;
+    accessible-value: root.current-value;
+    accessible-action-expand => { popup.show(); }
+
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: #ffffff17;
+    background: !root.enabled ? #ffffff0a : touch.pressed ? #ffffff0a : touch.has-hover ? #ffffff1c : #ffffff0f;
+    animate background { duration: 150ms; }
+
+    row := HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: 8px;
+        Text {
+            horizontal-stretch: 1;
+            min-width: 0;
+            text: root.current-value;
+            color: root.enabled ? Palette.control-foreground : #ffffff5e;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            alignment: center;
+            Path {
+                width: 10px;
+                height: 6px;
+                viewbox-width: 10;
+                viewbox-height: 6;
+                commands: "M 0.8 0.8 L 5 5 L 9.2 0.8";
+                stroke: root.enabled ? #ffffffc9 : #ffffff5e;
+                stroke-width: 1.2px;
+            }
+        }
+    }
+
+    scope := FocusScope {
+        enabled: root.enabled;
+        key-pressed(e) => {
+            if (e.text == Key.UpArrow) {
+                root.pick(root.current-index - 1);
+                return accept;
+            }
+            if (e.text == Key.DownArrow) {
+                root.pick(root.current-index + 1);
+                return accept;
+            }
+            if (e.text == Key.Return || e.text == Key.Space) {
+                popup.show();
+                return accept;
+            }
+            return reject;
+        }
+        touch := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                scope.focus();
+                popup.show();
+            }
+            scroll-event(e) => {
+                // Only once it was clicked: a list scrolling past must not change it.
+                if (!scope.has-focus) {
+                    return reject;
+                }
+                if (e.delta-y < -2px) {
+                    root.pick(root.current-index + 1);
+                    return accept;
+                }
+                if (e.delta-y > 2px) {
+                    root.pick(root.current-index - 1);
+                    return accept;
+                }
+                return reject;
+            }
+        }
+    }
+    if root.has-focus && root.enabled: FocusRing { border-radius: 3px; }
+
+    popup := PopupWindow {
+        x: 0;
+        y: -4px;
+        width: root.width;
+        height: root.visible-items * root.item-height + 8px;
+        close-policy: close-on-click-outside;
+        forward-focus: keys;
+
+        keys := FocusScope {
+            key-pressed(e) => {
+                if (e.text == Key.UpArrow) {
+                    root.pick(root.current-index - 1);
+                    return accept;
+                }
+                if (e.text == Key.DownArrow) {
+                    root.pick(root.current-index + 1);
+                    return accept;
+                }
+                if (e.text == Key.Return || e.text == Key.Escape) {
+                    popup.close();
+                    return accept;
+                }
+                return reject;
+            }
+
+            Rectangle {
+                border-radius: 7px;
+                border-width: 1px;
+                border-color: #00000033;
+                background: Palette.alternate-background;
+                drop-shadow-blur: 16px;
+                drop-shadow-offset-y: 8px;
+                drop-shadow-color: #00000042;
+
+                ScrollView {
+                    content-y: -max(0, root.current-index - root.visible-items + 1) * root.item-height;
+                    VerticalLayout {
+                        alignment: start;
+                        padding: 4px;
+                        for value[i] in root.model: Rectangle {
+                            height: root.item-height;
+                            accessible-role: list-item;
+                            accessible-label: value;
+                            Rectangle {
+                                width: parent.width - 6px;
+                                height: parent.height - 4px;
+                                border-radius: 4px;
+                                background: item-touch.has-hover || i == root.current-index ? #ffffff0f : transparent;
+                                if i == root.current-index: Rectangle {
+                                    x: 0;
+                                    width: 3px;
+                                    height: 16px;
+                                    border-radius: 2px;
+                                    background: Palette.accent-background;
+                                }
+                                Text {
+                                    x: 14px;
+                                    width: parent.width - 28px;
+                                    text: value;
+                                    color: Palette.control-foreground;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            item-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.pick(i);
+                                    popup.close();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

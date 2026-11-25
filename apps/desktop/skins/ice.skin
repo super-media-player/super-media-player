@@ -1,0 +1,36 @@
+# The classic deck in cold steel blue, with an ice-blue display.
+name = Classic deck – Ice
+layout = classic
+author = Super Media Player
+
+outside = #0b1118
+body-1 = #5b7187
+body-2 = #3c5064
+body-3 = #2c3c4d
+body-edge = #7d93a8
+lcd = #00101c
+lcd-edge = #2f5470
+green = #5fd4ff
+green-dim = #2a7fa8
+label = #cfe3f2
+ridge-light = #8aa0b5
+ridge-dark = #22303c
+button-1 = #7a90a6
+button-2 = #50667c
+button-3 = #3e5367
+button-pressed-1 = #2a3a4a
+button-pressed-2 = #3c4e60
+button-edge = #98acc0
+button-edge-pressed = #18222c
+button-ink = #eaf4fc
+toggle-1 = #627a91
+toggle-2 = #42576c
+toggle-pressed = #2a3a4a
+toggle-edge = #7f95aa
+led-off = #12303f
+playlist-current = #1d4f86
+playlist-hover = #08202e
+meter-low = #1f8fd0
+meter-mid = #7fd8ff
+meter-high = #ffffff
+groove = #050c12

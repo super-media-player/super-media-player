@@ -1,0 +1,67 @@
+# Compiled code and packages
+/target
+/dist
+
+# libmpv, the engine and other libraries fetched or built by scripts/
+/.devlibs
+
+# Settings of this computer and the build VM (addresses, notification topic)
+/notify.conf
+/vm-build.conf
+/engine-versions.conf*
+.env
+.env.*
+!.env.example
+
+# Keys: signing, and disc key databases
+*.pem
+*.key
+*.p12
+KEYDB.cfg
+keydb.cfg
+
+# Logs and locks of builds and the daily check
+*.log
+/.daily.lock
+
+# Crash dumps and profiles
+core.[0-9]*
+perf.data*
+flamegraph.svg
+*.profraw
+
+# Python (scripts/)
+__pycache__/
+*.py[cod]
+.venv/
+
+# Editors, desktops, assistants
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
+.directory
+.claude/settings.local.json
+.claude/worktrees/
+
+# Video, music and disc images lying about from tests (docs use gif, jpg, png)
+*.iso
+*.mkv
+*.mp4
+*.m2ts
+*.vob
+*.mov
+*.avi
+*.webm
+*.flac
+*.mp3
+*.opus
+*.wav

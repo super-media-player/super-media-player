@@ -1,0 +1,214 @@
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+
+component Tab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    width: label.preferred-width + 28px;
+    height: 30px;
+    border-radius: 15px;
+    background: root.active ? Theme.accent.with-alpha(0.13) : touch.has-hover ? #ffffff0c : transparent;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent.with-alpha(0.44) : Theme.border;
+    label := Text {
+        text: root.text;
+        color: root.active ? Theme.text : Theme.text-dim;
+        font-weight: 600;
+        font-size: Theme.font-small;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// About the song: album cover, artist picture, tags, a short artist summary
+// and the lyrics. Opened by clicking the picture in the music view.
+export component MusicInfoPanel inherits Rectangle {
+    in property <string> title;
+    in property <string> artist;
+    in property <string> album;
+    in property <string> year;
+    in property <string> genre;
+    in property <string> track;
+    in property <string> audio-info;
+    in property <image> cover-image;
+    in property <bool> has-cover;
+    in property <image> artist-image;
+    in property <bool> has-artist-image;
+    in property <string> about;
+    in property <string> about-source;
+    in property <string> lyrics;
+    // Lookups online are off: say where to turn them on.
+    in property <bool> online-info;
+    in property <bool> online-lyrics;
+    // 0 = about, 1 = lyrics.
+    in-out property <int> tab: 0;
+    callback close();
+    callback show-settings();
+
+    background: #000000a0;
+    TouchArea { clicked => { root.close(); } }
+
+    panel := Rectangle {
+        width: Math.min(760px, root.width - 32px);
+        height: Math.min(560px, root.height - 32px);
+        border-radius: Theme.radius + 4px;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000a0;
+        clip: true;
+        TouchArea { }  // keep clicks inside from closing the panel
+
+        // A blurred-looking wash of the cover behind everything.
+        if root.has-cover: Image {
+            width: parent.width;
+            height: parent.height;
+            source: root.cover-image;
+            image-fit: cover;
+            opacity: 0.10;
+        }
+
+        HorizontalLayout {
+            padding: 22px;
+            spacing: 22px;
+
+            // Pictures.
+            VerticalLayout {
+                spacing: 14px;
+                alignment: start;
+                width: Math.min(240px, panel.width * 0.36);
+                Rectangle {
+                    height: self.width;
+                    border-radius: 12px;
+                    background: @linear-gradient(135deg, Theme.accent.with-alpha(0.19) 0%, Theme.accent-2.with-alpha(0.19) 100%);
+                    drop-shadow-blur: 24px;
+                    drop-shadow-color: #00000090;
+                    clip: true;
+                    if root.has-cover || root.has-artist-image: Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: root.has-cover ? root.cover-image : root.artist-image;
+                        image-fit: cover;
+                    }
+                    if !root.has-cover && !root.has-artist-image: Text {
+                        text: "♪";
+                        font-size: 72px;
+                        color: #ffffff50;
+                    }
+                }
+                // The artist, when the big picture is the album's.
+                if root.has-cover && root.has-artist-image: HorizontalLayout {
+                    spacing: 10px;
+                    Rectangle {
+                        width: 52px;
+                        height: 52px;
+                        border-radius: 26px;
+                        clip: true;
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: root.artist-image;
+                            image-fit: cover;
+                        }
+                    }
+                    Text {
+                        text: root.artist;
+                        vertical-alignment: center;
+                        color: Theme.text-dim;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+
+            // Text.
+            VerticalLayout {
+                spacing: 10px;
+                horizontal-stretch: 1;
+                HorizontalLayout {
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        Text {
+                            text: root.title;
+                            font-size: 22px;
+                            font-weight: 800;
+                            color: Theme.text;
+                            wrap: word-wrap;
+                        }
+                        if root.artist != "": Text {
+                            text: root.artist;
+                            font-size: 16px;
+                            color: Theme.accent;
+                            wrap: word-wrap;
+                        }
+                        if root.album != "": Text {
+                            text: root.album + (root.year != "" ? "  (" + root.year + ")" : "");
+                            color: Theme.text-dim;
+                            wrap: word-wrap;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        IconButton {
+                            icon: Icons.close;
+                            stroked: true;
+                            size: 32px;
+                            icon-size: 16px;
+                            clicked => { root.close(); }
+                        }
+                    }
+                }
+                Text {
+                    text: (root.track != "" ? "Track " + root.track + "   " : "")
+                        + (root.genre != "" ? root.genre + "   " : "")
+                        + root.audio-info;
+                    color: Theme.text-faint;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Tab { text: "About the artist"; active: root.tab == 0; clicked => { root.tab = 0; } }
+                    Tab { text: "Lyrics"; active: root.tab == 1; clicked => { root.tab = 1; } }
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 12px;
+                        spacing: 10px;
+                        alignment: start;
+                        Text {
+                            text: root.tab == 0
+                                ? (root.about != "" ? root.about
+                                    : root.online-info ? "Nothing found about this artist."
+                                    : "Turn on \"Look up pictures and artist info online\" in Settings to see a short summary from Wikipedia here.")
+                                : (root.lyrics != "" ? root.lyrics
+                                    : root.online-lyrics ? "No lyrics found for this song."
+                                    : "No lyrics found. Put a .lrc file next to the song, or turn on \"Look up lyrics online\" in Settings.");
+                            color: (root.tab == 0 ? root.about : root.lyrics) != "" ? Theme.text : Theme.text-dim;
+                            wrap: word-wrap;
+                            font-size: root.tab == 1 ? 15px : Theme.font-normal;
+                        }
+                        if root.tab == 0 && root.about-source != "": Text {
+                            text: "Source: " + root.about-source + " (CC BY-SA)";
+                            color: Theme.text-faint;
+                            font-size: 11px;
+                        }
+                    }
+                }
+                if (root.tab == 0 && !root.online-info) || (root.tab == 1 && !root.online-lyrics && root.lyrics == ""): HorizontalLayout {
+                    alignment: start;
+                    Tab { text: "Open Settings"; active: false; clicked => { root.show-settings(); } }
+                }
+            }
+        }
+    }
+}

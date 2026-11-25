@@ -1,0 +1,788 @@
+// Advanced navigation (navigation.rs): a jog wheel, a shuttle, steps of a
+// chosen size, fine speed control and an exact clock. The same panel sits
+// docked under the media player's control bar, or in a window of its own
+// that can be put beside the player.
+//
+// Every action goes out as `act(id, value)` (or `text(id, text)` for typed
+// input); navigation.rs handles them for both places.
+
+import { LineEdit } from "std-widgets.slint";
+import { ComboBox, CheckBox } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+import { NavState } from "types.slint";
+
+// A small rounded text button; `active` marks a chosen option.
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    in property <length> min-w: 0px;
+    callback clicked();
+
+    height: 26px;
+    min-width: Math.max(root.min-w, label.preferred-width + 18px);
+    border-radius: 13px;
+    background: !root.enabled ? #ffffff06
+        : root.active ? Theme.accent.with-alpha(0.22)
+        : touch.pressed ? #ffffff2a : touch.has-hover ? #ffffff1c : #ffffff0c;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.border;
+    animate background { duration: Theme.fast; }
+    label := Text {
+        text: root.text;
+        color: !root.enabled ? Theme.text-faint : root.active ? Theme.accent : Theme.text;
+        font-size: Theme.font-small;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A record-like wheel. It turns with the media (one turn = `turn-seconds`
+// of it); dragging it round scrubs, the mouse wheel nudges.
+export component JogWheel inherits Rectangle {
+    in property <float> position;
+    in property <float> turn-seconds: 2;
+    in property <bool> playing;
+    // Degrees turned since the last call, clockwise positive.
+    callback jog(float);
+    callback released();
+    // One mouse-wheel notch, in degrees.
+    callback nudge(float);
+
+    property <bool> dragging: false;
+    property <angle> last;
+    property <angle> drag-turn;
+    property <angle> turn: Math.mod(root.position / Math.max(0.001, root.turn-seconds), 1) * 360deg;
+    property <angle> shown: root.dragging ? root.drag-turn : root.turn;
+    property <length> d: Math.min(root.width, root.height);
+
+    width: 128px;
+    height: 128px;
+
+    // Ticks around the rim (they stay put; the disc turns inside them).
+    for i in 36: Rectangle {
+        property <angle> a: i * 10deg;
+        property <length> r: root.d / 2 - 3px;
+        property <length> s: Math.mod(i, 9) == 0 ? 4px : 2px;
+        x: root.width / 2 + self.r * Math.cos(self.a) - self.s / 2;
+        y: root.height / 2 + self.r * Math.sin(self.a) - self.s / 2;
+        width: self.s;
+        height: self.s;
+        border-radius: self.s / 2;
+        background: Math.mod(i, 9) == 0 ? Theme.accent : #ffffff40;
+    }
+
+    disc := Rectangle {
+        width: root.d - 16px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: @radial-gradient(circle, #1b2030 0%, #0c0f18 70%, #05060a 100%);
+        border-width: root.dragging ? 2px : 1px;
+        border-color: root.dragging ? Theme.accent : #ffffff18;
+        drop-shadow-blur: root.dragging ? 22px : 12px;
+        drop-shadow-color: root.dragging ? Theme.accent.with-alpha(0.45) : #00000080;
+        animate drop-shadow-blur, drop-shadow-color { duration: Theme.fast; }
+
+        for r in [0.9, 0.8, 0.7, 0.6]: Rectangle {
+            width: parent.width * r;
+            height: self.width;
+            border-radius: self.width / 2;
+            border-width: 1px;
+            border-color: #ffffff0e;
+        }
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            transform-rotation: root.shown;
+            // The marker on the rim, and a light streak, turning with the disc.
+            Rectangle {
+                x: parent.width / 2 - 2px;
+                y: 4px;
+                width: 4px;
+                height: parent.height * 0.22;
+                border-radius: 2px;
+                background: white;
+                opacity: 0.85;
+            }
+            Rectangle {
+                x: parent.width / 2;
+                y: 0;
+                width: parent.width * 0.5;
+                height: parent.height * 0.5;
+                background: @linear-gradient(135deg, #ffffff1c 0%, #ffffff00 60%);
+            }
+            Rectangle {
+                width: parent.width * 0.36;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: Theme.accent-gradient;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Theme.bg;
+                }
+                Rectangle {
+                    x: parent.width * 0.62;
+                    y: parent.height * 0.18;
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 3.5px;
+                    background: #ffffffa0;
+                }
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: root.dragging ? MouseCursor.grabbing : MouseCursor.grab;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.dragging = true;
+                root.drag-turn = root.turn;
+                root.last = Math.atan2((self.mouse-y - root.height / 2) / 1px, (self.mouse-x - root.width / 2) / 1px);
+            } else if (e.kind == PointerEventKind.up && root.dragging) {
+                root.dragging = false;
+                root.released();
+            }
+        }
+        moved => {
+            if (root.dragging) {
+                let dx = (self.mouse-x - root.width / 2) / 1px;
+                let dy = (self.mouse-y - root.height / 2) / 1px;
+                // Too near the middle, the angle jumps about.
+                if (dx * dx + dy * dy > 64) {
+                    let a = Math.atan2(dy, dx);
+                    let raw = (a - root.last) / 1deg;
+                    let delta = raw > 180 ? raw - 360 : (raw < -180 ? raw + 360 : raw);
+                    root.last = a;
+                    root.drag-turn += delta * 1deg;
+                    root.jog(delta);
+                }
+            }
+        }
+        scroll-event(e) => {
+            root.nudge(e.delta-y > 0 ? 15 : -15);
+            accept
+        }
+    }
+}
+
+// Spring-loaded shuttle: hold it off centre to play forwards or backwards,
+// faster the further out; it springs back when let go.
+export component ShuttleBar inherits Rectangle {
+    // -1..1, from Rust (J / K / L move it too).
+    in property <float> value;
+    in property <string> label;
+    callback moved(float);
+    callback released();
+
+    property <bool> dragging: false;
+    property <float> drag-v: 0;
+    property <float> shown: root.dragging ? root.drag-v : root.value;
+
+    height: 40px;
+    Text {
+        y: 0;
+        height: 16px;
+        text: root.label;
+        color: root.shown != 0 ? Theme.accent : Theme.text-dim;
+        font-size: Theme.font-small;
+        font-weight: 600;
+        horizontal-alignment: center;
+    }
+    track := Rectangle {
+        y: 24px;
+        height: 8px;
+        border-radius: 4px;
+        background: #ffffff12;
+        border-width: 1px;
+        border-color: Theme.border;
+        Rectangle {
+            x: root.shown >= 0 ? parent.width / 2 : parent.width / 2 * (1 + root.shown);
+            width: Math.abs(root.shown) * parent.width / 2;
+            border-radius: 4px;
+            background: Theme.accent-gradient;
+        }
+        Rectangle {
+            x: parent.width / 2 - 1px;
+            width: 2px;
+            background: #ffffff50;
+        }
+    }
+    Rectangle {
+        x: (root.shown + 1) / 2 * root.width - self.width / 2;
+        y: 19px;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: white;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: Theme.accent.with-alpha(0.6);
+    }
+    TouchArea {
+        mouse-cursor: MouseCursor.ew-resize;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.dragging = true;
+                root.drag-v = Math.clamp(self.mouse-x / root.width * 2 - 1, -1, 1);
+                root.moved(root.drag-v);
+            } else if (e.kind == PointerEventKind.up && root.dragging) {
+                root.dragging = false;
+                root.drag-v = 0;
+                root.released();
+            }
+        }
+        moved => {
+            if (root.dragging) {
+                root.drag-v = Math.clamp(self.mouse-x / root.width * 2 - 1, -1, 1);
+                root.moved(root.drag-v);
+            }
+        }
+    }
+}
+
+// Speed on a log scale, 0.1× .. 4×.
+component SpeedSlider inherits Rectangle {
+    in property <float> speed;
+    callback changed(float);
+    property <float> frac: Math.clamp(Math.log(Math.max(root.speed, 0.1) / 0.1, 40), 0, 1);
+    height: 20px;
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 4px;
+        border-radius: 2px;
+        background: #ffffff1e;
+        Rectangle {
+            x: 0;
+            width: parent.width * root.frac;
+            border-radius: 2px;
+            background: Theme.accent-gradient;
+        }
+        // Where 1× is.
+        Rectangle {
+            x: parent.width * Math.log(10, 40) - 1px;
+            width: 2px;
+            height: 10px;
+            y: -3px;
+            background: #ffffff60;
+        }
+    }
+    Rectangle {
+        x: root.width * root.frac - 6px;
+        y: (parent.height - 12px) / 2;
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: white;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        function at(x: length) -> float {
+            let f = Math.clamp(x / root.width, 0, 1);
+            let s = 0.1 * Math.pow(40, f);
+            // Snap to 1× near the mark.
+            return Math.abs(s - 1) < 0.04 ? 1 : Math.round(s * 100) / 100;
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.changed(touch.at(self.mouse-x));
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.changed(touch.at(self.mouse-x));
+            }
+        }
+        scroll-event(e) => {
+            root.changed(Math.clamp(Math.round((root.speed + (e.delta-y > 0 ? 0.05 : -0.05)) * 100) / 100, 0.05, 8));
+            accept
+        }
+    }
+}
+
+// The exact clock, frame and chapter.
+component ClockBlock inherits VerticalLayout {
+    in property <NavState> state;
+    in property <TextHorizontalAlignment> align: left;
+    spacing: 2px;
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: root.align == TextHorizontalAlignment.center ? LayoutAlignment.center : LayoutAlignment.start;
+        Text {
+            text: root.state.clock;
+            color: Theme.text;
+            font-size: 24px;
+            font-weight: 700;
+            font-family: "monospace";
+            vertical-alignment: bottom;
+        }
+        Text {
+            text: "/ " + root.state.total;
+            color: Theme.text-faint;
+            font-size: Theme.font-small;
+            font-family: "monospace";
+            vertical-alignment: bottom;
+        }
+    }
+    Text {
+        text: root.state.frame != "" ? root.state.frame : root.state.idle ? "Nothing playing" : "Audio: steps go by time";
+        color: Theme.text-dim;
+        font-size: Theme.font-small;
+        horizontal-alignment: root.align;
+        overflow: elide;
+    }
+    if root.state.chapter != "": Text {
+        text: root.state.chapter;
+        color: Theme.text-faint;
+        font-size: Theme.font-small;
+        horizontal-alignment: root.align;
+        overflow: elide;
+    }
+}
+
+// « ‹ [step size] › »
+component StepRow inherits HorizontalLayout {
+    in property <NavState> state;
+    in property <[string]> step-labels;
+    callback act(string, float);
+    spacing: 6px;
+    Chip { text: "«"; min-w: 30px; enabled: !root.state.idle; clicked => { root.act("step", -10); } }
+    Chip { text: "‹"; min-w: 30px; enabled: !root.state.idle; clicked => { root.act("step", -1); } }
+    ComboBox {
+        horizontal-stretch: 1;
+        min-width: 96px;
+        model: root.step-labels;
+        current-index: root.state.step-index;
+        selected => { root.act("step-index", self.current-index); }
+    }
+    Chip { text: "›"; min-w: 30px; enabled: !root.state.idle; clicked => { root.act("step", 1); } }
+    Chip { text: "»"; min-w: 30px; enabled: !root.state.idle; clicked => { root.act("step", 10); } }
+}
+
+// Go to a time, and the A / B marks.
+component GotoRow inherits HorizontalLayout {
+    in property <NavState> state;
+    callback act(string, float);
+    callback text(string, string);
+    spacing: 6px;
+    goto := LineEdit {
+        horizontal-stretch: 1;
+        min-width: 100px;
+        placeholder-text: "Go to 1:23.5 or f240";
+        accepted(t) => { root.text("goto", t); self.text = ""; }
+    }
+    Chip {
+        text: root.state.mark-a != "" ? "A " + root.state.mark-a : "Set A";
+        active: root.state.mark-a != "";
+        enabled: !root.state.idle;
+        clicked => { root.act("mark-a", 0); }
+    }
+    Chip {
+        text: root.state.mark-b != "" ? "B " + root.state.mark-b : "Set B";
+        active: root.state.mark-b != "";
+        enabled: !root.state.idle;
+        clicked => { root.act("mark-b", 0); }
+    }
+    if root.state.mark-a != "" || root.state.mark-b != "": Chip {
+        text: "✕";
+        min-w: 28px;
+        clicked => { root.act("mark-clear", 0); }
+    }
+}
+
+// Speed: − slider + and the value.
+component SpeedRow inherits HorizontalLayout {
+    in property <NavState> state;
+    callback act(string, float);
+    spacing: 8px;
+    Text {
+        text: "Speed";
+        color: Theme.text-dim;
+        font-size: Theme.font-small;
+        vertical-alignment: center;
+    }
+    Chip { text: "−"; min-w: 28px; clicked => { root.act("speed-nudge", -1); } }
+    SpeedSlider {
+        horizontal-stretch: 1;
+        min-width: 80px;
+        speed: root.state.speed;
+        changed(s) => { root.act("speed", s); }
+    }
+    Chip { text: "+"; min-w: 28px; clicked => { root.act("speed-nudge", 1); } }
+    Text {
+        text: Math.round(root.state.speed * 100) / 100 + "×";
+        min-width: 44px;
+        color: root.state.speed != 1 ? Theme.accent : Theme.text;
+        font-weight: 700;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+component PresetRow inherits HorizontalLayout {
+    in property <NavState> state;
+    callback act(string, float);
+    spacing: 5px;
+    for s in [0.25, 0.5, 1, 1.5, 2]: Chip {
+        text: s + "×";
+        horizontal-stretch: 1;
+        active: Math.abs(root.state.speed - s) < 0.001;
+        clicked => { root.act("speed", s); }
+    }
+    Chip {
+        text: "Keep pitch";
+        active: root.state.pitch;
+        clicked => { root.act("pitch", root.state.pitch ? 0 : 1); }
+    }
+}
+
+export component NavPanel inherits Rectangle {
+    in property <NavState> state;
+    in property <[string]> step-labels;
+    in property <[string]> turn-labels;
+    // Under the media player's control bar (else in its own window).
+    in property <bool> docked: false;
+    // The docked panel can't dock again; the main window may not be the
+    // media player (a skin), where it can't dock at all.
+    in property <bool> can-dock: true;
+    callback act(string, float);
+    callback text(string, string);
+
+    // Docked it is always one row; the window turns into a column when narrow.
+    property <bool> wide: root.docked || root.width >= 760px;
+
+    // Less used options, behind the gear.
+    options := PopupWindow {
+        x: root.width - self.width - 8px;
+        y: root.docked ? -self.height - 10px : 48px;
+        width: 300px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.surface-hi;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #000000a0;
+        }
+        VerticalLayout {
+            padding: 14px;
+            spacing: 8px;
+            Text {
+                text: "Navigation options";
+                color: Theme.text;
+                font-weight: 700;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: "One wheel turn";
+                    color: Theme.text-dim;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                ComboBox {
+                    width: 110px;
+                    model: root.turn-labels;
+                    current-index: root.state.turn-index;
+                    selected => { root.act("turn-index", self.current-index); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: "Custom step (ms)";
+                    color: Theme.text-dim;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                LineEdit {
+                    width: 110px;
+                    text: root.state.custom-step;
+                    placeholder-text: "e.g. 40";
+                    accepted(t) => { root.text("custom-step", t); }
+                }
+            }
+            CheckBox {
+                text: "Sound when turning the wheel forwards";
+                checked: root.state.jog-sound;
+                toggled => { root.act("jog-sound", self.checked ? 1 : 0); }
+            }
+            CheckBox {
+                text: "Sound on each step (while paused)";
+                checked: root.state.step-sound;
+                toggled => { root.act("step-sound", self.checked ? 1 : 0); }
+            }
+            Text {
+                text: "Keys: Space play/pause · ←/→ one step (Shift ×10) · Ctrl+←/→ one frame · J/K/L shuttle back/stop/forward · [ ] speed ±0.05";
+                color: Theme.text-faint;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+        }
+    }
+
+    // ---- wide: one row (docked under the control bar, or a wide window) ----
+    if root.wide: HorizontalLayout {
+        padding-top: 4px;
+        spacing: 16px;
+        JogWheel {
+            width: 128px;
+            height: 128px;
+            position: root.state.position;
+            turn-seconds: root.state.turn-seconds;
+            playing: !root.state.paused;
+            jog(d) => { root.act("jog", d); }
+            released => { root.act("jog-end", 0); }
+            nudge(d) => { root.act("nudge", d); }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            min-width: 240px;
+            spacing: 6px;
+            alignment: center;
+            ClockBlock { state: root.state; }
+            StepRow {
+                state: root.state;
+                step-labels: root.step-labels;
+                act(id, v) => { root.act(id, v); }
+            }
+            GotoRow {
+                state: root.state;
+                act(id, v) => { root.act(id, v); }
+                text(id, t) => { root.text(id, t); }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            min-width: 240px;
+            spacing: 6px;
+            alignment: center;
+            SpeedRow {
+                state: root.state;
+                act(id, v) => { root.act(id, v); }
+            }
+            PresetRow {
+                state: root.state;
+                act(id, v) => { root.act(id, v); }
+            }
+            ShuttleBar {
+                value: root.state.shuttle;
+                label: root.state.shuttle-label;
+                moved(v) => { root.act("shuttle", v); }
+                released => { root.act("shuttle-end", 0); }
+            }
+        }
+        VerticalLayout {
+            spacing: 2px;
+            alignment: start;
+            IconButton {
+                icon: Icons.close;
+                stroked: true;
+                size: 30px;
+                icon-size: 14px;
+                tooltip: "Turn advanced navigation off";
+                clicked => { root.act("close", 0); }
+            }
+            IconButton {
+                icon: Icons.settings;
+                stroked: true;
+                size: 30px;
+                icon-size: 16px;
+                clicked => { options.show(); }
+            }
+            if root.can-dock: IconButton {
+                // Docked: pop out into a window. In a window: dock.
+                icon: root.docked ? Icons.popout : Icons.dock;
+                stroked: true;
+                size: 30px;
+                icon-size: 16px;
+                clicked => { root.act("dock", root.docked ? 0 : 1); }
+            }
+        }
+    }
+
+    // ---- narrow: a column (the window beside the player) ----
+    if !root.wide: VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 4px;
+            Text {
+                text: "Advanced navigation";
+                color: Theme.text;
+                font-size: 16px;
+                font-weight: 800;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            IconButton {
+                icon: Icons.settings;
+                stroked: true;
+                size: 30px;
+                icon-size: 16px;
+                clicked => { options.show(); }
+            }
+            if root.can-dock: IconButton {
+                icon: root.docked ? Icons.popout : Icons.dock;
+                stroked: true;
+                size: 30px;
+                icon-size: 16px;
+                clicked => { root.act("dock", root.docked ? 0 : 1); }
+            }
+            IconButton {
+                icon: Icons.close;
+                stroked: true;
+                size: 30px;
+                icon-size: 14px;
+                clicked => { root.act("close", 0); }
+            }
+        }
+        HorizontalLayout {
+            alignment: center;
+            JogWheel {
+                width: 168px;
+                height: 168px;
+                position: root.state.position;
+                turn-seconds: root.state.turn-seconds;
+                playing: !root.state.paused;
+                jog(d) => { root.act("jog", d); }
+                released => { root.act("jog-end", 0); }
+                nudge(d) => { root.act("nudge", d); }
+            }
+        }
+        ClockBlock {
+            state: root.state;
+            align: center;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 8px;
+            Chip { text: "−1 frame"; enabled: root.state.has-video; clicked => { root.act("frame", -1); } }
+            Rectangle {
+                width: 46px;
+                height: 46px;
+                border-radius: 23px;
+                background: Theme.accent-gradient;
+                drop-shadow-blur: play-touch.has-hover ? 22px : 12px;
+                drop-shadow-color: Theme.accent.with-alpha(0.5);
+                Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    Path {
+                        width: parent.width;
+                        height: parent.height;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: root.state.paused ? Icons.play : Icons.pause;
+                        fill: #0b0d14;
+                    }
+                }
+                play-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.act("pause", 0); }
+                }
+            }
+            Chip { text: "+1 frame"; enabled: root.state.has-video; clicked => { root.act("frame", 1); } }
+        }
+        StepRow {
+            state: root.state;
+            step-labels: root.step-labels;
+            act(id, v) => { root.act(id, v); }
+        }
+        GotoRow {
+            state: root.state;
+            act(id, v) => { root.act(id, v); }
+            text(id, t) => { root.text(id, t); }
+        }
+        SpeedRow {
+            state: root.state;
+            act(id, v) => { root.act(id, v); }
+        }
+        PresetRow {
+            state: root.state;
+            act(id, v) => { root.act(id, v); }
+        }
+        ShuttleBar {
+            value: root.state.shuttle;
+            label: root.state.shuttle-label;
+            moved(v) => { root.act("shuttle", v); }
+            released => { root.act("shuttle-end", 0); }
+        }
+        Text {
+            text: "Space play/pause · ←/→ step · Ctrl+←/→ frame · J K L shuttle";
+            color: Theme.text-faint;
+            font-size: 11px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        Rectangle { vertical-stretch: 1; }
+    }
+}
+
+// The panel in a window of its own, to put beside the player.
+export component NavWindow inherits Window {
+    in property <NavState> state;
+    in property <[string]> step-labels;
+    in property <[string]> turn-labels;
+    in property <bool> can-dock: true;
+    callback act(string, float);
+    callback text(string, string);
+
+    title: "Advanced navigation · Super Media Player";
+    icon: @image-url("../../../packaging/linux/super-media-player.svg");
+    preferred-width: 400px;
+    preferred-height: 660px;
+    min-width: 330px;
+    min-height: 420px;
+    background: Theme.bg-2;
+    default-font-size: Theme.font-normal;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " ") { root.act("pause", 0); return accept; }
+            if (e.text == Key.RightArrow) {
+                root.act(e.modifiers.control ? "frame" : "step", e.modifiers.control ? 1 : e.modifiers.shift ? 10 : 1);
+                return accept;
+            }
+            if (e.text == Key.LeftArrow) {
+                root.act(e.modifiers.control ? "frame" : "step", e.modifiers.control ? -1 : e.modifiers.shift ? -10 : -1);
+                return accept;
+            }
+            if (e.text == "j") { root.act("shuttle-key", -1); return accept; }
+            if (e.text == "k") { root.act("shuttle-key", 0); return accept; }
+            if (e.text == "l") { root.act("shuttle-key", 1); return accept; }
+            if (e.text == "[") { root.act("speed-nudge", -1); return accept; }
+            if (e.text == "]") { root.act("speed-nudge", 1); return accept; }
+            if (e.text == "," ) { root.act("frame", -1); return accept; }
+            if (e.text == ".") { root.act("frame", 1); return accept; }
+            if (e.text == Key.Home) { root.act("home", 0); return accept; }
+            if (e.text == Key.Escape) { root.act("close", 0); return accept; }
+            reject
+        }
+        // Clicking empty space gives the keys back to the panel.
+        TouchArea {
+            clicked => { keys.focus(); }
+        }
+        NavPanel {
+            state: root.state;
+            step-labels: root.step-labels;
+            turn-labels: root.turn-labels;
+            can-dock: root.can-dock;
+            docked: false;
+            act(id, v) => { root.act(id, v); keys.focus(); }
+            text(id, t) => { root.text(id, t); keys.focus(); }
+        }
+    }
+}

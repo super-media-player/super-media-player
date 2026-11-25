@@ -1,0 +1,14 @@
+# The compact player in warm orange and red.
+name = Compact – Ember
+layout = compact
+author = Super Media Player
+
+bg = #0d0807
+bg-2 = #1a0f0c
+surface = #22140fd0
+surface-hi = #2e1b14e8
+text = #fbefe9
+text-dim = #c9a99b
+text-faint = #7d6258
+accent = #ff8a3d
+accent-2 = #ff3d6e

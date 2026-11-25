@@ -1,0 +1,120 @@
+import { Slider } from "std-widgets.slint";
+import { ComboBox, CheckBox } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+
+// The 10-band graphic equalizer, with presets. Changes are heard at once
+// and saved (main.rs).
+export component EqualizerPanel inherits Rectangle {
+    in property <[float]> gains;
+    in property <[string]> preset-names;
+    in-out property <bool> enabled;
+    in property <bool> bit-perfect;
+    callback set-band(int, float);
+    callback preset(int);
+    callback set-enabled(bool);
+    callback close();
+
+    property <[string]> labels: ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
+
+    background: #000000a0;
+    TouchArea { clicked => { root.close(); } }
+
+    panel := Rectangle {
+        width: Math.min(620px, root.width - 32px);
+        height: Math.min(400px, root.height - 32px);
+        border-radius: Theme.radius + 4px;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000a0;
+        TouchArea { }  // keep clicks inside from closing the panel
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 12px;
+                Text {
+                    text: "Equalizer";
+                    font-size: 20px;
+                    font-weight: 800;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                }
+                CheckBox {
+                    text: "On";
+                    checked <=> root.enabled;
+                    toggled => { root.set-enabled(self.checked); }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                Text {
+                    text: "Preset";
+                    color: Theme.text-dim;
+                    vertical-alignment: center;
+                }
+                ComboBox {
+                    width: 170px;
+                    model: root.preset-names;
+                    current-index: -1;
+                    selected => { root.preset(self.current-index); }
+                }
+                IconButton {
+                    icon: Icons.close;
+                    stroked: true;
+                    size: 32px;
+                    icon-size: 16px;
+                    clicked => { root.close(); }
+                }
+            }
+            if root.bit-perfect: Text {
+                text: "Bit-perfect output is on (Settings), so the equalizer is not heard.";
+                color: Theme.danger;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                vertical-stretch: 1;
+                spacing: 4px;
+                VerticalLayout {
+                    width: 34px;
+                    padding-top: 6px;
+                    padding-bottom: 28px;
+                    Text { text: "+12"; color: Theme.text-faint; font-size: 10px; horizontal-alignment: right; }
+                    Rectangle { vertical-stretch: 1; }
+                    Text { text: "0 dB"; color: Theme.text-faint; font-size: 10px; horizontal-alignment: right; }
+                    Rectangle { vertical-stretch: 1; }
+                    Text { text: "−12"; color: Theme.text-faint; font-size: 10px; horizontal-alignment: right; }
+                }
+                for g[i] in root.gains: VerticalLayout {
+                    spacing: 6px;
+                    horizontal-stretch: 1;
+                    Slider {
+                        orientation: vertical;
+                        minimum: -12;
+                        maximum: 12;
+                        // Boosts at the top (Slint's vertical slider has its maximum there).
+                        value: g;
+                        enabled: root.enabled;
+                        vertical-stretch: 1;
+                        changed(v) => { root.set-band(i, v); }
+                    }
+                    Text {
+                        text: root.labels[i];
+                        color: Theme.text-dim;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        text: (g > 0 ? "+" : "") + Math.round(g * 2) / 2;
+                        color: root.enabled ? Theme.accent : Theme.text-faint;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

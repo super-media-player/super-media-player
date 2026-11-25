@@ -1,0 +1,37 @@
+# The classic deck with a warm bronze body and an amber display.
+name = Classic deck – Amber
+layout = classic
+author = Super Media Player
+
+outside = #120f0b
+body-1 = #4a4338
+body-2 = #332d25
+body-3 = #26211b
+body-edge = #6a604f
+lcd = #0d0700
+lcd-edge = #4a3a20
+green = #ffb000
+green-dim = #9c6a00
+label = #d9c7a6
+alert = #ff5a3a
+ridge-light = #7a705e
+ridge-dark = #221e18
+button-1 = #6f6656
+button-2 = #4a4337
+button-3 = #3a342b
+button-pressed-1 = #2c271f
+button-pressed-2 = #403a30
+button-edge = #8a8070
+button-edge-pressed = #1b1813
+button-ink = #ece2cf
+toggle-1 = #5d5547
+toggle-2 = #3c362d
+toggle-pressed = #28231c
+toggle-edge = #776d5c
+led-off = #3a2a08
+playlist-current = #5a3a00
+playlist-hover = #1a1206
+meter-low = #c97a00
+meter-mid = #ffb000
+meter-high = #ffe08a
+groove = #0d0b08

@@ -1,0 +1,310 @@
+import { LineEdit, ScrollView } from "std-widgets.slint";
+import { Button } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+
+// A shell command to copy: selectable text plus a Copy button.
+export component CommandBox inherits Rectangle {
+    in property <string> command;
+    property <bool> copied: false;
+    border-radius: 6px;
+    background: #0b0e18;
+    border-width: 1px;
+    border-color: Theme.border;
+    height: cmd.preferred-height + 14px;
+    cmd := TextInput {
+        x: 8px;
+        y: 7px;
+        width: parent.width - 16px - copy.width - 8px;
+        text: root.command;
+        read-only: true;
+        single-line: false;
+        wrap: word-wrap;
+        color: #cfe3ff;
+        font-family: "DejaVu Sans Mono";
+        font-size: 11px;
+    }
+    copy := Rectangle {
+        x: parent.width - self.width - 6px;
+        y: 6px;
+        width: copy-label.preferred-width + 16px;
+        height: 22px;
+        border-radius: 4px;
+        background: copy-touch.pressed ? #2c3550 : copy-touch.has-hover ? #252d45 : #1c2236;
+        border-width: 1px;
+        border-color: Theme.border;
+        copy-label := Text {
+            text: root.copied ? "Copied ✓" : "Copy";
+            color: Theme.text;
+            font-size: 11px;
+        }
+        copy-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                cmd.select-all();
+                cmd.copy();
+                cmd.clear-selection();
+                root.copied = true;
+            }
+        }
+    }
+}
+
+component Heading inherits Text {
+    color: Theme.accent;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+component Para inherits Text {
+    color: Theme.text-dim;
+    font-size: 12px;
+    wrap: word-wrap;
+}
+
+// One numbered step: a number badge, a title, and whatever goes with it.
+component Step inherits HorizontalLayout {
+    in property <int> number;
+    in property <string> title;
+    in property <bool> done: false;
+    spacing: 12px;
+    VerticalLayout {
+        alignment: start;
+        Rectangle {
+            width: 24px;
+            height: 24px;
+            border-radius: 12px;
+            background: root.done ? #2f9e5a : Theme.accent;
+            Text {
+                text: root.done ? "✓" : root.number;
+                color: #ffffff;
+                font-weight: 800;
+                font-size: 12px;
+            }
+        }
+    }
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 6px;
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-weight: 700;
+            wrap: word-wrap;
+        }
+        @children
+    }
+}
+
+// One troubleshooting entry: what you see, and what to do.
+component Problem inherits VerticalLayout {
+    in property <string> symptom;
+    in property <string> fix;
+    spacing: 4px;
+    Text {
+        text: "“" + root.symptom + "”";
+        color: Theme.text;
+        font-size: 12px;
+        font-weight: 600;
+        wrap: word-wrap;
+    }
+    Para { text: root.fix; }
+    @children
+}
+
+// Tools → MakeMKV: why it's needed, how to install it and enter its free
+// key, step by step, and what to do when something goes wrong (ripper.rs
+// does the work).
+export component MakeMkvPanel inherits Rectangle {
+    // From Rust: "MakeMKV (Flatpak) 2.0.0 is installed and registered…"
+    in property <string> status;
+    in property <bool> ready;
+    in property <bool> installed;
+    in property <bool> busy;
+    in property <string> install-command;
+    in property <string> update-command;
+    callback install();
+    callback open-key-page();
+    callback register(string);
+    callback rip();
+    callback refresh();
+    callback close();
+
+    background: #000000a0;
+    TouchArea { clicked => { root.close(); } }
+
+    Rectangle {
+        width: Math.min(640px, root.width - 24px);
+        height: Math.min(720px, root.height - 24px);
+        border-radius: Theme.radius + 4px;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000a0;
+        TouchArea { }  // keep clicks inside from closing the panel
+
+        VerticalLayout {
+            padding: 18px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 10px;
+                Text {
+                    text: "MakeMKV: discs this player can't read";
+                    font-size: 18px;
+                    font-weight: 800;
+                    color: Theme.text;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+                IconButton {
+                    icon: Icons.close;
+                    stroked: true;
+                    size: 32px;
+                    icon-size: 16px;
+                    clicked => { root.close(); }
+                }
+            }
+            // Status.
+            Rectangle {
+                border-radius: 8px;
+                background: root.ready ? #2f9e5a26 : #ffb84a1c;
+                border-width: 1px;
+                border-color: root.ready ? #4ad97a70 : #ffb84a55;
+                height: status-text.preferred-height + 16px;
+                status-text := Text {
+                    x: 12px;
+                    width: parent.width - 24px - 80px;
+                    text: root.status == "" ? "Checking MakeMKV…" : root.status;
+                    color: Theme.text;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+                Rectangle {
+                    x: parent.width - self.width - 8px;
+                    width: 70px;
+                    height: 24px;
+                    border-radius: 12px;
+                    background: refresh-touch.has-hover ? #ffffff26 : #ffffff14;
+                    Text { text: "Check again"; color: Theme.text; font-size: 10px; }
+                    refresh-touch := TouchArea { mouse-cursor: pointer; clicked => { root.refresh(); } }
+                }
+            }
+
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    padding-right: 14px;
+                    spacing: 14px;
+                    alignment: start;
+
+                    Heading { text: "WHY MAKEMKV?"; }
+                    Para {
+                        text: "This player plays DVDs and ordinary Blu-rays by itself. Ultra HD (4K) Blu-rays are different: most drives refuse to hand them to any program, and only MakeMKV knows how to unlock them on supported drives. So for those discs, the player asks MakeMKV to make a temporary copy of the movie in your Videos folder, then plays the copy and deletes it afterwards. MakeMKV is free to use while it is in beta, but it needs a free key that changes every month or two.";
+                    }
+
+                    Heading { text: "STEP BY STEP"; }
+                    Step {
+                        number: 1;
+                        title: "Install MakeMKV";
+                        done: root.installed;
+                        Para {
+                            text: root.installed
+                                ? "Done: MakeMKV is installed."
+                                : "Press the button: it installs MakeMKV from Flathub for your user, with no password. It downloads a few hundred MB, so it takes a few minutes.";
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            Button {
+                                text: root.installed ? "Reinstall / update MakeMKV" : "Install MakeMKV";
+                                enabled: !root.busy;
+                                clicked => { root.install(); }
+                            }
+                        }
+                        Para { text: "Or, in a terminal:"; font-size: 11px; }
+                        CommandBox { command: root.install-command; }
+                    }
+                    Step {
+                        number: 2;
+                        title: "Get the free key";
+                        done: root.ready;
+                        Para {
+                            text: "Press the button to open MakeMKV's page \"MakeMKV is free while in beta\". Under \"The current beta key is\", select the whole long code that starts with T- (about 70 letters and digits) and copy it (Ctrl+C).";
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            Button {
+                                text: "Open the key page";
+                                clicked => { root.open-key-page(); }
+                            }
+                        }
+                    }
+                    Step {
+                        number: 3;
+                        title: "Paste the key here";
+                        done: root.ready;
+                        key-edit := LineEdit {
+                            placeholder-text: "T-…";
+                            accepted(text) => {
+                                if (text != "") { root.register(text); }
+                            }
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            Button {
+                                text: "Register";
+                                enabled: !root.busy && key-edit.text != "";
+                                clicked => { root.register(key-edit.text); }
+                            }
+                        }
+                    }
+                    Step {
+                        number: 4;
+                        title: "Rip & play the disc";
+                        Para {
+                            text: "Put the disc in the drive and press the button (or use File → Play disc → Rip & play with MakeMKV). The player shows the movie's length and size, copies it with a progress bar (an Ultra HD movie takes 20 to 60 minutes), then plays it. The copy is temporary: it is deleted when playback ends, when you play something else, or when you close the player.";
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            Button {
+                                text: "Rip & play now";
+                                enabled: !root.busy;
+                                clicked => { root.rip(); }
+                            }
+                        }
+                    }
+
+                    Heading { text: "IF SOMETHING GOES WRONG"; }
+                    Problem {
+                        symptom: "Key not found or invalid";
+                        fix: "Copy the key again: it must be the whole code, starting with T-, with no spaces. If it still fails, your MakeMKV is probably outdated (an old version rejects new keys): update it (button in step 1, or the command below), then register again.";
+                        CommandBox { command: root.update-command; }
+                    }
+                    Problem {
+                        symptom: "This application version is too old";
+                        fix: "MakeMKV versions expire. Update it (step 1's button, or the command above). The MakeMKV snap from the Ubuntu store is often behind: use the Flathub one this panel installs.";
+                    }
+                    Problem {
+                        symptom: "MakeMKV needs its registration key (again)";
+                        fix: "The free key changes every month or two. Open the key page (step 2), copy the new key and register it.";
+                    }
+                    Problem {
+                        symptom: "MakeMKV sees no disc in the drive";
+                        fix: "Check the disc is label side up and clean, and the tray is fully closed. Try an ordinary Blu-ray: if that works, your drive can't read this kind of disc. Ultra HD discs need a \"UHD-friendly\" drive: Tools → System check tells you whether yours is one and what to do.";
+                    }
+                    Problem {
+                        symptom: "Not enough space";
+                        fix: "An Ultra HD movie needs 50 to 100 GB. Free some space in your Videos folder (the temporary copy is made there).";
+                    }
+                    Problem {
+                        symptom: "Something else";
+                        fix: "Run Tools → System check: it looks at MakeMKV, your drives and the disc, and suggests fixes. Starting the player from a terminal (scripts/dev-run.sh) shows MakeMKV's own messages.";
+                    }
+                }
+            }
+        }
+    }
+}

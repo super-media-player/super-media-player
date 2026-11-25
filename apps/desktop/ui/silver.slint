@@ -1,0 +1,859 @@
+import { Icons, Icon } from "icons.slint";
+import { Fmt } from "controls.slint";
+import { PlaylistItem } from "types.slint";
+import { PlaylistList } from "playlist.slint";
+import { MiniBars, Marquee, Holed, GrooveSlider, Knob } from "skin-parts.slint";
+
+// Colours of the silver deck (MMD3-style): bright chrome, a pale steel-blue
+// glass screen with white text, dark transport wheel. Every colour here can
+// be changed by a skin file (skins.rs); gradients are built from the
+// numbered stop colours, so a skin only deals in colours.
+export global Silver {
+    in-out property <color> outside: #1b1d22;
+    in-out property <color> case-1: #f6f7f9;
+    in-out property <color> case-2: #e1e5e9;
+    in-out property <color> case-3: #cfd4da;
+    in-out property <color> case-4: #e3e6ea;
+    out property <brush> case: @linear-gradient(180deg, Silver.case-1 0%, Silver.case-2 38%, Silver.case-3 72%, Silver.case-4 100%);
+    in-out property <color> case-edge: #7f8690;
+    in-out property <color> bezel-1: #fdfdfe;
+    in-out property <color> bezel-2: #e3e7eb;
+    in-out property <color> bezel-3: #c4cad1;
+    out property <brush> bezel: @linear-gradient(180deg, Silver.bezel-1 0%, Silver.bezel-2 45%, Silver.bezel-3 100%);
+    in-out property <color> bezel-edge: #8a919a;
+    in-out property <color> chrome-1: #ffffff;
+    in-out property <color> chrome-2: #e7eaee;
+    in-out property <color> chrome-3: #b7bec6;
+    out property <brush> chrome: @radial-gradient(circle, Silver.chrome-1 0%, Silver.chrome-2 50%, Silver.chrome-3 100%);
+    in-out property <color> chrome-pressed-1: #c9cfd6;
+    in-out property <color> chrome-pressed-2: #dde1e6;
+    in-out property <color> chrome-pressed-3: #aeb5bd;
+    out property <brush> chrome-pressed: @radial-gradient(circle, Silver.chrome-pressed-1 0%, Silver.chrome-pressed-2 60%, Silver.chrome-pressed-3 100%);
+    in-out property <color> chrome-edge: #78808a;
+    in-out property <color> glass-1: #bcc8d5;
+    in-out property <color> glass-2: #9dacbd;
+    in-out property <color> glass-3: #7e8fa3;
+    out property <brush> glass: @linear-gradient(180deg, Silver.glass-1 0%, Silver.glass-2 42%, Silver.glass-3 100%);
+    in-out property <color> glass-edge: #6c7887;
+    // Glare, watermark and crosshairs drawn over the glass.
+    in-out property <color> glass-mark: #ffffff;
+    in-out property <color> text: #ffffff;
+    in-out property <color> text-dim: #f2f6fae0;
+    in-out property <color> text-off: #ffffff60;
+    in-out property <color> text-alert: #ffd0d0;
+    in-out property <color> shadow: #3c4a5c70;
+    // Icons and letters on the chrome, and when hovered.
+    in-out property <color> ink: #3a414b;
+    in-out property <color> ink-hover: #10151c;
+    in-out property <color> engraved: #5a616b;
+    in-out property <color> grille: #9aa1aa;
+    in-out property <color> led: #4fb3ff;
+    in-out property <color> led-glow: #c9ecff;
+    in-out property <color> led-edge: #2f86cc;
+    in-out property <color> led-off: #aab2bb;
+    in-out property <color> led-off-edge: #8b939d;
+    in-out property <color> wheel-1: #6d757f;
+    in-out property <color> wheel-2: #4c535c;
+    in-out property <color> wheel-3: #3c4249;
+    out property <brush> wheel: @radial-gradient(circle, Silver.wheel-1 0%, Silver.wheel-2 70%, Silver.wheel-3 100%);
+    in-out property <color> wheel-edge: #2e3338;
+    in-out property <color> wheel-cross: #9aa3ad;
+    in-out property <color> wheel-ink: #e6ebf0;
+    in-out property <color> wheel-ink-hover: #ffffff;
+    // Rings around the pad, the wheel and the volume knob's well.
+    in-out property <color> ring: #959da7;
+    in-out property <color> well-1: #8d959f;
+    in-out property <color> well-2: #c3c9d0;
+    in-out property <color> well-3: #eef0f3;
+    in-out property <color> well-edge: #79818b;
+    // Faces of the knobs (treble, bass, volume).
+    in-out property <color> knob-1: #ffffff;
+    in-out property <color> knob-2: #d9dee5;
+    in-out property <color> knob-3: #9aa3ad;
+    out property <brush> knob: @radial-gradient(circle, Silver.knob-1 0%, Silver.knob-2 45%, Silver.knob-3 100%);
+    // Seek bar, knob marks.
+    in-out property <color> groove: #8a929c;
+    in-out property <color> groove-edge: #6f7781;
+    in-out property <color> accent: #3a8fd6;
+    in-out property <color> accent-2: #9fd6ff;
+    // Ticker band, playlist drawer.
+    in-out property <color> ticker: #3d4c5e30;
+    in-out property <color> playlist-1: #8797aa;
+    in-out property <color> playlist-2: #6f8095;
+    // Logo and maker's mark.
+    in-out property <color> logo: #353c46;
+    in-out property <color> mark: #4a515b;
+    in-out property <string> mono: "DejaVu Sans Mono";
+}
+
+// A round chrome button with an icon or a short label; `on` lights its rim.
+component Chrome inherits Rectangle {
+    in property <string> icon;
+    in property <string> glyph;
+    in property <bool> stroked: false;
+    in property <bool> on: false;
+    in property <length> size: 24px;
+    in property <float> icon-scale: 0.5;
+    callback clicked();
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: touch.pressed ? Silver.chrome-pressed : Silver.chrome;
+    border-width: 1px;
+    border-color: root.on ? Silver.led : Silver.chrome-edge;
+    drop-shadow-blur: root.on ? 5px : 2px;
+    drop-shadow-offset-y: root.on ? 0px : 1px;
+    drop-shadow-color: root.on ? Silver.led : #00000055;
+    if root.icon != "": Icon {
+        width: root.size * root.icon-scale;
+        height: root.size * root.icon-scale;
+        commands: root.icon;
+        stroked: root.stroked;
+        color: touch.has-hover ? Silver.ink-hover : Silver.ink;
+    }
+    if root.glyph != "": Text {
+        text: root.glyph;
+        color: touch.has-hover ? Silver.ink-hover : Silver.ink;
+        font-size: root.size * 0.42;
+        font-weight: 800;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A small square light beside a button.
+component Led inherits Rectangle {
+    in property <bool> on;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    background: root.on ? @radial-gradient(circle, Silver.led-glow 0%, Silver.led 100%) : Silver.led-off;
+    border-width: 1px;
+    border-color: root.on ? Silver.led-edge : Silver.led-off-edge;
+    drop-shadow-blur: root.on ? 4px : 0px;
+    drop-shadow-color: Silver.led;
+}
+
+// Engraved caption on the chrome.
+component Caption inherits Text {
+    color: Silver.engraved;
+    font-size: 7px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+// White text on the glass, with a soft drop shadow so it reads on the
+// pale screen.
+component GlassText inherits Rectangle {
+    in property <string> text;
+    in property <length> font-size: 9px;
+    in property <int> font-weight: 700;
+    in property <string> font-family: Silver.mono;
+    in property <color> ink: Silver.text;
+    in property <TextHorizontalAlignment> align: left;
+    height: label.preferred-height;
+    Text {
+        x: 1px;
+        y: 1px;
+        width: parent.width;
+        text: root.text;
+        color: Silver.shadow;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        font-family: root.font-family;
+        horizontal-alignment: root.align;
+        overflow: elide;
+    }
+    label := Text {
+        width: parent.width;
+        text: root.text;
+        color: root.ink;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        font-family: root.font-family;
+        horizontal-alignment: root.align;
+        overflow: elide;
+    }
+}
+
+// A filled outline with an optional rectangular hole, where mpv draws
+// underneath. Coordinates are the view's own, in pixels.
+component Shape inherits Path {
+    in property <string> outline;
+    in property <bool> open;
+    in property <length> hole-x;
+    in property <length> hole-y;
+    in property <length> hole-width;
+    in property <length> hole-height;
+    in property <length> area-width;
+    in property <length> area-height;
+    x: 0;
+    y: 0;
+    width: root.area-width;
+    height: root.area-height;
+    viewbox-width: root.area-width / 1px;
+    viewbox-height: root.area-height / 1px;
+    fit: fill;
+    fill-rule: evenodd;
+    commands: root.outline + (root.open
+        ? " M " + root.hole-x / 1px + " " + root.hole-y / 1px
+          + " L " + (root.hole-x + root.hole-width) / 1px + " " + root.hole-y / 1px
+          + " L " + (root.hole-x + root.hole-width) / 1px + " " + (root.hole-y + root.hole-height) / 1px
+          + " L " + root.hole-x / 1px + " " + (root.hole-y + root.hole-height) / 1px + " Z"
+        : "");
+}
+
+// One quarter of the transport wheel.
+component WheelKey inherits Rectangle {
+    in property <string> icon;
+    callback clicked();
+    Icon {
+        width: 15px;
+        height: 15px;
+        commands: root.icon;
+        color: touch.pressed ? Silver.accent-2 : touch.has-hover ? Silver.wheel-ink-hover : Silver.wheel-ink;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A small arrow on the playlist pad.
+component PadArrow inherits Rectangle {
+    // 0 up, 1 right, 2 down, 3 left
+    in property <int> direction;
+    callback clicked();
+    width: 16px;
+    height: 16px;
+    Path {
+        width: 8px;
+        height: 8px;
+        fill: touch.pressed ? Silver.led : touch.has-hover ? Silver.ink-hover : Silver.ink;
+        commands: root.direction == 0 ? "M 4 0 L 8 7 L 0 7 Z"
+            : root.direction == 1 ? "M 8 4 L 1 8 L 1 0 Z"
+            : root.direction == 2 ? "M 4 8 L 0 1 L 8 1 Z"
+            : "M 0 4 L 7 0 L 7 8 Z";
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The silver deck, after MMD3: a chrome case with a pale glass screen in a
+// raised bezel (logo badge in its top edge), a round playlist pad and a
+// round transport wheel biting into the screen's lower corners, treble,
+// bass and a big volume knob between them, round buttons down the left,
+// window buttons top right, and a drawer tab on the right side. Fixed size;
+// the playlist hangs underneath.
+export component SilverView inherits Rectangle {
+    in property <bool> active: true;
+    in property <bool> idle;
+    in property <bool> paused;
+    in property <bool> has-video;
+    in property <bool> visual-active;
+    // Live spectrum for the mini bars (meter.rs).
+    in property <[float]> levels;
+    in property <float> position;
+    in property <float> duration;
+    in property <float> volume;
+    in property <bool> muted;
+    in property <float> speed: 1;
+    // Tone, -12..12 dB.
+    in property <float> bass;
+    in property <float> treble;
+    in property <string> media-title;
+    in property <string> media-subtitle;
+    in property <string> audio-info;
+    in property <string> tech-info;
+    in property <bool> shuffle;
+    in property <int> repeat-mode;
+    in property <[PlaylistItem]> playlist;
+    in-out property <bool> playlist-open;
+
+    out property <length> vis-x: vis-box.x;
+    out property <length> vis-y: vis-box.y;
+    out property <length> vis-width: vis-box.width;
+    out property <length> vis-height: vis-box.height;
+
+    callback toggle-pause();
+    callback stop();
+    callback next();
+    callback prev();
+    callback seek(float);
+    callback scrub(float);
+    callback seek-relative(float);
+    callback set-volume(float);
+    callback set-speed(float);
+    callback set-bass(float);
+    callback set-treble(float);
+    callback toggle-mute();
+    callback toggle-shuffle();
+    callback cycle-repeat();
+    callback cycle-visual();
+    callback open-files();
+    callback open-settings();
+    callback play-index(int);
+    callback remove-index(int);
+    callback expand();
+    // Window chrome: the skin is the whole window (no title bar).
+    callback show-menu(Point);
+    callback minimize();
+    callback close();
+    // Resize the window from an edge (1: bottom), for the playlist drawer.
+    callback start-resize(int);
+
+    property <bool> drawn-under: root.visual-active || root.has-video;
+    property <length> main-height: 340px;
+
+    // ---- case ----
+    Holed {
+        width: root.width;
+        height: root.height;
+        fill: Silver.outside;
+        open: root.drawn-under;
+        hole-x: root.vis-x; hole-y: root.vis-y; hole-width: root.vis-width; hole-height: root.vis-height;
+    }
+    case := Holed {
+        x: 4px;
+        y: 4px;
+        width: root.width - 8px;
+        height: root.main-height - 8px;
+        fill: Silver.case;
+        radius: 18px;
+        stroke-width: 1px;
+        stroke: Silver.case-edge;
+        open: root.drawn-under;
+        hole-x: root.vis-x - self.x; hole-y: root.vis-y - self.y;
+        hole-width: root.vis-width; hole-height: root.vis-height;
+    }
+    // Drag the case to move the window.
+    WindowMoveArea {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.main-height;
+    }
+    // Speaker grille, top left.
+    for i in 18: Rectangle {
+        x: 38px + Math.mod(i, 6) * 5px;
+        y: 14px + Math.floor(i / 6) * 6px;
+        width: 3px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: Silver.grille;
+    }
+
+    // ---- bezel and glass ----
+    Shape {
+        area-width: root.width;
+        area-height: root.height;
+        outline: "M 106 8 L 507 8 A 34 34 0 0 1 541 42 L 541 198 A 34 34 0 0 1 507 232 L 106 232 A 34 34 0 0 1 72 198 L 72 42 A 34 34 0 0 1 106 8 Z";
+        fill: Silver.bezel;
+        stroke: Silver.bezel-edge;
+        stroke-width: 1px;
+        open: root.drawn-under;
+        hole-x: root.vis-x; hole-y: root.vis-y; hole-width: root.vis-width; hole-height: root.vis-height;
+    }
+    Shape {
+        area-width: root.width;
+        area-height: root.height;
+        // Slightly wider at the top, with a dip under the logo badge.
+        outline: "M 92 25 L 200 25 Q 207 25 211 30 L 216 35 Q 220 40 227 40 L 359 40 Q 366 40 370 35 L 375 30 Q 379 25 386 25 L 494 25 Q 504 25 503 35 L 497 187 Q 496 198 485 198 L 113 198 Q 102 198 101 187 L 83 35 Q 82 25 92 25 Z";
+        fill: Silver.glass;
+        stroke: Silver.glass-edge;
+        stroke-width: 1.5px;
+        open: root.drawn-under;
+        hole-x: root.vis-x; hole-y: root.vis-y; hole-width: root.vis-width; hole-height: root.vis-height;
+    }
+    // Glare across the top of the glass.
+    if !root.drawn-under: Path {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
+        fit: fill;
+        fill: @linear-gradient(180deg, Silver.glass-mark.transparentize(69%) 0%, Silver.glass-mark.transparentize(100%) 100%);
+        commands: "M 93 28 L 205 28 L 214 38 Q 219 43 227 43 L 359 43 Q 367 43 372 38 L 381 28 L 493 28 L 490 70 L 96 70 Z";
+    }
+
+    // Watermark ring behind the spectrum, and the crosshairs either side.
+    if !root.drawn-under: Rectangle {
+        x: 226px;
+        y: 48px;
+        width: 100px;
+        height: 100px;
+        border-radius: 50px;
+        border-width: 10px;
+        border-color: Silver.glass-mark.transparentize(89%);
+        Rectangle {
+            width: 44px;
+            height: 44px;
+            border-radius: 22px;
+            border-width: 6px;
+            border-color: Silver.glass-mark.transparentize(91%);
+        }
+    }
+    for cx in [187px, 365px]: Rectangle {
+        x: cx - 6px;
+        y: 90px;
+        width: 12px;
+        height: 12px;
+        Rectangle { x: 5px; width: 1.5px; background: Silver.glass-mark.transparentize(56%); }
+        Rectangle { y: 5px; height: 1.5px; background: Silver.glass-mark.transparentize(56%); }
+    }
+
+    // Status words, left of the glass.
+    for row[i] in [
+        { label: root.idle ? "STOP" : root.paused ? "PAUSE" : "PLAY", on: !root.idle },
+        { label: "SHUFFLE", on: root.shuffle },
+        { label: root.repeat-mode == 2 ? "REPEAT 1" : "REPEAT", on: root.repeat-mode > 0 },
+    ]: Rectangle {
+        x: 98px + i * 3px;
+        y: 62px + i * 34px;
+        width: 64px;
+        height: 16px;
+        GlassText {
+            y: 0;
+            width: parent.width;
+            text: row.label;
+            font-size: 8px;
+            ink: row.on ? Silver.text : Silver.text-off;
+        }
+        Rectangle {
+            x: 0;
+            y: 13px;
+            width: parent.width - 2px;
+            height: 1px;
+            background: Silver.glass-mark.transparentize(67%);
+        }
+    }
+
+    // Spectrum (or mpv's visualizer / video) in the middle of the glass.
+    vis-box := Rectangle {
+        x: 200px;
+        y: 52px;
+        width: 152px;
+        height: 92px;
+        background: transparent;
+        if !root.drawn-under: MiniBars {
+            playing: root.active && !root.paused && !root.idle;
+            levels: root.levels;
+            count: 20;
+            gap: 2px;
+            bar-brush: @linear-gradient(0deg, Silver.text.transparentize(56%) 0%, Silver.text.transparentize(9%) 100%);
+        }
+        TouchArea {
+            double-clicked => { root.expand(); }
+        }
+    }
+
+    // Right of the glass: status, volume, clock, stream info.
+    GlassText {
+        x: 390px;
+        y: 50px;
+        width: 100px;
+        text: root.idle ? "STOPPED" : root.paused ? "PAUSED" : "PLAYING";
+        font-size: 8px;
+    }
+    GlassText {
+        x: 390px;
+        y: 64px;
+        width: 100px;
+        text: "VOLUME " + (root.muted ? "MUTE" : Math.round(root.volume));
+        font-size: 8px;
+        ink: root.muted ? Silver.text-alert : Silver.text;
+    }
+    GlassText {
+        x: 388px;
+        y: 78px;
+        width: 104px;
+        text: Fmt.time(root.position);
+        font-size: 30px;
+        font-weight: 400;
+    }
+    GlassText {
+        x: 390px;
+        y: 120px;
+        width: 104px;
+        text: root.duration > 0 ? "TOTAL " + Fmt.time(root.duration) : "";
+        font-size: 8px;
+        ink: Silver.text-dim;
+    }
+    GlassText {
+        x: 390px;
+        y: 133px;
+        width: 102px;
+        text: root.has-video ? root.tech-info : root.audio-info;
+        font-size: 7px;
+        font-weight: 600;
+        ink: Silver.text-dim;
+    }
+
+    // Ticker band along the bottom of the glass.
+    Rectangle {
+        x: 200px;
+        y: 158px;
+        width: 208px;
+        height: 26px;
+        border-radius: 4px;
+        background: Silver.ticker;
+        clip: true;
+        Marquee {
+            x: 8px;
+            width: parent.width - 16px;
+            active: root.active;
+            text: root.idle ? "SUPER MEDIA PLAYER  ·  OPEN SOMETHING TO PLAY"
+                : (root.media-subtitle != "" ? root.media-title + "  ·  " + root.media-subtitle : root.media-title);
+            text-color: Silver.text;
+            font-size: 15px;
+            font-weight: 700;
+            font-family: Silver.mono;
+        }
+    }
+
+    // Seek bar on the bezel, under the glass.
+    GrooveSlider {
+        x: 206px;
+        y: 206px;
+        width: 196px;
+        enabled: root.duration > 0;
+        value: root.duration > 0 ? root.position / root.duration : 0;
+        groove: Silver.groove;
+        groove-border: Silver.groove-edge;
+        fill: @linear-gradient(90deg, Silver.accent 0%, Silver.accent-2 100%);
+        groove-height: 4px;
+        thumb: Silver.chrome;
+        thumb-border: Silver.chrome-edge;
+        thumb-width: 18px;
+        thumb-height: 10px;
+        thumb-radius: 5px;
+        dragged(f) => { root.scrub(f * root.duration); }
+        released(f) => { root.seek(f * root.duration); }
+    }
+
+    // Logo badge in the top edge.
+    Rectangle {
+        x: 216px;
+        y: 4px;
+        width: 154px;
+        height: 30px;
+        border-radius: 8px;
+        background: Silver.bezel;
+        border-width: 1px;
+        border-color: Silver.bezel-edge;
+        drop-shadow-blur: 3px;
+        drop-shadow-offset-y: 1px;
+        drop-shadow-color: #00000040;
+        HorizontalLayout {
+            alignment: center;
+            spacing: 5px;
+            Text {
+                text: "SMP";
+                color: Silver.logo;
+                font-size: 18px;
+                font-weight: 900;
+                font-italic: true;
+                vertical-alignment: center;
+            }
+            Text {
+                text: "SUPER MEDIA\nPLAYER";
+                color: Silver.engraved;
+                font-size: 6px;
+                font-weight: 800;
+                letter-spacing: 1px;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // ---- left: playlist pad ----
+    Rectangle {
+        x: 64px;
+        y: 139px;
+        width: 134px;
+        height: 134px;
+        border-radius: 67px;
+        background: Silver.chrome;
+        border-width: 1px;
+        border-color: Silver.chrome-edge;
+        drop-shadow-blur: 5px;
+        drop-shadow-offset-y: 2px;
+        drop-shadow-color: #00000050;
+        Rectangle {
+            width: 104px;
+            height: 104px;
+            border-radius: 52px;
+            background: Silver.ring;
+            Rectangle {
+                width: 98px;
+                height: 98px;
+                border-radius: 49px;
+                background: Silver.bezel;
+            }
+        }
+        // The pad: playlist in the middle, arrows for previous / next
+        // (up / down) and back / forward 10 s (left / right).
+        Rectangle {
+            x: 37px;
+            y: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            background: pad-touch.pressed ? Silver.chrome-pressed : Silver.chrome;
+            border-width: 1px;
+            border-color: root.playlist-open ? Silver.led : Silver.chrome-edge;
+            drop-shadow-blur: root.playlist-open ? 5px : 2px;
+            drop-shadow-color: root.playlist-open ? Silver.led : #00000050;
+            pad-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.playlist-open = !root.playlist-open; }
+            }
+            Icon { width: 22px; height: 22px; commands: Icons.playlist; color: Silver.ink; }
+            PadArrow { x: 22px; y: 1px; direction: 0; clicked => { root.prev(); } }
+            PadArrow { x: 43px; y: 22px; direction: 1; clicked => { root.seek-relative(10); } }
+            PadArrow { x: 22px; y: 43px; direction: 2; clicked => { root.next(); } }
+            PadArrow { x: 1px; y: 22px; direction: 3; clicked => { root.seek-relative(-10); } }
+        }
+        // Slower / faster.
+        Chrome { x: 43px; y: 99px; size: 15px; glyph: "−"; clicked => { root.set-speed(Math.max(0.25, root.speed - 0.25)); } }
+        Chrome { x: 76px; y: 99px; size: 15px; glyph: "+"; clicked => { root.set-speed(Math.min(4, root.speed + 0.25)); } }
+    }
+
+    // ---- right: transport wheel ----
+    Rectangle {
+        x: 409px;
+        y: 152px;
+        width: 134px;
+        height: 134px;
+        border-radius: 67px;
+        background: Silver.chrome;
+        border-width: 1px;
+        border-color: Silver.chrome-edge;
+        drop-shadow-blur: 5px;
+        drop-shadow-offset-y: 2px;
+        drop-shadow-color: #00000050;
+        Rectangle {
+            width: 110px;
+            height: 110px;
+            border-radius: 55px;
+            background: Silver.wheel;
+            border-width: 1px;
+            border-color: Silver.wheel-edge;
+            clip: true;
+            Rectangle { x: 0; y: 54px; width: parent.width; height: 2px; background: Silver.wheel-cross; }
+            Rectangle { x: 54px; y: 0; width: 2px; height: parent.height; background: Silver.wheel-cross; }
+            WheelKey { x: 0; y: 0; width: 54px; height: 54px; icon: Icons.stop; clicked => { root.stop(); } }
+            WheelKey {
+                x: 56px; y: 0; width: 54px; height: 54px;
+                icon: Icons.play;
+                clicked => { if (root.paused || root.idle) { root.toggle-pause(); } }
+            }
+            WheelKey { x: 0; y: 56px; width: 54px; height: 54px; icon: Icons.prev; clicked => { root.prev(); } }
+            WheelKey { x: 56px; y: 56px; width: 54px; height: 54px; icon: Icons.next; clicked => { root.next(); } }
+        }
+        Chrome {
+            size: 36px;
+            icon: Icons.pause;
+            icon-scale: 0.45;
+            on: !root.paused && !root.idle;
+            clicked => { if (!root.paused && !root.idle) { root.toggle-pause(); } }
+        }
+    }
+
+    // ---- knobs ----
+    Knob {
+        x: 203px;
+        y: 234px;
+        width: 34px;
+        height: 52px;
+        value: root.treble;
+        minimum: -12;
+        maximum: 12;
+        label: "";
+        value-text: (root.treble > 0 ? "+" : "") + Math.round(root.treble) + " dB";
+        mark: Silver.accent;
+        face: Silver.knob;
+        label-color: Silver.engraved;
+        changed(v) => { root.set-treble(Math.round(v)); }
+    }
+    Caption { x: 241px; y: 246px; text: "TREBLE"; }
+    Knob {
+        x: 179px;
+        y: 286px;
+        width: 38px;
+        height: 56px;
+        value: root.bass;
+        minimum: -12;
+        maximum: 12;
+        label: "";
+        value-text: (root.bass > 0 ? "+" : "") + Math.round(root.bass) + " dB";
+        mark: Silver.accent;
+        face: Silver.knob;
+        label-color: Silver.engraved;
+        changed(v) => { root.set-bass(Math.round(v)); }
+    }
+    Caption { x: 221px; y: 300px; text: "BASS"; }
+    // Volume knob, sunk into a round well.
+    Rectangle {
+        x: 297px;
+        y: 239px;
+        width: 94px;
+        height: 94px;
+        border-radius: 47px;
+        background: @linear-gradient(180deg, Silver.well-1 0%, Silver.well-2 60%, Silver.well-3 100%);
+        border-width: 1px;
+        border-color: Silver.well-edge;
+    }
+    Knob {
+        x: 309px;
+        y: 251px;
+        width: 70px;
+        height: 88px;
+        value: root.volume;
+        maximum: 150;
+        label: "";
+        value-text: Math.round(root.volume) + "%";
+        mark: Silver.accent;
+        face: Silver.knob;
+        label-color: Silver.engraved;
+        changed(v) => { root.set-volume(v); }
+    }
+
+    // ---- left column ----
+    Chrome { x: 19px; y: 48px; size: 28px; icon: Icons.shuffle; stroked: true; on: root.shuffle; clicked => { root.toggle-shuffle(); } }
+    Led { x: 51px; y: 58px; on: root.shuffle; }
+    Chrome { x: 19px; y: 86px; size: 28px; icon: Icons.repeat; stroked: true; on: root.repeat-mode > 0; clicked => { root.cycle-repeat(); } }
+    Led { x: 51px; y: 96px; on: root.repeat-mode > 0; }
+    Chrome { x: 19px; y: 125px; size: 28px; icon: root.muted ? Icons.mute : Icons.volume; on: root.muted; clicked => { root.toggle-mute(); } }
+    Led { x: 51px; y: 135px; on: root.muted; }
+    Chrome { x: 23px; y: 192px; size: 20px; glyph: "V"; clicked => { root.cycle-visual(); } }
+    Caption { x: 23px; y: 214px; width: 20px; horizontal-alignment: center; text: "VIS"; }
+    Chrome { x: 9px; y: 273px; size: 40px; icon: Icons.eject; clicked => { root.open-files(); } }
+    Caption { x: 52px; y: 302px; text: "OPEN"; }
+
+    // ---- window buttons: top right, and the menu top left, where its
+    // sub-menus have room beside it ----
+    Chrome { x: 533px; y: 11px; size: 17px; glyph: "−"; clicked => { root.minimize(); } }
+    Chrome { x: 562px; y: 18px; size: 19px; glyph: "×"; clicked => { root.close(); } }
+    Chrome {
+        x: 14px;
+        y: 12px;
+        size: 17px;
+        glyph: "≡";
+        clicked => { root.show-menu({ x: self.x, y: self.y + self.height + 2px }); }
+    }
+
+    // ---- right column ----
+    Chrome { x: 565px; y: 86px; size: 22px; icon: Icons.fullscreen; clicked => { root.expand(); } }
+    // Drawer tab: opens the playlist.
+    Rectangle {
+        x: 566px;
+        y: 120px;
+        width: 24px;
+        height: 100px;
+        border-radius: 12px;
+        background: tab-touch.pressed ? Silver.chrome-pressed : @linear-gradient(90deg, Silver.chrome-1 0%, Silver.chrome-2 55%, Silver.chrome-3 100%);
+        border-width: 1px;
+        border-color: root.playlist-open ? Silver.led : Silver.chrome-edge;
+        drop-shadow-blur: 2px;
+        drop-shadow-color: #00000040;
+        // Letters stacked down the tab.
+        VerticalLayout {
+            alignment: center;
+            spacing: -1px;
+            for letter in ["P", "L", "A", "Y", "L", "I", "S", "T"]: Text {
+                text: letter;
+                color: Silver.engraved;
+                font-size: 8px;
+                font-weight: 800;
+                horizontal-alignment: center;
+            }
+        }
+        tab-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.playlist-open = !root.playlist-open; }
+        }
+    }
+    Chrome { x: 565px; y: 228px; size: 22px; icon: Icons.settings; stroked: true; clicked => { root.open-settings(); } }
+
+    // Maker's mark, bottom right.
+    Text {
+        x: 478px;
+        y: 302px;
+        width: 100px;
+        horizontal-alignment: right;
+        text: "SMP";
+        color: Silver.mark;
+        font-size: 17px;
+        font-weight: 900;
+        font-italic: true;
+    }
+    Caption { x: 478px; y: 322px; width: 100px; horizontal-alignment: right; text: "SUPER MEDIA PLAYER"; font-size: 5px; }
+
+    // ---- playlist drawer, hanging under the case ----
+    if root.playlist-open: Rectangle {
+        x: 14px;
+        y: root.main-height - 6px;
+        width: root.width - 28px;
+        height: root.height - self.y - 6px;
+        background: Silver.case;
+        border-bottom-left-radius: 12px;
+        border-bottom-right-radius: 12px;
+        border-width: 1px;
+        border-color: Silver.case-edge;
+        Rectangle {
+            x: 10px;
+            y: 10px;
+            width: parent.width - 20px;
+            height: parent.height - 20px;
+            border-radius: 8px;
+            background: @linear-gradient(180deg, Silver.playlist-1 0%, Silver.playlist-2 100%);
+            border-width: 1px;
+            border-color: Silver.glass-edge;
+            clip: true;
+            if root.playlist.length == 0: Text {
+                text: "Nothing queued: open files, a folder, or drop them here.";
+                color: Silver.text-dim;
+                font-size: 11px;
+            }
+            PlaylistList {
+                x: 4px;
+                y: 4px;
+                width: parent.width - 8px;
+                height: parent.height - 8px;
+                items: root.playlist;
+                row-height: 24px;
+                dense: true;
+                play(i) => { root.play-index(i); }
+                remove(i) => { root.remove-index(i); }
+            }
+        }
+    }
+
+    // Drag the drawer's bottom edge to make the playlist taller or shorter.
+    // (The deck itself is drawn for its size, so the window keeps its width.)
+    if root.playlist-open: TouchArea {
+        y: root.height - 10px;
+        width: root.width;
+        height: 10px;
+        mouse-cursor: ns-resize;
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 2px;
+            width: 60px;
+            height: 4px;
+            border-radius: 2px;
+            background: Silver.case-edge;
+            opacity: parent.has-hover ? 0.9 : 0.5;
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.start-resize(1); }
+        }
+    }
+}

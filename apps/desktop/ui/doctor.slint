@@ -1,0 +1,210 @@
+import { ScrollView } from "std-widgets.slint";
+import { Button } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+import { CheckItem } from "types.slint";
+
+// Tools → System check: what the player found on this computer, worst
+// first, with a fix for each problem (doctor.rs).
+export component SystemCheckPanel inherits Rectangle {
+    in property <[CheckItem]> items;
+    in property <bool> running;
+    in property <string> summary;
+    // The whole check as plain text, for Copy report.
+    in property <string> report;
+    in property <bool> busy;
+    callback action(string);
+    callback rescan();
+    callback close();
+
+    background: #000000a0;
+    TouchArea { clicked => { root.close(); } }
+    // Holds the report for the clipboard: copying goes through a text field.
+    report-text := TextInput {
+        x: 0;
+        y: 0;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        read-only: true;
+        text: root.report;
+    }
+    property <bool> report-copied: false;
+
+    Rectangle {
+        width: Math.min(620px, root.width - 32px);
+        height: Math.min(680px, root.height - 32px);
+        border-radius: Theme.radius + 4px;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000a0;
+        TouchArea { }  // keep clicks inside from closing the panel
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 10px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    Text {
+                        text: "System check";
+                        font-size: 20px;
+                        font-weight: 800;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: root.running ? "Looking at your system…"
+                            : root.summary == "" ? "Everything the player needs looks fine."
+                            : "Found " + root.summary + ". Fixes are listed with each item.";
+                        color: Theme.text-dim;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: root.report-copied ? "Copied ✓" : "Copy report";
+                        enabled: !root.running && root.report != "";
+                        clicked => {
+                            report-text.select-all();
+                            report-text.copy();
+                            report-text.clear-selection();
+                            root.report-copied = true;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Scan again";
+                        enabled: !root.running;
+                        clicked => { root.report-copied = false; root.rescan(); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: Icons.close;
+                        stroked: true;
+                        size: 32px;
+                        icon-size: 16px;
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+            if root.running && root.items.length == 0: Text {
+                text: "Checking libraries, MakeMKV, the key database and your drives…";
+                color: Theme.text-faint;
+                horizontal-alignment: center;
+            }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    padding-right: 14px;
+                    spacing: 8px;
+                    alignment: start;
+                    for item in root.items: Rectangle {
+                        border-radius: 10px;
+                        background: item.level == 3 ? #ff5a5a1c : item.level == 2 ? #ffb84a18 : #ffffff08;
+                        border-width: 1px;
+                        border-color: item.level == 3 ? #ff6b6b70 : item.level == 2 ? #ffb84a55 : Theme.border;
+                        HorizontalLayout {
+                            padding: 12px;
+                            spacing: 12px;
+                            VerticalLayout {
+                                alignment: start;
+                                padding-top: 4px;
+                                Rectangle {
+                                    width: 10px;
+                                    height: 10px;
+                                    border-radius: 5px;
+                                    background: item.level == 3 ? #ff6b6b : item.level == 2 ? #ffb84a : item.level == 1 ? #6fb6ff : #4ad97a;
+                                }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 4px;
+                                Text {
+                                    text: item.title;
+                                    color: Theme.text;
+                                    font-weight: 700;
+                                    wrap: word-wrap;
+                                }
+                                Text {
+                                    text: item.detail;
+                                    color: Theme.text-dim;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                                // Commands: Copy button, or select and Ctrl+C.
+                                if item.command != "": cmd-box := Rectangle {
+                                    property <bool> copied: false;
+                                    border-radius: 6px;
+                                    background: #0b0e18;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+                                    height: cmd.preferred-height + 12px;
+                                    cmd := TextInput {
+                                        x: 8px;
+                                        y: 6px;
+                                        width: parent.width - 16px - copy-btn.width - 8px;
+                                        text: item.command;
+                                        read-only: true;
+                                        single-line: false;
+                                        wrap: word-wrap;
+                                        color: #cfe3ff;
+                                        font-family: "DejaVu Sans Mono";
+                                        font-size: 11px;
+                                    }
+                                    copy-btn := Rectangle {
+                                        x: parent.width - self.width - 6px;
+                                        y: 6px;
+                                        width: copy-label.preferred-width + 16px;
+                                        height: 22px;
+                                        border-radius: 4px;
+                                        background: copy-touch.pressed ? #2c3550 : copy-touch.has-hover ? #252d45 : #1c2236;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        copy-label := Text {
+                                            text: cmd-box.copied ? "Copied ✓" : "Copy";
+                                            color: Theme.text;
+                                            font-size: 11px;
+                                        }
+                                        copy-touch := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => {
+                                                cmd.select-all();
+                                                cmd.copy();
+                                                cmd.clear-selection();
+                                                cmd-box.copied = true;
+                                            }
+                                        }
+                                    }
+                                }
+                                if item.command != "": Text {
+                                    text: "Copy the command, then paste it into a terminal (Ctrl+Shift+V) and press Enter.";
+                                    color: Theme.text-faint;
+                                    font-size: 10px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            if item.action != "": VerticalLayout {
+                                alignment: start;
+                                Button {
+                                    text: item.action-label;
+                                    enabled: !root.busy;
+                                    clicked => { root.action(item.action); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

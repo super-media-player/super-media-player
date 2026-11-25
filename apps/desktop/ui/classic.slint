@@ -1,0 +1,650 @@
+import { Icons, Icon } from "icons.slint";
+import { Fmt } from "controls.slint";
+import { PlaylistItem } from "types.slint";
+import { MiniBars, Marquee, Holed, GrooveSlider, TitleButton } from "skin-parts.slint";
+
+// Colours of the classic deck: dark gunmetal body, green LCD. Every colour
+// here can be changed by a skin file (skins.rs); gradients are built from
+// the numbered stop colours, so a skin only deals in colours.
+export global Classic {
+    in-out property <color> outside: #121218;
+    in-out property <color> body-1: #44485c;
+    in-out property <color> body-2: #2c2f3d;
+    in-out property <color> body-3: #222431;
+    out property <brush> body: @linear-gradient(180deg, Classic.body-1 0%, Classic.body-2 45%, Classic.body-3 100%);
+    in-out property <color> body-edge: #5f647c;
+    in-out property <color> lcd: #000000;
+    in-out property <color> lcd-edge: #4b4f63;
+    in-out property <color> green: #2bff4a;
+    in-out property <color> green-dim: #129c26;
+    in-out property <color> label: #b9bdd3;
+    in-out property <color> alert: #ff5050;
+    // Title bar ridges.
+    in-out property <color> ridge-light: #6a6f88;
+    in-out property <color> ridge-dark: #20222c;
+    // Transport buttons.
+    in-out property <color> button-1: #6a6f86;
+    in-out property <color> button-2: #43475a;
+    in-out property <color> button-3: #34374a;
+    in-out property <color> button-pressed-1: #2a2c38;
+    in-out property <color> button-pressed-2: #3d4152;
+    in-out property <color> button-edge: #81869e;
+    in-out property <color> button-edge-pressed: #1a1b22;
+    in-out property <color> button-ink: #d6d9e8;
+    in-out property <color> button-ink-hover: #ffffff;
+    // Small toggles (SHUF, REP, PL).
+    in-out property <color> toggle-1: #555a6e;
+    in-out property <color> toggle-2: #363949;
+    in-out property <color> toggle-pressed: #23252f;
+    in-out property <color> toggle-edge: #6d7289;
+    in-out property <color> led-off: #1d3a22;
+    // Playlist.
+    in-out property <color> playlist-current: #0b2a7a;
+    in-out property <color> playlist-current-text: #ffffff;
+    in-out property <color> playlist-hover: #0d1a0f;
+    // Spectrum bars and the volume fill: low, middle, high.
+    in-out property <color> meter-low: #1fb52f;
+    in-out property <color> meter-mid: #e8e83a;
+    in-out property <color> meter-high: #ff4a2a;
+    in-out property <color> groove: #0b0b10;
+    in-out property <string> mono: "DejaVu Sans Mono";
+}
+
+// A beveled push button with an icon.
+component DeckButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> stroked: false;
+    callback clicked();
+    width: 34px;
+    height: 24px;
+    border-radius: 2px;
+    background: touch.pressed
+        ? @linear-gradient(180deg, Classic.button-pressed-1 0%, Classic.button-pressed-2 100%)
+        : @linear-gradient(180deg, Classic.button-1 0%, Classic.button-2 55%, Classic.button-3 100%);
+    border-width: 1px;
+    border-color: touch.pressed ? Classic.button-edge-pressed : Classic.button-edge;
+    Icon {
+        width: 14px;
+        height: 14px;
+        commands: root.icon;
+        stroked: root.stroked;
+        color: touch.has-hover ? Classic.button-ink-hover : Classic.button-ink;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A small text toggle with an LED.
+component DeckToggle inherits Rectangle {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked();
+    width: label.preferred-width + 24px;
+    height: 18px;
+    border-radius: 2px;
+    background: touch.pressed ? Classic.toggle-pressed : @linear-gradient(180deg, Classic.toggle-1 0%, Classic.toggle-2 100%);
+    border-width: 1px;
+    border-color: Classic.toggle-edge;
+    Rectangle {
+        x: 6px;
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: root.on ? Classic.green : Classic.led-off;
+        drop-shadow-blur: root.on ? 4px : 0px;
+        drop-shadow-color: Classic.green;
+    }
+    label := Text {
+        x: 16px;
+        text: root.text;
+        color: Classic.label;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Green-on-black playlist, double-click to play.
+component DeckPlaylist inherits Flickable {
+    in property <[PlaylistItem]> items;
+    callback play(int);
+    callback remove(int);
+    content-height: list.preferred-height;
+    list := VerticalLayout {
+        alignment: start;
+        for item[i] in root.items: Rectangle {
+            height: 18px;
+            background: item.current ? Classic.playlist-current : row.has-hover ? Classic.playlist-hover : transparent;
+            row := TouchArea {
+                mouse-cursor: pointer;
+                double-clicked => { root.play(i); }
+            }
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 4px;
+                spacing: 6px;
+                Text {
+                    text: (i + 1) + ". " + item.title;
+                    color: item.current ? Classic.playlist-current-text : Classic.green;
+                    font-family: Classic.mono;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                if item.detail != "" && !row.has-hover: Text {
+                    text: item.detail;
+                    color: item.current ? Classic.playlist-current-text : Classic.green-dim;
+                    font-family: Classic.mono;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+                if row.has-hover: Text {
+                    text: "×";
+                    color: x-touch.has-hover ? Classic.alert : Classic.green;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    x-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.remove(i); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The classic deck: a Winamp-style player with a green LCD clock, a small
+// spectrum window, a scrolling title, beveled transport buttons, and a
+// green-on-black playlist underneath.
+export component ClassicView inherits Rectangle {
+    in property <bool> active: true;
+    in property <bool> idle;
+    in property <bool> paused;
+    in property <bool> has-video;
+    in property <bool> visual-active;
+    // Live spectrum for the mini bars (meter.rs).
+    in property <[float]> levels;
+    in property <float> position;
+    in property <float> duration;
+    in property <float> volume;
+    in property <bool> muted;
+    in property <string> media-title;
+    in property <string> media-subtitle;
+    in property <string> audio-info;
+    in property <string> tech-info;
+    in property <bool> shuffle;
+    in property <int> repeat-mode;
+    in property <[PlaylistItem]> playlist;
+    in-out property <bool> playlist-open;
+    // The playlist shows in its own window (PlaylistWindow) instead of here.
+    in-out property <bool> playlist-detached;
+
+    // Where mpv draws the visualizer (or video), relative to this view.
+    out property <length> vis-x: display.x + vis-box.x;
+    out property <length> vis-y: display.y + vis-box.y;
+    out property <length> vis-width: vis-box.width;
+    out property <length> vis-height: vis-box.height;
+
+    callback toggle-pause();
+    callback stop();
+    callback next();
+    callback prev();
+    callback seek(float);
+    callback scrub(float);
+    callback set-volume(float);
+    callback toggle-mute();
+    callback toggle-shuffle();
+    callback cycle-repeat();
+    callback open-files();
+    callback play-index(int);
+    callback remove-index(int);
+    callback expand();
+    // Window chrome: the skin is the whole window (no title bar).
+    callback show-menu(Point);
+    callback minimize();
+    callback close();
+    // Start resizing the (frameless) window from an edge: 0 = right edge,
+    // 1 = bottom edge, 2 = bottom-right corner.
+    callback start-resize(int);
+
+    property <bool> drawn-under: root.visual-active || root.has-video;
+    property <length> main-height: 196px;
+
+    // Everything opaque leaves a hole where mpv draws.
+    Holed {
+        width: root.width;
+        height: root.height;
+        fill: Classic.outside;
+        open: root.drawn-under;
+        hole-x: root.vis-x; hole-y: root.vis-y; hole-width: root.vis-width; hole-height: root.vis-height;
+    }
+    frame := Holed {
+        x: 4px;
+        y: 4px;
+        width: root.width - 8px;
+        height: root.main-height - 4px;
+        fill: Classic.body;
+        radius: 3px;
+        stroke-width: 1px;
+        stroke: Classic.body-edge;
+        open: root.drawn-under;
+        hole-x: root.vis-x - self.x; hole-y: root.vis-y - self.y;
+        hole-width: root.vis-width; hole-height: root.vis-height;
+    }
+
+    // Drag the deck to move the window.
+    WindowMoveArea {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.main-height;
+    }
+
+    // Title bar: menu button, grooves either side of the name, minimize and
+    // close.
+    TitleButton { x: 10px; y: 9px; glyph: "≡"; clicked => { root.show-menu({ x: self.x, y: self.y + self.height + 2px }); } }
+    TitleButton { x: root.width - 10px - 2 * self.width - 3px; y: 9px; glyph: "−"; clicked => { root.minimize(); } }
+    TitleButton { x: root.width - 10px - self.width; y: 9px; glyph: "×"; clicked => { root.close(); } }
+    title-bar := Rectangle {
+        x: 30px;
+        y: 10px;
+        width: root.width - 30px - 50px;
+        height: 14px;
+        for side in 2: Rectangle {
+            x: side == 0 ? 0px : parent.width / 2 + title.preferred-width / 2 + 8px;
+            width: parent.width / 2 - title.preferred-width / 2 - 8px;
+            for line in 3: Rectangle {
+                y: 3px + line * 3px;
+                height: 1px;
+                background: line == 1 ? Classic.ridge-dark : Classic.ridge-light;
+            }
+        }
+        title := Text {
+            text: "SUPER MEDIA PLAYER";
+            color: Classic.label;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+    }
+
+    display := Holed {
+        x: 14px;
+        y: 30px;
+        width: 206px;
+        height: 92px;
+        fill: Classic.lcd;
+        radius: 2px;
+        stroke-width: 1px;
+        stroke: Classic.lcd-edge;
+        open: root.drawn-under;
+        hole-x: vis-box.x; hole-y: vis-box.y; hole-width: vis-box.width; hole-height: vis-box.height;
+
+        Text {
+            x: 10px;
+            y: 12px;
+            text: root.idle ? "■" : root.paused ? "❚❚" : "▶";
+            color: Classic.green;
+            font-size: 12px;
+        }
+        Text {
+            x: 30px;
+            y: 0px;
+            text: Fmt.time(root.position);
+            color: Classic.green;
+            font-size: 36px;
+            font-family: Classic.mono;
+        }
+        Text {
+            x: parent.width - self.width - 8px;
+            y: 6px;
+            text: root.muted ? "MUTE" : "";
+            color: Classic.alert;
+            font-size: 9px;
+            font-weight: 700;
+        }
+        vis-box := Rectangle {
+            x: 8px;
+            y: 50px;
+            width: parent.width - 16px;
+            height: 34px;
+            background: root.drawn-under ? transparent : Classic.lcd;
+            if !root.drawn-under: MiniBars {
+                playing: root.active && !root.paused && !root.idle;
+                levels: root.levels;
+                count: 19;
+                gap: 2px;
+                bar-brush: @linear-gradient(0deg, Classic.meter-low 0%, Classic.meter-mid 75%, Classic.meter-high 100%);
+            }
+            TouchArea {
+                double-clicked => { root.expand(); }
+            }
+        }
+    }
+
+    // Right column: ticker, stream info, volume.
+    property <length> col-x: display.x + display.width + 10px;
+    property <length> col-width: root.width - self.col-x - 14px;
+    Rectangle {
+        x: root.col-x;
+        y: 30px;
+        width: root.col-width;
+        height: 24px;
+        background: Classic.lcd;
+        border-width: 1px;
+        border-color: Classic.lcd-edge;
+        Marquee {
+            x: 6px;
+            width: parent.width - 12px;
+            active: root.active;
+            text: root.idle ? "*** SUPER MEDIA PLAYER *** OPEN SOMETHING TO PLAY ***"
+                : (root.media-subtitle != "" ? root.media-title + " - " + root.media-subtitle : root.media-title);
+            text-color: Classic.green;
+            font-size: 13px;
+            font-weight: 400;
+            font-family: Classic.mono;
+        }
+    }
+    Rectangle {
+        x: root.col-x;
+        y: 60px;
+        width: root.col-width;
+        height: 18px;
+        background: Classic.lcd;
+        border-width: 1px;
+        border-color: Classic.lcd-edge;
+        Text {
+            x: 6px;
+            width: parent.width - 12px;
+            text: root.has-video ? root.tech-info : root.audio-info;
+            color: Classic.green;
+            font-family: Classic.mono;
+            font-size: 10px;
+            overflow: elide;
+        }
+    }
+    Text {
+        x: root.col-x;
+        y: 90px;
+        text: "VOLUME";
+        color: Classic.label;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+    GrooveSlider {
+        x: root.col-x + 52px;
+        y: 86px;
+        width: Math.min(root.col-width - 52px - 52px, 180px);
+        value: root.volume / 150;
+        groove: Classic.groove;
+        fill: @linear-gradient(90deg, Classic.meter-low 0%, Classic.meter-mid 70%, Classic.meter-high 100%);
+        groove-height: 8px;
+        thumb-width: 16px;
+        thumb-height: 14px;
+        dragged(f) => { root.set-volume(f * 150); }
+        released(f) => { root.set-volume(f * 150); }
+        wheel(d) => { root.set-volume(Math.clamp(root.volume + d * 5, 0, 150)); }
+    }
+    Text {
+        x: root.width - 14px - 40px;
+        y: 90px;
+        width: 40px;
+        horizontal-alignment: right;
+        text: Math.round(root.volume) + "%";
+        color: Classic.label;
+        font-size: 9px;
+        font-family: Classic.mono;
+    }
+
+    // Seek bar across the deck.
+    Text {
+        x: 14px;
+        y: 133px;
+        text: Fmt.time(root.position);
+        color: Classic.label;
+        font-size: 9px;
+        font-family: Classic.mono;
+    }
+    GrooveSlider {
+        x: 56px;
+        y: 130px;
+        width: root.width - 112px;
+        enabled: root.duration > 0;
+        value: root.duration > 0 ? root.position / root.duration : 0;
+        groove: Classic.groove;
+        groove-height: 8px;
+        thumb-width: 28px;
+        thumb-height: 14px;
+        dragged(f) => { root.scrub(f * root.duration); }
+        released(f) => { root.seek(f * root.duration); }
+    }
+    Text {
+        x: root.width - 14px - 40px;
+        y: 133px;
+        width: 40px;
+        horizontal-alignment: right;
+        text: root.duration > 0 ? Fmt.time(root.duration) : "";
+        color: Classic.label;
+        font-size: 9px;
+        font-family: Classic.mono;
+    }
+
+    // Transport row.
+    HorizontalLayout {
+        x: 14px;
+        y: 156px;
+        width: root.width - 28px;
+        height: 24px;
+        spacing: 2px;
+        DeckButton { icon: Icons.prev; clicked => { root.prev(); } }
+        DeckButton { icon: Icons.play; clicked => { if (root.paused || root.idle) { root.toggle-pause(); } } }
+        DeckButton { icon: Icons.pause; clicked => { if (!root.paused && !root.idle) { root.toggle-pause(); } } }
+        DeckButton { icon: Icons.stop; clicked => { root.stop(); } }
+        DeckButton { icon: Icons.next; clicked => { root.next(); } }
+        Rectangle { width: 8px; }
+        DeckButton { icon: Icons.eject; clicked => { root.open-files(); } }
+        Rectangle { horizontal-stretch: 1; }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                spacing: 4px;
+                DeckToggle { text: "SHUFFLE"; on: root.shuffle; clicked => { root.toggle-shuffle(); } }
+                DeckToggle {
+                    text: root.repeat-mode == 2 ? "REPEAT 1" : "REPEAT";
+                    on: root.repeat-mode > 0;
+                    clicked => { root.cycle-repeat(); }
+                }
+                DeckToggle { text: "PL"; on: root.playlist-open; clicked => { root.playlist-open = !root.playlist-open; } }
+                DeckToggle { text: "FULL"; on: false; clicked => { root.expand(); } }
+            }
+        }
+    }
+
+    // Playlist, docked under the deck.
+    if root.playlist-open && !root.playlist-detached: Rectangle {
+        x: 4px;
+        y: root.main-height + 2px;
+        width: root.width - 8px;
+        height: root.height - self.y - 4px;
+        background: Classic.body;
+        border-radius: 3px;
+        border-width: 1px;
+        border-color: Classic.body-edge;
+        // Double-click the playlist's header to pop it out into its own window.
+        TouchArea {
+            height: 22px;
+            y: 0;
+            double-clicked => { root.playlist-detached = true; }
+        }
+        DeckToggle {
+            x: parent.width - self.width - 8px;
+            y: 2px;
+            text: "DETACH";
+            on: false;
+            clicked => { root.playlist-detached = true; }
+        }
+        Text {
+            x: 10px;
+            y: 5px;
+            text: "PLAYLIST · " + root.playlist.length + (root.playlist.length == 1 ? " ITEM" : " ITEMS");
+            color: Classic.label;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+        Rectangle {
+            x: 8px;
+            y: 23px;
+            width: parent.width - 16px;
+            height: parent.height - 31px;
+            background: Classic.lcd;
+            border-width: 1px;
+            border-color: Classic.lcd-edge;
+            clip: true;
+            if root.playlist.length == 0: Text {
+                text: "Nothing queued: open files, a folder, or drop them here.";
+                color: Classic.green-dim;
+                font-family: Classic.mono;
+                font-size: 11px;
+            }
+            DeckPlaylist {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                items: root.playlist;
+                play(i) => { root.play-index(i); }
+                remove(i) => { root.remove-index(i); }
+            }
+        }
+    }
+
+    // Resize grips (the skin has no window frame). The deck alone only gets
+    // wider; with the playlist docked the window also grows downwards.
+    property <bool> docked: root.playlist-open && !root.playlist-detached;
+    TouchArea {
+        x: root.width - 6px;
+        width: 6px;
+        height: root.docked ? root.height - 14px : root.height;
+        mouse-cursor: ew-resize;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.start-resize(0); }
+        }
+    }
+    if root.docked: TouchArea {
+        y: root.height - 6px;
+        width: root.width - 14px;
+        height: 6px;
+        mouse-cursor: ns-resize;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.start-resize(1); }
+        }
+    }
+    if root.docked: Rectangle {
+        x: root.width - 14px;
+        y: root.height - 14px;
+        width: 14px;
+        height: 14px;
+        // Classic diagonal grip lines.
+        for k in 3: Rectangle {
+            x: parent.width - 4px - k * 4px;
+            y: parent.height - 4px;
+            width: 2px;
+            height: 2px;
+            background: Classic.label;
+            opacity: 0.6;
+        }
+        for k in 2: Rectangle {
+            x: parent.width - 4px - k * 4px;
+            y: parent.height - 8px;
+            width: 2px;
+            height: 2px;
+            background: Classic.label;
+            opacity: 0.6;
+        }
+        Rectangle { x: parent.width - 4px; y: parent.height - 12px; width: 2px; height: 2px; background: Classic.label; opacity: 0.6; }
+        TouchArea {
+            mouse-cursor: nwse-resize;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.start-resize(2); }
+            }
+        }
+    }
+}
+
+// The classic deck's playlist in a window of its own, to place anywhere
+// (main.rs shows it while the playlist is open and detached).
+export component PlaylistWindow inherits Window {
+    in property <[PlaylistItem]> items;
+    in property <bool> playing;
+    callback play-index(int);
+    callback remove-index(int);
+    callback dock();
+    callback open-files();
+    title: "Playlist · Super Media Player";
+    icon: @image-url("../../../packaging/linux/super-media-player.svg");
+    preferred-width: 420px;
+    preferred-height: 360px;
+    min-width: 260px;
+    min-height: 140px;
+    background: Classic.outside;
+    Rectangle {
+        x: 4px;
+        y: 4px;
+        width: parent.width - 8px;
+        height: parent.height - 8px;
+        background: Classic.body;
+        border-radius: 3px;
+        border-width: 1px;
+        border-color: Classic.body-edge;
+        Text {
+            x: 10px;
+            y: 6px;
+            text: "PLAYLIST · " + root.items.length + (root.items.length == 1 ? " ITEM" : " ITEMS");
+            color: Classic.label;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+        HorizontalLayout {
+            x: parent.width - self.preferred-width - 8px;
+            y: 3px;
+            spacing: 4px;
+            DeckToggle { text: "+ ADD"; on: false; clicked => { root.open-files(); } }
+            DeckToggle { text: "DOCK"; on: false; clicked => { root.dock(); } }
+        }
+        Rectangle {
+            x: 8px;
+            y: 24px;
+            width: parent.width - 16px;
+            height: parent.height - 32px;
+            background: Classic.lcd;
+            border-width: 1px;
+            border-color: Classic.lcd-edge;
+            clip: true;
+            if root.items.length == 0: Text {
+                text: "Nothing queued: use + ADD to open files.";
+                color: Classic.green-dim;
+                font-family: Classic.mono;
+                font-size: 11px;
+            }
+            DeckPlaylist {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                items: root.items;
+                play(i) => { root.play-index(i); }
+                remove(i) => { root.remove-index(i); }
+            }
+        }
+    }
+}

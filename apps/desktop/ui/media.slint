@@ -1,0 +1,509 @@
+// The media library (collection.rs): what is in your folders, as albums,
+// artists, genres, songs, videos and folders, with search and "Continue
+// watching". It covers the view and leaves the control bar in reach.
+
+import { ListView, LineEdit, ScrollView } from "std-widgets.slint";
+import { ComboBox, Button } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Icon, Icons } from "icons.slint";
+import { IconButton, PillButton } from "controls.slint";
+import { MediaCard, MediaLine } from "types.slint";
+
+component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    border-radius: 10px;
+    background: root.selected ? Theme.accent.with-alpha(0.18) : ta.has-hover ? #ffffff0c : transparent;
+    animate background { duration: Theme.fast; }
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: 18px;
+        border-radius: 1.5px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+    Text {
+        x: 14px;
+        width: parent.width - 18px;
+        height: parent.height;
+        text: root.text;
+        color: root.selected ? Theme.text : Theme.text-dim;
+        font-weight: root.selected ? 700 : 400;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// The picture of a card (or the page's heading), with what stands in for it.
+component Art inherits Rectangle {
+    in property <MediaCard> card;
+    border-radius: root.card.shape == 1 ? self.width / 2 : 10px;
+    clip: true;
+    background: @linear-gradient(145deg, #262d48 0%, #171b2c 100%);
+    if !root.card.has-image: Icon {
+        width: Math.min(root.width, root.height) * 0.36;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        commands: root.card.icon == 1 ? Icons.person : root.card.icon == 2 ? Icons.film : root.card.icon == 3 ? Icons.folder : root.card.icon == 4 ? Icons.note : Icons.disc;
+        color: #ffffff30;
+    }
+    if root.card.has-image: Image {
+        width: 100%;
+        height: 100%;
+        source: root.card.image;
+        image-fit: cover;
+    }
+}
+
+component Card inherits Rectangle {
+    in property <MediaCard> card;
+    callback open();
+    callback play();
+    callback remove();
+    property <bool> hover: ta.has-hover || play-touch.has-hover || remove-touch.has-hover;
+
+    art := Art {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: root.card.shape == 2 ? parent.width * 9 / 16 : parent.width;
+        card: root.card;
+        border-width: root.hover ? 1px : 0px;
+        border-color: Theme.accent.with-alpha(0.6);
+    }
+    Text {
+        y: art.height + 7px;
+        x: 2px;
+        width: parent.width - 4px;
+        text: root.card.title;
+        color: Theme.text;
+        font-size: 13px;
+        font-weight: 600;
+        overflow: elide;
+        horizontal-alignment: root.card.shape == 1 ? center : left;
+    }
+    Text {
+        y: art.height + 25px;
+        x: 2px;
+        width: parent.width - 4px;
+        text: root.card.subtitle;
+        color: Theme.text-faint;
+        font-size: 11px;
+        overflow: elide;
+        horizontal-alignment: root.card.shape == 1 ? center : left;
+    }
+    if root.card.corner != "": Rectangle {
+        x: art.width - self.width - 6px;
+        y: art.height - self.height - (root.card.progress >= 0 ? 10px : 6px);
+        width: corner.preferred-width + 12px;
+        height: 18px;
+        border-radius: 5px;
+        background: #000000b0;
+        corner := Text { text: root.card.corner; color: white; font-size: 11px; }
+    }
+    if root.card.progress >= 0: Rectangle {
+        x: 8px;
+        y: art.height - 7px;
+        width: art.width - 16px;
+        height: 3px;
+        border-radius: 1.5px;
+        background: #ffffff50;
+        Rectangle {
+            x: 0;
+            width: parent.width * Math.clamp(root.card.progress, 0, 1);
+            border-radius: 1.5px;
+            background: Theme.accent-gradient;
+        }
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.open(); } }
+    // Play without opening.
+    Rectangle {
+        visible: root.hover;
+        x: 8px;
+        y: art.height - self.height - (root.card.progress >= 0 ? 14px : 8px);
+        width: 36px;
+        height: 36px;
+        border-radius: 18px;
+        background: Theme.accent-gradient;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #000000a0;
+        Icon { width: 18px; height: 18px; commands: Icons.play; color: #0b0d14; }
+        play-touch := TouchArea { mouse-cursor: pointer; clicked => { root.play(); } }
+    }
+    Rectangle {
+        visible: root.card.removable && root.hover;
+        x: art.width - self.width - 6px;
+        y: 6px;
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
+        background: #000000c0;
+        Icon { width: 12px; height: 12px; commands: Icons.close; stroked: true; color: white; }
+        remove-touch := TouchArea { enabled: root.card.removable; mouse-cursor: pointer; clicked => { root.remove(); } }
+    }
+}
+
+component SongLine inherits Rectangle {
+    in property <MediaLine> line;
+    in property <bool> playing;
+    callback play();
+    callback add();
+    property <bool> hover: ta.has-hover || add-button.hovered;
+    border-radius: 8px;
+    background: root.playing ? Theme.accent.with-alpha(0.11) : root.hover ? #ffffff0e : transparent;
+    ta := TouchArea { mouse-cursor: pointer; double-clicked => { root.play(); } }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 12px;
+        Rectangle {
+            width: 28px;
+            if !root.hover: Text {
+                text: root.line.number;
+                color: root.playing ? Theme.accent : Theme.text-faint;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            if root.hover: Icon { width: 16px; height: 16px; commands: Icons.play; color: Theme.accent; }
+            play-touch := TouchArea { mouse-cursor: pointer; clicked => { root.play(); } }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            min-width: 60px;
+            Text {
+                text: root.line.title;
+                color: root.playing ? Theme.accent : Theme.text;
+                overflow: elide;
+            }
+            if root.line.detail != "": Text {
+                text: root.line.detail;
+                color: Theme.text-faint;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+        add-button := Rectangle {
+            out property <bool> hovered: add-touch.has-hover;
+            width: 28px;
+            Icon {
+                visible: root.hover;
+                width: 18px;
+                height: 18px;
+                commands: Icons.plus;
+                color: add-touch.has-hover ? Theme.accent : Theme.text-dim;
+            }
+            add-touch := TouchArea { mouse-cursor: pointer; clicked => { root.add(); } }
+        }
+        Text {
+            width: 56px;
+            text: root.line.right;
+            color: Theme.text-faint;
+            font-size: 12px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component MediaLibrary inherits Rectangle {
+    in property <int> page;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <bool> can-back;
+    in property <bool> can-play;
+    // The heading's picture (an open album, artist, ...).
+    in property <MediaCard> head;
+    in property <bool> has-head;
+    in property <[MediaCard]> cards;
+    in property <[MediaLine]> lines;
+    in property <[string]> sorts;
+    in property <int> sort;
+    in property <[string]> folders;
+    in property <string> status;
+    in property <bool> scanning;
+    in property <bool> loading;
+    // The library has no folders yet.
+    in property <bool> empty;
+    in property <string> playing;
+    in-out property <string> query;
+    in-out property <length> scroll;
+    in property <int> focus-search;
+    // Room the control bar takes at the bottom.
+    in property <length> bottom;
+    // Room the playlist panel takes.
+    in property <length> right;
+    property <length> room: root.width - root.right;
+    callback nav(int);
+    callback back();
+    callback search(string);
+    callback sort-by(int);
+    callback open-card(int);
+    callback play-card(int);
+    callback remove-card(int);
+    callback play-song(int);
+    callback add-song(int);
+    callback play-all(string);
+    callback layout(float);
+    callback add-folder();
+    callback add-defaults();
+    callback remove-folder(int);
+    callback rescan();
+    callback close();
+
+    background: Theme.bg;
+    // Nothing behind the library gets clicks, scrolling or double-clicks.
+    TouchArea { scroll-event(e) => { accept } }
+
+    changed focus-search => { search-box.focus(); }
+
+    HorizontalLayout {
+        padding-right: root.right;
+        // ---- sidebar ----
+        Rectangle {
+            width: root.room < 760px ? 132px : 176px;
+            background: Theme.bg-2;
+            VerticalLayout {
+                padding: 12px;
+                padding-bottom: root.bottom;
+                spacing: 3px;
+                alignment: stretch;
+                Text {
+                    text: "Media library";
+                    color: Theme.text;
+                    font-size: 16px;
+                    font-weight: 800;
+                    height: 34px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                for name[i] in ["Home", "Albums", "Artists", "Genres", "Songs", "Videos", "Folders"]: NavItem {
+                    text: name;
+                    selected: root.page == i;
+                    clicked => { root.nav(i); }
+                }
+                Rectangle { vertical-stretch: 1; }
+                if root.status != "": Text {
+                    text: root.status;
+                    color: Theme.text-faint;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+                NavItem { text: "Edit folders"; selected: root.page == 7; clicked => { root.nav(7); } }
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            padding-left: 20px;
+            padding-right: 8px;
+            padding-top: 12px;
+            padding-bottom: root.bottom;
+            spacing: 10px;
+
+            // ---- search, close ----
+            HorizontalLayout {
+                padding-right: 8px;
+                spacing: 10px;
+                if root.can-back: VerticalLayout {
+                    alignment: center;
+                    Button { text: "← Back"; clicked => { root.back(); } }
+                }
+                search-box := LineEdit {
+                    horizontal-stretch: 1;
+                    text <=> root.query;
+                    placeholder-text: "Search artists, albums, songs and videos (Ctrl+F)";
+                    edited(t) => { root.search(t); }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: Icons.close;
+                        stroked: true;
+                        size: 32px;
+                        icon-size: 16px;
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+
+            // ---- heading ----
+            HorizontalLayout {
+                padding-right: 12px;
+                spacing: 16px;
+                if root.has-head: Art {
+                    width: root.head.shape == 2 ? 142px : 96px;
+                    height: root.head.shape == 2 ? 80px : 96px;
+                    card: root.head;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    min-width: 60px;
+                    Text {
+                        text: root.title;
+                        color: Theme.text;
+                        font-size: root.has-head ? 24px : 22px;
+                        font-weight: 800;
+                        overflow: elide;
+                    }
+                    if root.subtitle != "": Text {
+                        text: root.subtitle;
+                        color: Theme.text-dim;
+                        font-size: 12px;
+                        overflow: elide;
+                    }
+                }
+                if root.can-play: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    PillButton { width: self.min-width; text: "Play"; icon: Icons.play; filled: true; clicked => { root.play-all("play"); } }
+                }
+                if root.can-play: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    PillButton { width: self.min-width; text: "Shuffle"; icon: Icons.shuffle; stroked: true; clicked => { root.play-all("shuffle"); } }
+                }
+                if root.can-play && root.room > 820px: VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 0;
+                    PillButton { width: self.min-width; text: "Add"; icon: Icons.plus; clicked => { root.play-all("add"); } }
+                }
+                if root.sorts.length > 1: VerticalLayout {
+                    alignment: center;
+                    ComboBox {
+                        width: 150px;
+                        model: root.sorts;
+                        current-index: root.sort;
+                        selected => { root.sort-by(self.current-index); }
+                    }
+                }
+            }
+
+            // ---- nothing yet ----
+            if root.empty && root.page != 7: VerticalLayout {
+                vertical-stretch: root.lines.length == 0 ? 1 : 0;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                alignment: center;
+                spacing: 14px;
+                Text {
+                    text: "Choose the folders with your music and videos";
+                    color: Theme.text;
+                    font-size: 18px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: "The library lists what is in them. Your files stay where they are and are never changed.";
+                    color: Theme.text-dim;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 12px;
+                    PillButton { text: "Add my Music and Videos folders"; icon: Icons.folder; filled: true; clicked => { root.add-defaults(); } }
+                    PillButton { text: "Choose a folder…"; icon: Icons.folder; clicked => { root.add-folder(); } }
+                }
+            }
+
+            // ---- folders ----
+            if root.page == 7: VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 10px;
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 10px;
+                    Button { text: "Add folder…"; clicked => { root.add-folder(); } }
+                    Button { text: root.scanning ? "Scanning…" : "Scan for changes"; enabled: !root.scanning && root.folders.length > 0; clicked => { root.rescan(); } }
+                }
+                Text {
+                    text: "Removing a folder only takes it off the library; its files stay on the disk. New and changed files are found each time the library opens.";
+                    color: Theme.text-faint;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        alignment: start;
+                        spacing: 2px;
+                        for f[i] in root.folders: Rectangle {
+                            height: 44px;
+                            border-radius: 8px;
+                            background: #ffffff08;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 6px;
+                                spacing: 10px;
+                                Text { text: f; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Button { text: "Remove"; clicked => { root.remove-folder(i); } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- the page ----
+            if (!root.empty || root.lines.length > 0) && root.page != 7: list := ListView {
+                vertical-stretch: 1;
+                content-y <=> root.scroll;
+                property <length> space: self.width - 24px;
+                init => { root.layout(self.space / 1px); }
+                changed space => { root.layout(self.space / 1px); }
+                for line in root.lines: Rectangle {
+                    property <length> card-width: (list.space - (line.columns - 1) * 16px) / Math.max(line.columns, 1);
+                    width: list.space;
+                    height: line.kind == 0 ? 40px : line.kind == 1 ? (line.shape == 2 ? self.card-width * 9 / 16 : self.card-width) + 56px : line.kind == 2 ? 46px : 60px;
+                    if line.kind == 0: Text {
+                        x: 2px;
+                        height: parent.height;
+                        text: line.title;
+                        color: Theme.text;
+                        font-size: 15px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                    if line.kind == 1: Rectangle {
+                        for c in line.count: Card {
+                            x: c * (card-width + 16px);
+                            y: 0;
+                            width: card-width;
+                            height: parent.height - 8px;
+                            card: root.cards[line.first + c];
+                            open => { root.open-card(line.first + c); }
+                            play => { root.play-card(line.first + c); }
+                            remove => { root.remove-card(line.first + c); }
+                        }
+                    }
+                    if line.kind == 2: SongLine {
+                        line: line;
+                        playing: line.path != "" && line.path == root.playing;
+                        play => { root.play-song(line.first); }
+                        add => { root.add-song(line.first); }
+                    }
+                    if line.kind == 3: Text {
+                        x: 2px;
+                        width: parent.width - 4px;
+                        height: parent.height;
+                        text: line.title;
+                        color: Theme.text-faint;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

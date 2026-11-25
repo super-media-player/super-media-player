@@ -1,0 +1,152 @@
+// The player's own title bar (media player view). It is drawn over the menu
+// bar's row: the menus on the left, and on their right the title, a strip to
+// drag the window by, and the window buttons. The window has no frame then,
+// so its edges resize it too.
+import { Theme } from "theme.slint";
+import { Icon, Icons } from "icons.slint";
+
+component WindowButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> dim;
+    in property <color> hover: #ffffff1a;
+    in property <string> label;
+    callback clicked();
+    width: 40px;
+    background: touch.pressed ? root.hover.darker(0.3) : touch.has-hover ? root.hover : transparent;
+    animate background { duration: Theme.fast; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    Icon {
+        width: 17px;
+        height: 17px;
+        commands: root.icon;
+        stroked: true;
+        stroke-width: 1.3px;
+        color: touch.has-hover ? Theme.text : root.dim ? Theme.text-faint : Theme.text-dim;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component TitleBar inherits Rectangle {
+    in property <string> title;
+    // The window has the keyboard focus.
+    in property <bool> focused: true;
+    in property <bool> maximized;
+    in property <bool> on-top;
+    callback minimize();
+    callback toggle-maximize();
+    callback close();
+    callback fullscreen();
+    callback toggle-on-top();
+    // Ask the desktop for its window menu at a point in the window; false
+    // when it has none to show (then ours opens).
+    callback system-menu(length, length) -> bool;
+
+    menu := ContextMenuArea {
+        // Opened by the right-click below.
+        enabled: false;
+        Menu {
+            MenuItem { title: "Minimize"; activated => { root.minimize(); } }
+            MenuItem { title: root.maximized ? "Restore" : "Maximize"; activated => { root.toggle-maximize(); } }
+            MenuItem { title: "Fullscreen"; activated => { root.fullscreen(); } }
+            MenuSeparator { }
+            MenuItem { title: "Always on top"; checked: root.on-top; activated => { root.toggle-on-top(); } }
+            MenuSeparator { }
+            MenuItem { title: "Close"; activated => { root.close(); } }
+        }
+    }
+
+    WindowMoveArea {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        strip := TouchArea {
+            double-clicked => { root.toggle-maximize(); }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                    if (!root.system-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y)) {
+                        menu.show({ x: self.mouse-x, y: self.mouse-y });
+                    }
+                }
+            }
+        }
+    }
+    Text {
+        x: 16px;
+        y: 0;
+        // Not worth three letters and an ellipsis.
+        visible: self.width > 90px;
+        width: max(0px, buttons.x - 32px);
+        height: root.height;
+        text: root.title;
+        color: root.focused ? Theme.text-dim : Theme.text-faint;
+        font-size: Theme.font-small;
+        font-weight: 600;
+        overflow: elide;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    buttons := HorizontalLayout {
+        x: root.width - self.width;
+        y: 0;
+        width: 120px;
+        height: root.height;
+        WindowButton { icon: Icons.minimize; label: "Minimize"; dim: !root.focused; clicked => { root.minimize(); } }
+        WindowButton { icon: root.maximized ? Icons.restore : Icons.maximize; label: root.maximized ? "Restore" : "Maximize"; dim: !root.focused; clicked => { root.toggle-maximize(); } }
+        WindowButton { icon: Icons.close; label: "Close"; dim: !root.focused; hover: Theme.danger.with-alpha(0.75); clicked => { root.close(); } }
+    }
+}
+
+component Grip inherits TouchArea {
+    in property <int> edge;
+    callback start(int);
+    pointer-event(e) => {
+        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.start(root.edge); }
+    }
+}
+
+// The edges and corners of a window without a frame. Nothing but thin strips:
+// the middle stays free for what is under it.
+export component WindowEdges inherits Rectangle {
+    callback start-resize(int);
+    property <length> t: 4px;
+    property <length> c: 12px;
+    Grip { edge: 0; mouse-cursor: ew-resize; x: root.width - t; y: c; width: t; height: root.height - 2 * c; start(e) => { root.start-resize(e); } }
+    Grip { edge: 6; mouse-cursor: ew-resize; x: 0; y: c; width: t; height: root.height - 2 * c; start(e) => { root.start-resize(e); } }
+    Grip { edge: 1; mouse-cursor: ns-resize; x: c; y: root.height - t; width: root.width - 2 * c; height: t; start(e) => { root.start-resize(e); } }
+    Grip { edge: 3; mouse-cursor: ns-resize; x: c; y: 0; width: root.width - 2 * c; height: t; start(e) => { root.start-resize(e); } }
+    // Corners: two strips each, so they don't cover what is inside.
+    for k in [
+        { e: 2, r: true, b: true },
+        { e: 4, r: true, b: false },
+        { e: 5, r: false, b: false },
+        { e: 7, r: false, b: true },
+    ]: Rectangle {
+        x: k.r ? root.width - c : 0;
+        y: k.b ? root.height - c : 0;
+        width: c;
+        height: c;
+        Grip { edge: k.e; mouse-cursor: k.r == k.b ? nwse-resize : nesw-resize; x: 0; y: k.b ? c - t : 0; width: c; height: t; start(e) => { root.start-resize(e); } }
+        Grip { edge: k.e; mouse-cursor: k.r == k.b ? nwse-resize : nesw-resize; x: k.r ? c - t : 0; y: 0; width: t; height: c; start(e) => { root.start-resize(e); } }
+    }
+}
+
+// How wide the menu bar's menus are: Slint doesn't tell. Its items are a
+// label with 11 px on both sides.
+export component MenuBarWidth inherits Rectangle {
+    in property <[string]> titles;
+    out property <length> total: row.preferred-width;
+    visible: false;
+    width: 0;
+    height: 0;
+    row := HorizontalLayout {
+        spacing: 10px;
+        for t in root.titles: Rectangle {
+            horizontal-stretch: 0;
+            min-width: label.preferred-width + 22px;
+            label := Text { text: t; }
+        }
+    }
+}

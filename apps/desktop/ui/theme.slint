@@ -1,0 +1,31 @@
+// Design tokens shared by all components. A skin overrides these values.
+export global Theme {
+    in-out property <color> bg: #07080d;
+    in-out property <color> bg-2: #0f1220;
+    in-out property <color> surface: #141826d0;
+    in-out property <color> surface-hi: #1e2436e8;
+    in-out property <color> border: #ffffff14;
+    in-out property <color> text: #eef1fa;
+    in-out property <color> text-dim: #9aa3bd;
+    in-out property <color> text-faint: #5d6580;
+    in-out property <color> accent: #39d0ff;
+    in-out property <color> accent-2: #a46bff;
+    in-out property <color> danger: #ff5c7a;
+    in-out property <brush> accent-gradient: @linear-gradient(90deg, Theme.accent 0%, Theme.accent-2 100%);
+    in-out property <length> radius: 14px;
+    in-out property <duration> fast: 140ms;
+    in-out property <duration> normal: 260ms;
+    in-out property <length> font-small: 12px;
+    in-out property <length> font-normal: 14px;
+    in-out property <length> font-title: 26px;
+}
+
+// The clock for decorative motion (ambient glow, spinning disc, scrolling
+// titles), in milliseconds. main.rs advances it 30 times a second while
+// something plays. Unlike animation-tick(), it doesn't make the window
+// redraw at the screen's full rate (144 Hz on some screens), which cost a
+// fifth of a CPU core for a spinning disc. Wraps every hour, a whole
+// number of turns for every motion that uses it.
+export global Clock {
+    in-out property <float> ms;
+}

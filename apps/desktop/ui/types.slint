@@ -1,0 +1,185 @@
+export struct PlaylistItem {
+    title: string,
+    detail: string,
+    current: bool,
+}
+
+export struct TrackItem {
+    id: int,
+    label: string,
+    selected: bool,
+}
+
+// One finding of the system check (doctor.rs). level: 0 ok, 1 info,
+// 2 warning, 3 problem. action: id of a fix the app can do ("" for none).
+export struct CheckItem {
+    level: int,
+    title: string,
+    detail: string,
+    action: string,
+    action-label: string,
+    command: string,
+}
+
+// A drive holding a disc, for choosing which one to rip (main.rs).
+export struct DriveChoice {
+    device: string,
+    name: string,
+    detail: string,
+}
+
+// A TV or speaker found on the network (cast/).
+export struct CastDevice {
+    name: string,
+    detail: string,
+    sound-only: bool,
+    // Casting to it now.
+    current: bool,
+}
+
+// One entry of the command palette (palette.rs). id says what it does.
+export struct PaletteItem {
+    id: string,
+    title: string,
+    detail: string,
+}
+
+// One stage of the audio signal path (signal.rs). level: 0 untouched,
+// 1 changed without loss of quality worth noting, 2 processed.
+export struct SignalStage {
+    title: string,
+    detail: string,
+    level: int,
+}
+
+// A line of a transcript (transcribe.rs): where it is said, and what.
+export struct TranscriptLine {
+    time: float,
+    clock: string,
+    text: string,
+}
+
+// A part of the file marked on the seek bar, in seconds (sponsor.rs); main:
+// a sponsor, rather than an intro or the like.
+export struct SeekMark {
+    start: float,
+    end: float,
+    main: bool,
+}
+
+// Everything the advanced navigation panel shows (navigation.rs fills it
+// in while the tool is on). Times are text, formatted in Rust from mpv's
+// double-precision clock: a float can't hold milliseconds of a long film.
+export struct NavState {
+    position: float,
+    duration: float,
+    paused: bool,
+    idle: bool,
+    has-video: bool,
+    clock: string,
+    total: string,
+    frame: string,
+    chapter: string,
+    speed: float,
+    pitch: bool,
+    jog-sound: bool,
+    step-sound: bool,
+    step-index: int,
+    step-text: string,
+    custom-step: string,
+    turn-index: int,
+    turn-seconds: float,
+    shuttle: float,
+    shuttle-label: string,
+    mark-a: string,
+    mark-b: string,
+}
+
+// One row of the Library (library.rs): a saved link, a station, a podcast
+// an episode or a network folder / file.
+export struct LibraryRow {
+    title: string,
+    detail: string,
+    // The two buttons' labels ("" hides the second).
+    primary: string,
+    secondary: string,
+}
+
+// A subtitle found online (opensubs.rs).
+export struct SubHit {
+    title: string,
+    detail: string,
+    exact: bool,
+}
+
+// A shortcut you set (shortcuts.rs): the keys and what they do.
+// One of the user's mpv scripts (scripts.rs).
+export struct ScriptRow {
+    file: string,
+    detail: string,
+    on: bool,
+    problem: bool,
+}
+
+export struct ShortcutRow {
+    keys: string,
+    action: string,
+}
+
+// One line of the media information panel (basics.rs). A heading starts a
+// section ("Video", "Audio", ...) and has no value.
+export struct InfoRow {
+    label: string,
+    value: string,
+    heading: bool,
+}
+
+// The picture settings (basics.rs): adjustments -100..100, zoom as a power
+// of two (-2..2), pan -1..1, aspect and rotation as menu indices.
+export struct PictureState {
+    brightness: float,
+    contrast: float,
+    saturation: float,
+    gamma: float,
+    hue: float,
+    zoom: float,
+    pan-x: float,
+    pan-y: float,
+    aspect: int,
+    rotate: int,
+    deinterlace: bool,
+}
+
+// A card of the media library (collection.rs): an album, an artist, a
+// video, a folder. shape: 0 square, 1 round, 2 wide (16:9). icon (shown
+// while there is no picture): 0 disc, 1 person, 2 film, 3 folder, 4 genre.
+export struct MediaCard {
+    title: string,
+    subtitle: string,
+    // Over the picture's corner: a length, a number of files.
+    corner: string,
+    icon: int,
+    shape: int,
+    image: image,
+    has-image: bool,
+    // How far it was played, 0..1 (below 0: no bar).
+    progress: float,
+    // Can be taken off the list ("Continue watching").
+    removable: bool,
+}
+
+// A line of the media library's list. kind: 0 heading, 1 a row of cards
+// (`count` of them from card `first`, in `columns` columns), 2 a song or
+// video (number `first` of the page's songs), 3 a note.
+export struct MediaLine {
+    kind: int,
+    title: string,
+    detail: string,
+    right: string,
+    number: string,
+    path: string,
+    first: int,
+    count: int,
+    columns: int,
+    shape: int,
+}

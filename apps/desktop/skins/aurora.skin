@@ -1,0 +1,14 @@
+# The media player in northern-lights green and blue.
+name = Media player – Aurora
+layout = player
+author = Super Media Player
+
+bg = #050c0b
+bg-2 = #0b1a18
+surface = #0f201dd0
+surface-hi = #16302be8
+text = #e9faf5
+text-dim = #94bdb3
+text-faint = #57786f
+accent = #3dffa8
+accent-2 = #3d9bff

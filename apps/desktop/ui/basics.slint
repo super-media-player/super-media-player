@@ -1,0 +1,503 @@
+// Panels for the everyday basics (basics.rs): picture adjustments and media
+// information.
+
+import { ScrollView, Slider, LineEdit } from "std-widgets.slint";
+import { ComboBox, CheckBox, Button } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+import { Panel } from "extras.slint";
+import { InfoRow, PictureState, SubHit, LibraryRow } from "types.slint";
+
+// One slider of the picture card: label, value, and a double-click resets it.
+component PicSlider inherits HorizontalLayout {
+    in property <string> label;
+    in property <float> value;
+    in property <float> minimum: -100;
+    in property <float> maximum: 100;
+    in property <string> shown: Math.round(root.value);
+    callback moved(float);
+    spacing: 10px;
+    Text {
+        text: root.label;
+        color: Theme.text;
+        width: 84px;
+        vertical-alignment: center;
+    }
+    Slider {
+        horizontal-stretch: 1;
+        minimum: root.minimum;
+        maximum: root.maximum;
+        value: root.value;
+        changed(v) => { root.moved(v); }
+    }
+    Text {
+        text: root.shown;
+        color: Theme.text-dim;
+        width: 44px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+}
+
+// The picture card sits at the side without dimming the video, so the
+// changes can be seen as they are made.
+export component PictureCard inherits Rectangle {
+    in property <PictureState> pic;
+    in property <bool> auto-crop;
+    callback toggle-auto-crop();
+    // basics.rs: ("brightness", value), ("aspect", index), ("reset", 0), ...
+    callback set(string, float);
+    callback close();
+
+    // Fills the view; only the card takes clicks.
+    card := Rectangle {
+    width: Math.min(380px, root.width - 32px);
+    height: Math.min(lay.preferred-height, root.height - 32px);
+    x: root.width - self.width - 16px;
+    y: 16px;
+    border-radius: Theme.radius + 4px;
+    background: #171c2ef0;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 30px;
+    drop-shadow-color: #00000090;
+    clip: true;
+    TouchArea { }
+
+    lay := VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout {
+            Text {
+                text: "Picture";
+                font-size: 17px;
+                font-weight: 800;
+                color: Theme.text;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+            IconButton {
+                icon: Icons.close;
+                stroked: true;
+                size: 28px;
+                icon-size: 14px;
+                clicked => { root.close(); }
+            }
+        }
+        PicSlider { label: "Brightness"; value: root.pic.brightness; moved(v) => { root.set("brightness", v); } }
+        PicSlider { label: "Contrast"; value: root.pic.contrast; moved(v) => { root.set("contrast", v); } }
+        PicSlider { label: "Saturation"; value: root.pic.saturation; moved(v) => { root.set("saturation", v); } }
+        PicSlider { label: "Gamma"; value: root.pic.gamma; moved(v) => { root.set("gamma", v); } }
+        PicSlider { label: "Hue"; value: root.pic.hue; moved(v) => { root.set("hue", v); } }
+        PicSlider {
+            label: "Zoom";
+            minimum: -1;
+            maximum: 2;
+            value: root.pic.zoom;
+            shown: Math.round(Math.pow(2, root.pic.zoom) * 100) + "%";
+            moved(v) => { root.set("zoom-to", v); }
+        }
+        PicSlider {
+            label: "Move ←→";
+            minimum: -1;
+            maximum: 1;
+            value: root.pic.pan-x;
+            shown: Math.round(root.pic.pan-x * 100);
+            moved(v) => { root.set("pan-x-to", v); }
+        }
+        PicSlider {
+            label: "Move ↑↓";
+            minimum: -1;
+            maximum: 1;
+            value: root.pic.pan-y;
+            shown: Math.round(root.pic.pan-y * 100);
+            moved(v) => { root.set("pan-y-to", v); }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            Text { text: "Aspect ratio"; color: Theme.text; width: 84px; vertical-alignment: center; }
+            ComboBox {
+                horizontal-stretch: 1;
+                model: ["Automatic", "16:9", "4:3", "21:9 (2.35:1)", "1.85:1", "1:1", "Stretch to window"];
+                current-index: root.pic.aspect;
+                selected => { root.set("aspect", self.current-index); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            Text { text: "Rotate"; color: Theme.text; width: 84px; vertical-alignment: center; }
+            ComboBox {
+                horizontal-stretch: 1;
+                model: ["None", "90° right", "180°", "90° left"];
+                current-index: root.pic.rotate;
+                selected => { root.set("rotate", self.current-index); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            CheckBox {
+                text: "Crop black bars";
+                checked: root.auto-crop;
+                toggled => { root.toggle-auto-crop(); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            CheckBox {
+                text: "Deinterlace (old TV recordings, DVDs)";
+                checked: root.pic.deinterlace;
+                toggled => { root.set("deinterlace", self.checked ? 1 : 0); }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button { text: "Reset all"; clicked => { root.set("reset", 0); } }
+        }
+        Text {
+            text: "Alt + and Alt − zoom, Alt + arrows move, Alt+Backspace resets. Applies to every video until you reset it.";
+            color: Theme.text-faint;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+    }
+    }
+}
+
+// Media information: the file, its streams and how they are decoded.
+export component MediaInfoPanel inherits Panel {
+    in property <[InfoRow]> rows;
+    // The same as plain text, for "Copy as text".
+    in property <string> as-text;
+
+    title: "Media information";
+    card-width: 640px;
+    card-height: 600px;
+
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            padding-right: 14px;
+            spacing: 4px;
+            alignment: start;
+            for r in root.rows: HorizontalLayout {
+                padding-top: r.heading ? 10px : 0px;
+                spacing: 14px;
+                if r.heading: Text {
+                    text: r.label;
+                    color: Theme.accent;
+                    font-size: 11px;
+                    font-weight: 700;
+                    letter-spacing: 1px;
+                }
+                if !r.heading: Text {
+                    text: r.label;
+                    color: Theme.text-dim;
+                    width: 170px;
+                }
+                if !r.heading: Text {
+                    text: r.value;
+                    color: Theme.text;
+                    horizontal-stretch: 1;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        // Slint copies to the clipboard from a text field: a hidden one.
+        copier := TextInput {
+            width: 0px;
+            height: 0px;
+            visible: false;
+            text: root.as-text;
+            read-only: true;
+        }
+        Button {
+            text: "Copy as text";
+            clicked => {
+                copier.select-all();
+                copier.copy();
+                copier.clear-selection();
+                self.text = "Copied";
+            }
+        }
+    }
+}
+
+// Find subtitles online (opensubs.rs).
+export component SubSearchPanel inherits Panel {
+    in-out property <string> query;
+    in-out property <string> languages;
+    in property <[SubHit]> hits;
+    in property <string> status;
+    in property <bool> working;
+    callback search(string, string);
+    callback download(int);
+    callback from-speech();
+
+    title: "Find subtitles online";
+    card-width: 680px;
+    card-height: 600px;
+
+    HorizontalLayout {
+        spacing: 8px;
+        q := LineEdit {
+            horizontal-stretch: 1;
+            text <=> root.query;
+            placeholder-text: "Film or series name, e.g. The Show S01E02";
+            accepted => { root.search(root.query, root.languages); }
+        }
+        LineEdit {
+            width: 110px;
+            text <=> root.languages;
+            placeholder-text: "en,ro";
+            accepted => { root.search(root.query, root.languages); }
+        }
+        Button {
+            text: "Search";
+            enabled: !root.working;
+            clicked => { root.search(root.query, root.languages); }
+        }
+    }
+    Text {
+        text: root.status;
+        color: Theme.text-dim;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            padding-right: 14px;
+            spacing: 4px;
+            alignment: start;
+            for h[i] in root.hits: Rectangle {
+                height: 52px;
+                border-radius: 8px;
+                background: hit-touch.has-hover ? #ffffff10 : transparent;
+                hit-touch := TouchArea { mouse-cursor: pointer; double-clicked => { root.download(i); } }
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 6px;
+                    spacing: 10px;
+                    Text {
+                        width: 18px;
+                        text: h.exact ? "✓" : "";
+                        color: #6ef2a8;
+                        font-weight: 800;
+                        vertical-alignment: center;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text { text: h.title; color: Theme.text; overflow: elide; }
+                        Text { text: h.detail; color: Theme.text-faint; font-size: 11px; overflow: elide; }
+                    }
+                    Button {
+                        text: "Use";
+                        enabled: !root.working;
+                        clicked => { root.download(i); }
+                    }
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text {
+            text: "Nothing fits? The player can write subtitles from the speech itself.";
+            color: Theme.text-faint;
+            font-size: 11px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            wrap: word-wrap;
+        }
+        Button { text: "Subtitles from speech…"; clicked => { root.from-speech(); } }
+    }
+}
+
+// A tab button of the Library.
+component LibTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 32px;
+    width: t.preferred-width + 28px;
+    border-radius: 16px;
+    background: root.selected ? Theme.accent.with-alpha(0.22) : ta.has-hover ? #ffffff10 : transparent;
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.border;
+    t := Text { text: root.text; color: root.selected ? Theme.text : Theme.text-dim; font-weight: root.selected ? 700 : 400; }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// The Library (library.rs): saved links, the radio directory, podcasts.
+export component LibraryPanel inherits Panel {
+    in-out property <int> tab;
+    in-out property <int> group;
+    in-out property <string> country;
+    in property <[LibraryRow]> rows;
+    in property <string> status;
+    in property <bool> busy;
+    in property <bool> episodes;
+    callback show();
+    callback search(string);
+    callback activate(int);
+    callback toggle-save(int);
+    callback add(string, string);
+    callback save-current();
+    callback play-all();
+    callback back();
+    callback rescan();
+    callback connect(string, string, string);
+    in-out property <string> user;
+    in-out property <string> password;
+
+    title: "Library";
+    card-width: 760px;
+    card-height: 640px;
+    // A small window (the skinned players): the buttons go on rows of their own.
+    property <bool> narrow: root.width < 680px;
+
+    HorizontalLayout {
+        spacing: root.narrow ? 4px : 8px;
+        LibTab { text: "Saved"; selected: root.tab == 0; clicked => { root.tab = 0; root.show(); } }
+        LibTab { text: "Radio"; selected: root.tab == 1; clicked => { root.tab = 1; root.show(); } }
+        LibTab { text: "Podcasts"; selected: root.tab == 2; clicked => { root.tab = 2; root.show(); } }
+        LibTab { text: "Network"; selected: root.tab == 3; clicked => { root.tab = 3; root.show(); } }
+        Rectangle { horizontal-stretch: 1; }
+        if !root.narrow: Button { text: "Save what's playing"; clicked => { root.save-current(); } }
+    }
+
+    // Saved: the group, and adding a link.
+    if root.tab == 0: HorizontalLayout {
+        spacing: 8px;
+        LibTab { text: "Radio"; selected: root.group == 0; clicked => { root.group = 0; root.show(); } }
+        LibTab { text: "Audio"; selected: root.group == 1; clicked => { root.group = 1; root.show(); } }
+        LibTab { text: "Video"; selected: root.group == 2; clicked => { root.group = 2; root.show(); } }
+        Rectangle { horizontal-stretch: 1; }
+        Button { text: "Play all"; enabled: root.rows.length > 0; clicked => { root.play-all(); } }
+    }
+    if root.tab == 0: HorizontalLayout {
+        spacing: 8px;
+        link-name := LineEdit { width: root.narrow ? 130px : 180px; placeholder-text: "Name (optional)"; }
+        link-url := LineEdit {
+            horizontal-stretch: 1;
+            placeholder-text: "https://live.kissfm.ro/kissfm.chisinau";
+            accepted => { root.add(link-name.text, link-url.text); link-name.text = ""; link-url.text = ""; }
+        }
+        Button {
+            text: "Save link";
+            clicked => { root.add(link-name.text, link-url.text); link-name.text = ""; link-url.text = ""; }
+        }
+    }
+    if root.tab == 0 && root.narrow: HorizontalLayout {
+        alignment: end;
+        Button { text: "Save what's playing"; clicked => { root.save-current(); } }
+    }
+
+    // Network: connect to a share, look for media servers.
+    if root.tab == 3: HorizontalLayout {
+        spacing: 8px;
+        if root.episodes: Button { text: "← Back"; clicked => { root.back(); } }
+        share := LineEdit {
+            horizontal-stretch: 1;
+            placeholder-text: "smb://nas/music or sftp://me@host/videos";
+            accepted => { root.connect(share.text, root.user, root.password); }
+        }
+        if !root.narrow: LineEdit { width: 100px; text <=> root.user; placeholder-text: "User"; }
+        if !root.narrow: LineEdit { width: 110px; text <=> root.password; input-type: InputType.password; placeholder-text: "Password"; }
+        Button { text: "Connect"; enabled: !root.busy; clicked => { root.connect(share.text, root.user, root.password); } }
+        if !root.narrow: Button { text: "Find servers"; enabled: !root.busy; clicked => { root.rescan(); } }
+    }
+    if root.tab == 3 && root.narrow: HorizontalLayout {
+        spacing: 8px;
+        LineEdit { min-width: 60px; text <=> root.user; placeholder-text: "User"; }
+        LineEdit { min-width: 60px; text <=> root.password; input-type: InputType.password; placeholder-text: "Password"; }
+        Button { text: "Find servers"; enabled: !root.busy; clicked => { root.rescan(); } }
+    }
+
+    // Radio and podcasts: search.
+    if root.tab == 1 || root.tab == 2: HorizontalLayout {
+        spacing: 8px;
+        if root.episodes: Button { text: "← Back"; clicked => { root.back(); } }
+        query := LineEdit {
+            horizontal-stretch: 1;
+            placeholder-text: root.tab == 1 ? "Station name or genre (jazz, rock, news…); empty for the most played" : "Search podcasts";
+            accepted => { root.search(query.text); }
+        }
+        if root.tab == 1: LineEdit {
+            width: root.narrow ? 90px : 120px;
+            text <=> root.country;
+            placeholder-text: "Country: MD";
+            accepted => { root.search(query.text); }
+        }
+        Button { text: "Search"; enabled: !root.busy; clicked => { root.search(query.text); } }
+    }
+
+    if root.status != "": Text {
+        text: root.status;
+        color: Theme.text-dim;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            padding-right: 14px;
+            spacing: 2px;
+            alignment: start;
+            for r[i] in root.rows: Rectangle {
+                height: 48px;
+                border-radius: 8px;
+                background: row-touch.has-hover ? #ffffff10 : transparent;
+                row-touch := TouchArea { mouse-cursor: pointer; double-clicked => { root.activate(i); } }
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 6px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text { text: r.title; color: Theme.text; overflow: elide; }
+                        if r.detail != "": Text { text: r.detail; color: Theme.text-faint; font-size: 11px; overflow: elide; }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Button {
+                            width: 92px;
+                            text: r.primary;
+                            clicked => { root.activate(i); }
+                        }
+                    }
+                    if r.secondary != "": VerticalLayout {
+                        alignment: center;
+                        Button {
+                            width: 116px;
+                            text: r.secondary;
+                            clicked => { root.toggle-save(i); }
+                        }
+                    }
+                }
+            }
+            if root.rows.length == 0 && !root.busy: Text {
+                text: root.tab == 0 ? "No saved links here yet. Paste one above, or press Save what's playing."
+                    : root.tab == 2 ? "Search for a podcast; the ones you subscribe to are listed here."
+                    : root.tab == 3 ? "Media servers on your network (NAS, Plex, Jellyfin, minidlna, TVs) appear here by themselves. Windows shares (SMB), SFTP and WebDAV: type the address above and Connect; the shares you open are kept here." : "";
+                color: Theme.text-faint;
+                wrap: word-wrap;
+            }
+        }
+    }
+    Text {
+        text: root.tab == 1 ? "Stations from radio-browser.info, a free community directory of ~50,000 stations."
+            : root.tab == 2 ? "Found with Apple's podcast search; episodes come from each show's own feed."
+            : root.tab == 3 ? "Shares connect through GNOME's gvfs, like the Files app; passwords aren't stored." : "Double-click a row to play it.";
+        color: Theme.text-faint;
+        font-size: 11px;
+        wrap: word-wrap;
+    }
+}

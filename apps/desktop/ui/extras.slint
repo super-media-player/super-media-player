@@ -1,0 +1,987 @@
+// Panels for the features beyond plain playback: the command palette, the
+// audio signal path, karaoke, generated subtitles and search, clips, the
+// phone remote, watching together, and the intro / credits buttons.
+
+import { LineEdit, ScrollView, ProgressIndicator } from "std-widgets.slint";
+import { ComboBox, CheckBox, Button } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Icons, Icon } from "icons.slint";
+import { Fmt, IconButton, PillButton } from "controls.slint";
+import { CastDevice, PaletteItem, SignalStage, TranscriptLine } from "types.slint";
+
+// Dimmed backdrop with a card in the middle: title, close button, content.
+export component Panel inherits Rectangle {
+    in property <string> title;
+    in property <length> card-width: 560px;
+    in property <length> card-height: 460px;
+    callback close();
+
+    background: #000000a0;
+    TouchArea { clicked => { root.close(); } }
+
+    Rectangle {
+        width: Math.min(root.card-width, root.width - 32px);
+        height: Math.min(root.card-height, root.height - 32px);
+        border-radius: Theme.radius + 4px;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000a0;
+        TouchArea { }  // clicks inside don't close it
+
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 12px;
+                Text {
+                    text: root.title;
+                    font-size: 20px;
+                    font-weight: 800;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    overflow: elide;
+                }
+                IconButton {
+                    icon: Icons.close;
+                    stroked: true;
+                    size: 32px;
+                    icon-size: 16px;
+                    clicked => { root.close(); }
+                }
+            }
+            @children
+        }
+    }
+}
+
+component Note inherits Text {
+    color: Theme.text-dim;
+    font-size: Theme.font-small;
+    wrap: word-wrap;
+}
+
+// ---- command palette (Ctrl+K) ----
+
+export component CommandPalette inherits Rectangle {
+    in property <[PaletteItem]> items;
+    in-out property <int> selected: 0;
+    callback query(string);
+    callback run(string);
+    callback close();
+
+    public function open() {
+        edit.text = "";
+        root.selected = 0;
+        root.query("");
+        edit.focus();
+    }
+
+    function pick() {
+        if (root.items.length > 0) {
+            root.run(root.items[Math.clamp(root.selected, 0, root.items.length - 1)].id);
+        }
+    }
+
+    background: #00000080;
+    TouchArea { clicked => { root.close(); } }
+
+    card := Rectangle {
+        y: Math.min(90px, root.height * 0.12);
+        width: Math.min(620px, root.width - 32px);
+        height: Math.min(440px, root.height - self.y - 16px);
+        border-radius: Theme.radius;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000c0;
+        clip: true;
+        TouchArea { }
+
+        FocusScope {
+            capture-key-pressed(e) => {
+                if (e.text == Key.Escape) { root.close(); return accept; }
+                if (e.text == Key.DownArrow) {
+                    root.selected = Math.min(root.selected + 1, root.items.length - 1);
+                    if (root.selected * 38px + 38px > list.visible-height - list.content-y) {
+                        list.content-y = -(root.selected * 38px + 38px - list.visible-height);
+                    }
+                    return accept;
+                }
+                if (e.text == Key.UpArrow) {
+                    root.selected = Math.max(root.selected - 1, 0);
+                    if (root.selected * 38px < -list.content-y) {
+                        list.content-y = -root.selected * 38px;
+                    }
+                    return accept;
+                }
+                if (e.text == Key.Return) { root.pick(); return accept; }
+                reject
+            }
+            VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+                edit := LineEdit {
+                    placeholder-text: "Type a command, setting or playlist item…";
+                    edited(t) => { root.selected = 0; list.content-y = 0; root.query(t); }
+                }
+                list := ScrollView {
+                    vertical-stretch: 1;
+                    content-height: root.items.length * 38px;
+                    for item[i] in root.items: Rectangle {
+                        y: i * 38px;
+                        height: 38px;
+                        width: list.visible-width;
+                        border-radius: 8px;
+                        background: i == root.selected ? Theme.accent.with-alpha(0.18) : row-touch.has-hover ? #ffffff0c : transparent;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 10px;
+                            Text {
+                                text: item.title;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: item.detail;
+                                color: Theme.text-faint;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                            }
+                        }
+                        row-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.selected = i; root.pick(); }
+                        }
+                    }
+                }
+                if root.items.length == 0: Text {
+                    text: "Nothing matches";
+                    color: Theme.text-faint;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+// ---- audio signal path ----
+
+export component SignalPathPanel inherits Panel {
+    in property <[SignalStage]> stages;
+    in property <string> verdict;
+    // 0: bit-perfect, 1: clean but changed (e.g. resampled), 2: processed
+    in property <int> verdict-level;
+    in property <bool> can-fix-rates;
+    callback fix-rates();
+
+    title: "Signal path";
+    card-width: 600px;
+    card-height: 520px;
+
+    Rectangle {
+        height: 44px;
+        border-radius: 10px;
+        background: root.verdict-level == 0 ? #1f8f5a40 : root.verdict-level == 1 ? #c9a22a38 : #ffffff10;
+        Text {
+            x: 14px;
+            width: parent.width - 28px;
+            text: root.verdict;
+            color: root.verdict-level == 0 ? #6ef2a8 : root.verdict-level == 1 ? #ffd46a : Theme.text;
+            font-weight: 700;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            spacing: 0px;
+            for st[i] in root.stages: HorizontalLayout {
+                spacing: 12px;
+                // The line joining the stages, with a dot for each.
+                Rectangle {
+                    width: 16px;
+                    Rectangle {
+                        x: 7px;
+                        width: 2px;
+                        y: i == 0 ? parent.height / 2 : 0;
+                        height: i == root.stages.length - 1 ? parent.height / 2 : (i == 0 ? parent.height / 2 : parent.height);
+                        background: #ffffff20;
+                    }
+                    Rectangle {
+                        x: 2px;
+                        y: (parent.height - 12px) / 2;
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 6px;
+                        background: st.level == 0 ? #3ad38a : st.level == 1 ? #ffc94a : #ff7a8e;
+                    }
+                }
+                VerticalLayout {
+                    padding-top: 7px;
+                    padding-bottom: 7px;
+                    spacing: 2px;
+                    Text { text: st.title; color: Theme.text; font-weight: 600; }
+                    Text { text: st.detail; color: Theme.text-dim; font-size: Theme.font-small; wrap: word-wrap; }
+                }
+            }
+        }
+    }
+    if root.can-fix-rates: HorizontalLayout {
+        spacing: 10px;
+        Note {
+            text: "PipeWire runs the sound card at one rate and converts everything else. It can follow each file's rate instead.";
+            horizontal-stretch: 1;
+        }
+        Button { text: "Follow the file's rate"; clicked => { root.fix-rates(); } }
+    }
+}
+
+// ---- karaoke ----
+
+export component KaraokeView inherits Rectangle {
+    in property <string> media-title;
+    in property <string> prev;
+    in property <string> current;
+    in property <string> next;
+    in property <float> progress;
+    in property <bool> synced;
+    in property <bool> vocals-removed;
+    callback close();
+
+    background: @linear-gradient(180deg, #120a24 0%, #05060c 100%);
+    TouchArea { }
+
+    VerticalLayout {
+        padding: 28px;
+        spacing: 24px;
+        HorizontalLayout {
+            Text {
+                text: root.media-title;
+                color: Theme.text-dim;
+                font-size: 16px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            if root.vocals-removed: Text {
+                text: "Vocals removed  ";
+                color: Theme.accent;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+            }
+            IconButton {
+                icon: Icons.close;
+                stroked: true;
+                size: 32px;
+                icon-size: 16px;
+                clicked => { root.close(); }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        Text {
+            text: root.prev;
+            color: #ffffff50;
+            font-size: 22px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        // The line being sung: dim, with a bright copy wiped in from the
+        // left as the line goes by.
+        line := Rectangle {
+            height: dim.preferred-height;
+            dim := Text {
+                width: parent.width;
+                text: root.current != "" ? root.current : root.synced ? "♪" : "These lyrics have no timing";
+                color: #ffffff70;
+                font-size: 40px;
+                font-weight: 800;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+            // Only for one-line text: a wrapped line can't be wiped by width.
+            if dim.preferred-width <= parent.width: Rectangle {
+                property <length> left: (parent.width - dim.preferred-width) / 2;
+                x: self.left;
+                width: dim.preferred-width * Math.clamp(root.progress, 0, 1);
+                clip: true;
+                Text {
+                    x: 0;
+                    width: dim.preferred-width;
+                    text: dim.text;
+                    color: Theme.accent;
+                    font-size: 40px;
+                    font-weight: 800;
+                }
+            }
+        }
+        Text {
+            text: root.next;
+            color: #ffffffa0;
+            font-size: 26px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        Rectangle { vertical-stretch: 1; }
+    }
+}
+
+// ---- generated subtitles and search ----
+
+export component SubSyncPanel inherits Panel {
+    in property <string> status;
+    in property <float> progress: -1;
+    in property <bool> working;
+    in property <bool> done;
+    callback again();
+    callback cancel();
+    callback keep();
+    callback undo();
+
+    title: "Line up subtitles with the speech";
+    card-width: 520px;
+    card-height: 290px;
+
+    Note {
+        text: "Listens for when somebody speaks and moves the subtitles there, in any language. It also corrects a wrong frame rate and scenes that were cut.";
+    }
+    Text {
+        text: root.status;
+        color: Theme.text;
+        wrap: word-wrap;
+        vertical-stretch: 1;
+    }
+    if root.working && root.progress >= 0: ProgressIndicator { progress: root.progress; height: 6px; }
+    HorizontalLayout {
+        spacing: 10px;
+        Rectangle { horizontal-stretch: 1; }
+        if root.working: Button { text: "Cancel"; clicked => { root.cancel(); } }
+        if !root.working && !root.done: Button { text: "Try again"; clicked => { root.again(); } }
+        if root.done: Button { text: "Undo"; clicked => { root.undo(); } }
+        if root.done: Button { text: "Save in the file"; clicked => { root.keep(); } }
+    }
+}
+
+export component TranscriptPanel inherits Panel {
+    in property <string> status;
+    in property <float> progress: -1;
+    in property <bool> working;
+    in property <bool> has-transcript;
+    in property <bool> can-generate;
+    in property <[string]> models;
+    in-out property <int> model;
+    in property <[TranscriptLine]> results;
+    callback generate(bool);
+    callback cancel();
+    callback search(string);
+    callback seek(float);
+    callback model-changed();
+
+    title: "Subtitles from speech";
+    card-width: 640px;
+    card-height: 560px;
+
+    Note {
+        text: "Speech recognition (whisper.cpp) writes subtitles for the file on this computer. Nothing is sent anywhere.";
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text { text: "Model"; color: Theme.text-dim; vertical-alignment: center; }
+        ComboBox {
+            width: 170px;
+            model: root.models;
+            current-index <=> root.model;
+            enabled: !root.working;
+            selected => { root.model-changed(); }
+        }
+        translate := CheckBox { text: "Translate to English"; enabled: !root.working; }
+        Rectangle { horizontal-stretch: 1; }
+        if !root.working: Button {
+            text: root.has-transcript ? "Make again" : "Make subtitles";
+            enabled: root.can-generate;
+            clicked => { root.generate(translate.checked); }
+        }
+        if root.working: Button { text: "Cancel"; clicked => { root.cancel(); } }
+    }
+    if root.status != "": Note { text: root.status; }
+    if root.working && root.progress >= 0: ProgressIndicator { progress: root.progress; height: 6px; }
+
+    Rectangle { height: 1px; background: Theme.border; }
+    LineEdit {
+        placeholder-text: "Find what is said…";
+        enabled: root.has-transcript;
+        edited(t) => { root.search(t); }
+    }
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            for line in root.results: Rectangle {
+                height: row.preferred-height;
+                border-radius: 6px;
+                background: line-touch.has-hover ? #ffffff10 : transparent;
+                row := HorizontalLayout {
+                    padding: 6px;
+                    spacing: 12px;
+                    Text {
+                        text: line.clock;
+                        color: Theme.accent;
+                        font-size: Theme.font-small;
+                        min-width: 54px;
+                    }
+                    Text {
+                        text: line.text;
+                        color: Theme.text;
+                        wrap: word-wrap;
+                        horizontal-stretch: 1;
+                    }
+                }
+                line-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.seek(line.time); }
+                }
+            }
+        }
+    }
+}
+
+// ---- save a clip ----
+
+export component ClipPanel inherits Panel {
+    in property <float> start;
+    in property <float> end;
+    in property <float> position;
+    in property <string> status;
+    in property <float> progress: -1;
+    in property <bool> working;
+    in property <bool> has-video;
+    in-out property <int> format: 0;
+    callback set-start();
+    callback set-end();
+    callback save();
+    callback cancel();
+    callback open-folder();
+
+    in property <float> duration;
+    callback whole-file();
+
+    title: "Save a clip or convert";
+    card-width: 540px;
+    card-height: 400px;
+
+    Note {
+        text: "Mark the start and end (A-B repeat marks them too), or take the whole file to convert it. It goes to your Videos folder.";
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text { text: "Start"; color: Theme.text-dim; vertical-alignment: center; min-width: 40px; }
+        Text { text: Fmt.time(root.start); color: Theme.text; font-weight: 700; vertical-alignment: center; min-width: 64px; }
+        Button { text: "Set to now"; clicked => { root.set-start(); } }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text { text: "End"; color: Theme.text-dim; vertical-alignment: center; min-width: 40px; }
+        Text { text: Fmt.time(root.end); color: Theme.text; font-weight: 700; vertical-alignment: center; min-width: 64px; }
+        Button { text: "Set to now"; clicked => { root.set-end(); } }
+        Button { text: "Whole file"; enabled: root.duration > 0; clicked => { root.whole-file(); } }
+        Rectangle { horizontal-stretch: 1; }
+        Text {
+            text: root.end > root.start ? "Length " + Fmt.time(root.end - root.start) : "";
+            color: Theme.text-faint;
+            vertical-alignment: center;
+        }
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text { text: "Format"; color: Theme.text-dim; vertical-alignment: center; min-width: 40px; }
+        ComboBox {
+            width: 260px;
+            model: root.has-video
+                ? ["MP4 video (H.264)", "Animated GIF (no sound)", "Audio only (MP3)", "Audio only (FLAC, lossless)", "Audio only (Opus)"]
+                : ["MP3", "FLAC (lossless)", "Opus"];
+            current-index <=> root.format;
+            enabled: !root.working;
+        }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    if root.status != "": Note { text: root.status; }
+    if root.working && root.progress >= 0: ProgressIndicator { progress: root.progress; height: 6px; }
+    Rectangle { vertical-stretch: 1; }
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: LayoutAlignment.end;
+        Button { text: "Open folder"; clicked => { root.open-folder(); } }
+        if !root.working: Button {
+            text: root.start <= 0.5 && root.end >= root.duration - 0.5 ? "Convert" : "Save clip";
+            primary: true;
+            enabled: root.end > root.start;
+            clicked => { root.save(); }
+        }
+        if root.working: Button { text: "Cancel"; clicked => { root.cancel(); } }
+    }
+}
+
+// ---- phone remote ----
+
+export component RemotePanel inherits Panel {
+    in property <bool> running;
+    in property <string> address;
+    in property <image> qr;
+    in property <string> status;
+    callback start();
+    callback stop();
+
+    title: "Phone remote";
+    card-width: 520px;
+    card-height: 540px;
+
+    Note {
+        text: "Your phone becomes the remote: no app needed. Scan the code with the phone's camera (it must be on the same Wi-Fi). The link holds a secret key, so only phones that scanned it can control the player.";
+    }
+    if root.running: HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            width: 240px;
+            height: 240px;
+            background: white;
+            border-radius: 8px;
+            Image {
+                width: 224px;
+                height: 224px;
+                source: root.qr;
+                image-rendering: pixelated;
+            }
+        }
+    }
+    if root.running: Text {
+        text: root.address;
+        color: Theme.accent;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    if root.status != "": Note { text: root.status; horizontal-alignment: center; }
+    Rectangle { vertical-stretch: 1; }
+    HorizontalLayout {
+        alignment: center;
+        if !root.running: Button { text: "Turn on the remote"; primary: true; clicked => { root.start(); } }
+        if root.running: Button { text: "Turn off"; clicked => { root.stop(); } }
+    }
+}
+
+// ---- casting ----
+
+export component CastPanel inherits Panel {
+    in property <[CastDevice]> devices;
+    in property <bool> searching;
+    in property <bool> active;
+    in property <string> name;
+    // What the device does, and how the file is sent.
+    in property <string> state;
+    // Trouble finding or reaching one.
+    in property <string> status;
+    in-out property <int> quality;
+    in-out property <bool> burn-subs;
+    in-out property <string> address;
+    callback search();
+    callback connect(int);
+    callback add(string);
+    callback stop();
+    callback options-changed();
+
+    title: "Cast to a TV or speaker";
+    card-width: 580px;
+    card-height: 560px;
+
+    Note {
+        text: "Plays on a Chromecast, a TV or a network speaker; the buttons here become its remote. Keep the player open: the device fetches the file from this computer.";
+    }
+    if root.active: Rectangle {
+        height: 62px;
+        border-radius: 10px;
+        background: Theme.accent.with-alpha(0.14);
+        border-width: 1px;
+        border-color: Theme.accent.with-alpha(0.5);
+        HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 12px;
+            spacing: 12px;
+            Icon {
+                y: (parent.height - self.height) / 2;
+                commands: Icons.cast;
+                stroked: true;
+                color: Theme.accent;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                horizontal-stretch: 1;
+                Text { text: root.name; color: Theme.text; font-weight: 700; overflow: elide; }
+                Text { text: root.state; color: Theme.text-dim; font-size: Theme.font-small; overflow: elide; }
+            }
+            VerticalLayout {
+                alignment: center;
+                Button { text: "Stop casting"; clicked => { root.stop(); } }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text {
+            text: root.searching ? "Looking for devices…" : root.devices.length == 0 ? "No devices found" : "Devices on your network";
+            color: Theme.text-dim;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Button { text: "Search again"; enabled: !root.searching; clicked => { root.search(); } }
+    }
+    Rectangle {
+        vertical-stretch: 1;
+        border-radius: 10px;
+        background: #ffffff08;
+        clip: true;
+        if root.devices.length == 0 && !root.searching: Note {
+            x: 20px;
+            width: parent.width - 40px;
+            height: parent.height;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            text: "The device must be on, and on the same network as this computer. Guest Wi-Fi and some routers keep devices apart; then type its address below.";
+        }
+        list := ScrollView {
+            content-height: root.devices.length * 54px;
+            for d[i] in root.devices: Rectangle {
+                y: i * 54px;
+                height: 54px;
+                width: list.visible-width;
+                background: row.has-hover ? #ffffff10 : transparent;
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 14px;
+                    Icon {
+                        y: (parent.height - self.height) / 2;
+                        commands: d.sound-only ? Icons.speaker : Icons.cast;
+                        stroked: true;
+                        color: d.current ? Theme.accent : Theme.text-dim;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+                        Text { text: d.name; color: Theme.text; font-weight: 600; overflow: elide; }
+                        Text { text: d.detail; color: Theme.text-faint; font-size: Theme.font-small; overflow: elide; }
+                    }
+                    if d.current: Text {
+                        text: "Casting";
+                        color: Theme.accent;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                }
+                row := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { if (!d.current) { root.connect(i); } }
+                }
+            }
+        }
+    }
+    if root.status != "": Note { text: root.status; }
+    HorizontalLayout {
+        spacing: 10px;
+        LineEdit {
+            placeholder-text: "Address of a device not listed, e.g. 192.168.1.30";
+            text <=> root.address;
+            horizontal-stretch: 1;
+            accepted(t) => { root.add(t); }
+        }
+        Button { text: "Add"; enabled: root.address != ""; clicked => { root.add(root.address); } }
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        ComboBox {
+            width: 270px;
+            model: ["Convert only what it can't play", "Always send as it is", "Always convert (H.264)"];
+            current-index <=> root.quality;
+            selected => { root.options-changed(); }
+        }
+        CheckBox {
+            text: "Subtitles drawn into the picture";
+            checked <=> root.burn-subs;
+            toggled => { root.options-changed(); }
+        }
+    }
+}
+
+// Over the player while it casts: what plays where. `full` covers the
+// picture (which stands still); otherwise a strip at the top.
+export component CastBanner inherits Rectangle {
+    in property <string> name;
+    in property <string> state;
+    in property <string> media-title;
+    in property <bool> full;
+    callback stop();
+    callback open();
+
+    background: root.full ? #05070ef0 : transparent;
+
+    if root.full: VerticalLayout {
+        alignment: center;
+        spacing: 14px;
+        padding: 24px;
+        HorizontalLayout {
+            alignment: center;
+            Icon { width: 72px; height: 72px; commands: Icons.cast; stroked: true; color: Theme.accent; }
+        }
+        Text {
+            text: root.media-title;
+            color: Theme.text;
+            font-size: Theme.font-title;
+            font-weight: 700;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            text: "On " + root.name;
+            color: Theme.text-dim;
+            font-size: 16px;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            text: root.state;
+            color: Theme.text-faint;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+            PillButton { text: "Stop casting"; icon: Icons.stop; filled: true; clicked => { root.stop(); } }
+            PillButton { text: "Devices"; icon: Icons.cast; stroked: true; clicked => { root.open(); } }
+        }
+    }
+    if !root.full: Rectangle {
+        y: 64px;
+        x: (parent.width - self.width) / 2;
+        width: Math.min(strip.preferred-width, parent.width - 40px);
+        height: 40px;
+        border-radius: 20px;
+        background: #141826e6;
+        border-width: 1px;
+        border-color: Theme.accent.with-alpha(0.5);
+        strip-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.open(); }
+        }
+        strip := HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 6px;
+            spacing: 10px;
+            Icon {
+                y: (parent.height - self.height) / 2;
+                commands: Icons.cast;
+                stroked: true;
+                color: Theme.accent;
+            }
+            Text {
+                text: root.name + (root.state != "" ? "  ·  " + root.state : "");
+                color: Theme.text;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            IconButton {
+                y: (parent.height - self.height) / 2;
+                icon: Icons.close;
+                stroked: true;
+                size: 28px;
+                icon-size: 14px;
+                clicked => { root.stop(); }
+            }
+        }
+    }
+}
+
+// ---- watch together ----
+
+export component PartyPanel inherits Panel {
+    // 0: off, 1: hosting, 2: joined
+    in property <int> mode;
+    in property <string> status;
+    in property <string> invite;
+    in property <[string]> people;
+    in-out property <string> join-address;
+    in-out property <string> your-name;
+    callback host();
+    callback join();
+    callback leave();
+
+    title: "Watch together";
+    card-width: 560px;
+    card-height: 520px;
+
+    Note {
+        text: "Everyone opens the same film on their own computer; play, pause and seeking then stay in step for all. One person hosts, the others join with the host's invite.";
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text { text: "Your name"; color: Theme.text-dim; vertical-alignment: center; min-width: 76px; }
+        LineEdit { text <=> root.your-name; enabled: root.mode == 0; }
+    }
+    if root.mode == 0: HorizontalLayout {
+        spacing: 10px;
+        Button { text: "Host"; primary: true; clicked => { root.host(); } }
+        Text { text: "or join:"; color: Theme.text-dim; vertical-alignment: center; }
+        LineEdit {
+            placeholder-text: "Invite, e.g. 192.168.1.20:47800/ab12cd";
+            text <=> root.join-address;
+            horizontal-stretch: 1;
+            accepted => { root.join(); }
+        }
+        Button { text: "Join"; enabled: root.join-address != ""; clicked => { root.join(); } }
+    }
+    if root.mode == 1: VerticalLayout {
+        spacing: 6px;
+        Text { text: "Send this invite to the others:"; color: Theme.text-dim; }
+        LineEdit { text: root.invite; read-only: true; }
+        Note { text: "Over the internet the host's router must forward this port; on the same network it just works."; }
+    }
+    if root.status != "": Note { text: root.status; }
+    if root.mode != 0: Text { text: "Watching"; color: Theme.text-dim; font-weight: 600; }
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            alignment: start;
+            spacing: 4px;
+            for p in root.people: Text { text: "• " + p; color: Theme.text; }
+        }
+    }
+    if root.mode != 0: HorizontalLayout {
+        alignment: end;
+        Button { text: "Leave"; clicked => { root.leave(); } }
+    }
+}
+
+// ---- skip intro / next episode ----
+
+export component SkipButton inherits Rectangle {
+    in property <string> text;
+    in property <float> countdown: -1;
+    callback clicked();
+
+    width: label.preferred-width + 36px;
+    height: 44px;
+    border-radius: 10px;
+    background: touch.has-hover ? #ffffffee : #ffffffd8;
+    drop-shadow-blur: 20px;
+    drop-shadow-color: #00000090;
+    animate background { duration: Theme.fast; }
+    label := Text {
+        text: root.text + (root.countdown >= 0 ? " (" + Math.ceil(root.countdown) + ")" : "") + "  ›";
+        color: #10131c;
+        font-weight: 800;
+        font-size: 15px;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ---- before / after split for video enhancement ----
+
+export component CompareSplit inherits Rectangle {
+    in-out property <float> split: 0.5;
+    in property <string> after-label;
+    callback moved(float);
+
+    Rectangle {
+        x: root.width * root.split - 1px;
+        width: 2px;
+        background: #ffffffc0;
+    }
+    Rectangle {
+        x: root.width * root.split - 16px;
+        y: (root.height - 32px) / 2;
+        width: 32px;
+        height: 32px;
+        border-radius: 16px;
+        background: #ffffffe8;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #00000080;
+        Text { text: "⇔"; color: #10131c; font-weight: 800; }
+    }
+    Text {
+        x: root.width * root.split - self.width - 14px;
+        y: 72px;
+        text: "Original";
+        color: white;
+        font-weight: 700;
+        stroke: black;
+        stroke-width: 1px;
+    }
+    Text {
+        x: root.width * root.split + 14px;
+        y: 72px;
+        text: root.after-label;
+        color: white;
+        font-weight: 700;
+        stroke: black;
+        stroke-width: 1px;
+    }
+    TouchArea {
+        x: root.width * root.split - 20px;
+        width: 40px;
+        mouse-cursor: ew-resize;
+        moved => {
+            if (self.pressed) {
+                root.split = Math.clamp((self.x + self.mouse-x) / root.width, 0.02, 0.98);
+                root.moved(root.split);
+            }
+        }
+    }
+}
+
+// A DVD's menu is up: what to do there, and the ways out of it.
+export component DvdBar inherits Rectangle {
+    in property <bool> buttons;
+    in property <bool> can-return;
+    callback skip();
+    callback back();
+    callback film();
+    width: row.preferred-width;
+    height: 40px;
+    border-radius: 20px;
+    background: Theme.surface-hi;
+    border-width: 1px;
+    border-color: Theme.border;
+    TouchArea { }
+    row := HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 8px;
+        spacing: 14px;
+        Text {
+            text: root.buttons ? "Disc menu: click, or arrow keys and Enter" : "Disc intro";
+            color: Theme.text-dim;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                spacing: 6px;
+                if !root.buttons: Button { text: "Skip"; clicked => { root.skip(); } }
+                if root.can-return: Button { text: "Back to the film"; clicked => { root.back(); } }
+                Button { text: "Main film"; clicked => { root.film(); } }
+            }
+        }
+    }
+}

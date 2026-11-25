@@ -1,0 +1,960 @@
+import { ScrollView, LineEdit } from "std-widgets.slint";
+import { ComboBox, CheckBox, Button } from "widgets.slint";
+import { ShortcutRow, ScriptRow } from "types.slint";
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+
+component Row inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> hint;
+    spacing: 14px;
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        if root.hint != "": Text {
+            text: root.hint;
+            color: Theme.text-faint;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+    }
+    VerticalLayout {
+        alignment: center;
+        @children
+    }
+}
+
+// One entry in the settings sidebar.
+component TabItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 34px;
+    border-radius: Theme.radius;
+    background: root.selected ? Theme.accent.with-alpha(0.18) : ta.has-hover ? #ffffff0c : transparent;
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: 18px;
+        border-radius: 1.5px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+    Text {
+        x: 14px;
+        text: root.text;
+        color: root.selected ? Theme.text : Theme.text-dim;
+        font-weight: root.selected ? 700 : 400;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// Settings, shown as a modal panel over the player. Choices are indices into
+// the option lists that main.rs uses (settings.rs holds the saved names).
+export component SettingsPanel inherits Rectangle {
+    // The open tab (kept by app.slint while the player runs).
+    in-out property <int> tab;
+    in property <[string]> audio-devices;
+    in-out property <int> audio-device;
+    in-out property <bool> always-on-top;
+    in-out property <int> title-bar;
+    in property <bool> title-bar-choice;
+    in-out property <bool> single-instance;
+    in-out property <int> sub-size;
+    in-out property <int> sub-pos;
+    in-out property <int> sub-color;
+    in-out property <int> sub-style;
+    in-out property <int> passthrough;
+    in property <[ShortcutRow]> shortcut-rows;
+    in property <[string]> shortcut-actions;
+    in-out property <int> mouse-wheel;
+    in-out property <int> mouse-double;
+    in-out property <int> mouse-middle;
+    callback shortcut-capture(string, bool, bool, bool) -> string;
+    callback shortcut-add(string, int);
+    callback shortcut-remove(int);
+    in-out property <bool> scripts;
+    in property <[ScriptRow]> script-rows;
+    callback scripts-action(string, string);
+    in-out property <bool> dvd-menus;
+    in-out property <bool> sub-auto-sync;
+    in property <string> opensubs-status;
+    callback save-opensubs(string, string, string);
+    in-out property <int> view-mode;
+    // Skins: names, the view each dresses, the chosen one (see app.slint).
+    in-out property <int> skin;
+    in property <[string]> skin-names;
+    in property <[int]> skin-views;
+    callback reload-skins();
+    callback open-skins-folder();
+    in-out property <int> visualizer;
+    in-out property <int> artist-pos;
+    in-out property <bool> artist-online;
+    in-out property <bool> pulse-line;
+    in-out property <bool> lyrics-online;
+    in-out property <bool> show-lyrics;
+    in-out property <bool> gapless;
+    in-out property <int> crossfade;
+    in-out property <int> replaygain;
+    in-out property <bool> resume;
+    in-out property <bool> remember-pace;
+    in-out property <bool> bit-perfect;
+    callback open-equalizer();
+    in-out property <int> stream-quality;
+    in-out property <bool> hw-decoding;
+    in-out property <int> bluray-decryption;
+    in-out property <int> window-system;
+    in-out property <bool> auto-update;
+    in-out property <bool> night-mode;
+    in-out property <bool> dialogue-boost;
+    in-out property <bool> seek-thumbnails;
+    in-out property <int> skip-intro;
+    in-out property <int> sponsor-skip;
+    in-out property <int> sponsor-kinds;
+    in-out property <bool> next-episode;
+    in-out property <int> video-enhance;
+    in-out property <bool> smooth-motion;
+    in-out property <bool> auto-crop;
+    in-out property <int> tone-map;
+    in-out property <bool> hdr-peak;
+    in-out property <bool> cd-online;
+    in-out property <int> whisper-model;
+    in property <[string]> whisper-models;
+    in property <bool> milkdrop-available;
+    callback open-signal-path();
+    in property <string> ytdlp-status;
+    in property <string> keydb-status;
+    in property <string> disc-status;
+    // "mpv 0.37.0 · FFmpeg 6.1.1"
+    in property <string> engine-info;
+    in property <bool> busy;
+
+    callback changed();
+    callback install-ytdlp();
+    callback install-keydb();
+    callback run-check();
+    callback update-ffmpeg();
+    callback close();
+
+    background: #000000a0;
+    TouchArea { clicked => { root.close(); } }
+
+    // A small window (the skinned players).
+    property <bool> narrow: root.width < 680px;
+
+    panel := Rectangle {
+        width: Math.min(820px, root.width - 32px);
+        height: Math.min(620px, root.height - 32px);
+        border-radius: Theme.radius + 4px;
+        background: #171c2e;
+        border-width: 1px;
+        border-color: Theme.border;
+        drop-shadow-blur: 40px;
+        drop-shadow-color: #000000a0;
+        clip: true;
+        TouchArea { }  // keep clicks inside from closing the panel
+
+        HorizontalLayout {
+            // Sidebar: the tabs.
+            Rectangle {
+                width: root.narrow ? 130px : 180px;
+                background: #ffffff06;
+                VerticalLayout {
+                    padding: 14px;
+                    padding-top: 20px;
+                    spacing: 2px;
+                    Text {
+                        text: "Settings";
+                        font-size: 20px;
+                        font-weight: 800;
+                        color: Theme.text;
+                    }
+                    Rectangle { height: 14px; }
+                    // Scrolls in a window too low for all of them.
+                    ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 2px;
+                            alignment: start;
+                            for name[i] in ["Look", "Music view", "Audio", "Playback", "Video", "Subtitles", "Shortcuts", "Online", "Discs", "System", "Scripts"]: TabItem {
+                                text: name;
+                                selected: root.tab == i;
+                                clicked => { root.tab = i; }
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle { width: 1px; background: Theme.border; }
+
+            VerticalLayout {
+                padding: 20px;
+                padding-right: 12px;
+                spacing: 12px;
+                HorizontalLayout {
+                    Text {
+                        text: ["Look", "Music view", "Audio", "Playback", "Video", "Subtitles", "Shortcuts", "Online", "Discs", "System", "Scripts"][root.tab];
+                        font-size: 16px;
+                        font-weight: 700;
+                        color: Theme.text;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    IconButton {
+                        icon: Icons.close;
+                        stroked: true;
+                        size: 32px;
+                        icon-size: 16px;
+                        clicked => { root.close(); }
+                    }
+                }
+                if root.tab == 0: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Skin";
+                            hint: "Compact, Classic deck and Silver deck are small skinned players; the others recolour them. Ctrl+M switches to the next skin.";
+                            ComboBox {
+                                width: 190px;
+                                model: root.skin-names;
+                                current-index <=> root.skin;
+                                selected => {
+                                    root.view-mode = root.skin-views[self.current-index];
+                                    root.changed();
+                                }
+                            }
+                        }
+                        Row {
+                            label: "Your own skins";
+                            hint: "Put .skin files in the skins folder (README.txt there shows how), then reload.";
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button { text: "Open folder"; clicked => { root.open-skins-folder(); } }
+                                Button { text: "Reload"; clicked => { root.reload-skins(); } }
+                            }
+                        }
+                        if root.title-bar-choice: Row {
+                            label: "Title bar";
+                            hint: "The player's own is in its colours and shares the menu bar's row. The desktop's is the one its other windows have.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Player's own", "Desktop's"];
+                                current-index <=> root.title-bar;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Always on top";
+                            hint: "Keeps the player above other windows (also in the View menu). On Wayland only the window manager can do this: use its window menu (Alt+Space).";
+                            CheckBox {
+                                checked <=> root.always-on-top;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 1: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Music visualization";
+                            hint: root.milkdrop-available ? "Spectrum, waves, scope and the rest react to the music as it plays. MilkDrop plays Winamp's MilkDrop presets." : "Spectrum, waves, scope and the rest react to the music as it plays. MilkDrop needs libprojectM (scripts/fetch-projectm.sh).";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"];
+                                current-index <=> root.visualizer;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Pulse line";
+                            hint: "A heartbeat-like line that spikes on every beat, scrolling across the music view (about 25 seconds of it). Shown with any visualization.";
+                            CheckBox {
+                                checked <=> root.pulse-line;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Artist picture";
+                            hint: "From artist.jpg / folder.jpg / cover.jpg next to the music.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Off", "Top left", "Top right"];
+                                current-index <=> root.artist-pos;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Look up pictures and artist info online";
+                            hint: "Sends the artist and album names to Deezer (pictures, album covers) and Wikipedia (a short summary) when the folder and the file have none. Click the picture in the music view to see it.";
+                            CheckBox {
+                                checked <=> root.artist-online;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Show lyrics";
+                            hint: "Timed lyrics scroll under the title: from a .lrc file next to the song or the file's tags.";
+                            CheckBox {
+                                checked <=> root.show-lyrics;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Look up lyrics online";
+                            hint: "Sends the artist, title and album to LRCLIB (lrclib.net) when the song has no lyrics of its own.";
+                            CheckBox {
+                                checked <=> root.lyrics-online;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 2: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Output device";
+                            hint: "Where the sound goes. Automatic follows the system's choice (also in the Audio & Subtitles menu).";
+                            ComboBox {
+                                width: 260px;
+                                model: root.audio-devices;
+                                current-index <=> root.audio-device;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Equalizer";
+                            hint: "10 bands with presets. Press E while playing.";
+                            Button {
+                                text: "Open equalizer";
+                                clicked => { root.open-equalizer(); }
+                            }
+                        }
+                        Row {
+                            label: "Gapless playback";
+                            hint: "Songs that run into each other (live albums, mixes) play without a pause between them.";
+                            CheckBox {
+                                checked <=> root.gapless;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Fade between songs";
+                            hint: "Fades each song out at its end and the next one in. (One song plays at a time, so they don't overlap.)";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Off", "2 seconds", "4 seconds", "6 seconds", "8 seconds", "10 seconds"];
+                                current-index <=> root.crossfade;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Loudness levelling (ReplayGain)";
+                            hint: "Plays songs equally loud, using the ReplayGain tags in the files. Album keeps an album's quiet and loud songs as the artist meant.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Off", "Per song", "Per album"];
+                                current-index <=> root.replaygain;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Bit-perfect output";
+                            hint: "Sends the file's samples to the sound card untouched and with the card to itself (hi-res audio, external DACs). Turns off tone, equalizer, fades and the level bars; keep the volume at 100%.";
+                            CheckBox {
+                                checked <=> root.bit-perfect;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Night mode";
+                            hint: "Evens out loud and quiet parts: explosions come down, whispers come up. Also in the Audio menu.";
+                            CheckBox {
+                                checked <=> root.night-mode;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Dialogue boost";
+                            hint: "Makes voices clearer over music and effects (lifts a film's centre channel).";
+                            CheckBox {
+                                checked <=> root.dialogue-boost;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Signal path";
+                            hint: "Every stage between the file and the sound card, and whether it is bit-perfect.";
+                            Button {
+                                text: "Show";
+                                clicked => { root.open-signal-path(); }
+                            }
+                        }
+                        Row {
+                            label: "Pass through to a receiver";
+                            hint: "Sends Dolby and DTS soundtracks undecoded over HDMI or S/PDIF, for the receiver to decode. The player's volume, equalizer and effects don't apply to them. Only for a receiver that supports the format.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Off", "AC3 + DTS (S/PDIF)", "All formats (HDMI)"];
+                                current-index <=> root.passthrough;
+                                selected => { root.changed(); }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 3: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Resume where you left off";
+                            hint: "Videos over 5 minutes, and podcasts or audiobooks over 20, start again where you stopped. Press Home to start over.";
+                            CheckBox {
+                                checked <=> root.resume;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Remember the speed";
+                            hint: "A file played at another speed, or with silence skipped, plays that way next time too. A podcast's new episodes start like the last one.";
+                            CheckBox {
+                                checked <=> root.remember-pace;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Series intros and credits";
+                            hint: "Finds the intro and credits shared by episodes in a folder (by listening, or from chapter names) and offers to skip them.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Show a Skip button", "Skip by itself", "Off"];
+                                current-index <=> root.skip-intro;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Play the next episode";
+                            hint: "Opening one episode queues the next one from its folder.";
+                            CheckBox {
+                                checked <=> root.next-episode;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Preview pictures on the seek bar";
+                            hint: "A second, hidden decoder grabs one small keyframe for the spot under the pointer. It idles unless you hover the seek bar, so playback is unaffected.";
+                            CheckBox {
+                                checked <=> root.seek-thumbnails;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Speech recognition model";
+                            hint: "For subtitles from speech. Bigger models are more accurate and slower; each is downloaded once.";
+                            ComboBox {
+                                width: 190px;
+                                model: root.whisper-models;
+                                current-index <=> root.whisper-model;
+                                selected => { root.changed(); }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 4: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Hardware video decoding";
+                            hint: "Uses the GPU (VA-API, NVDEC, ...). Turn off if videos show glitches.";
+                            CheckBox {
+                                checked <=> root.hw-decoding;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Video enhancement";
+                            hint: "Sharpening or GPU upscaling for every video. View → Compare before / after shows the difference.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Off", "Sharpen (CAS)", "Upscale (AMD FSR)", "Anime (Anime4K)"];
+                                current-index <=> root.video-enhance;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Smooth motion";
+                            hint: "Blends frames to the screen's refresh rate, so pans don't judder (no invented frames).";
+                            CheckBox {
+                                checked <=> root.smooth-motion;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Crop black bars";
+                            hint: "Leaves out bars that are part of the video, so the picture itself fits the window. Keeps every part that ever shows a picture.";
+                            CheckBox {
+                                checked <=> root.auto-crop;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "HDR tone-mapping";
+                            hint: "How HDR movies are fitted to this screen's brightness. Automatic suits most; Hable looks more filmic, Mobius brighter.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Automatic", "Balanced (BT.2390)", "Smooth (spline)", "Filmic (Hable)", "Bright (Mobius)", "Clip (no tone-mapping)"];
+                                current-index <=> root.tone-map;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Scene brightness detection";
+                            hint: "Measures each HDR scene, so dark scenes aren't dimmed for highlights they don't have.";
+                            CheckBox {
+                                checked <=> root.hdr-peak;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 5: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Size";
+                            hint: "For text subtitles (SRT, VTT and the like). Styled subtitles (ASS) keep their own look.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Small", "Normal", "Large", "Very large"];
+                                current-index <=> root.sub-size;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Position";
+                            hint: "How far above the bottom of the picture.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Bottom", "A little higher", "Higher", "Top"];
+                                current-index <=> root.sub-pos;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Colour";
+                            hint: "";
+                            ComboBox {
+                                width: 190px;
+                                model: ["White", "Yellow", "Light grey", "Cyan", "Green"];
+                                current-index <=> root.sub-color;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Background";
+                            hint: "A dark box behind the words reads best over bright scenes.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Outline", "Outline and shadow", "Dark box", "Light box"];
+                                current-index <=> root.sub-style;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Text {
+                            text: "While playing, Z and X move the subtitles 100 ms earlier or later. The Audio & Subtitles menu shows the current delay and resets it.";
+                            color: Theme.text-faint;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                        Text {
+                            text: "SUBTITLES ONLINE (OPENSUBTITLES.COM)";
+                            color: Theme.accent;
+                            font-size: 11px;
+                            font-weight: 700;
+                            letter-spacing: 1px;
+                        }
+                        Row {
+                            label: "Line up with the speech";
+                            hint: "Downloaded subtitles that weren't made for this very file are moved to fit it. Nothing changes when the match isn't clear.";
+                            CheckBox {
+                                checked <=> root.sub-auto-sync;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Text {
+                            text: root.opensubs-status;
+                            color: Theme.text-faint;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            os-key := LineEdit {
+                                horizontal-stretch: 2;
+                                input-type: password;
+                                placeholder-text: "API key";
+                            }
+                            os-user := LineEdit {
+                                horizontal-stretch: 1;
+                                placeholder-text: "User (optional)";
+                            }
+                            os-pass := LineEdit {
+                                horizontal-stretch: 1;
+                                input-type: password;
+                                placeholder-text: "Password";
+                            }
+                            Button {
+                                text: "Save";
+                                clicked => {
+                                    root.save-opensubs(os-key.text, os-user.text, os-pass.text);
+                                    os-key.text = "";
+                                    os-pass.text = "";
+                                }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 6: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Mouse wheel over the picture";
+                            hint: "";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Volume", "Seek 5 seconds", "Nothing"];
+                                current-index <=> root.mouse-wheel;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Double-click on the picture";
+                            hint: "";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Fullscreen", "Play / pause", "Nothing"];
+                                current-index <=> root.mouse-double;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Middle click on the picture";
+                            hint: "";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Mute", "Play / pause", "Fullscreen", "Next", "Nothing"];
+                                current-index <=> root.mouse-middle;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Text {
+                            text: "YOUR KEYBOARD SHORTCUTS";
+                            color: Theme.accent;
+                            font-size: 11px;
+                            font-weight: 700;
+                            letter-spacing: 1px;
+                        }
+                        Text {
+                            text: "Click the box, press the keys, choose what they do and press Add. Your keys win over the built-in ones (Help → Keyboard shortcuts lists those); \"Nothing\" turns a built-in key off. Ctrl keys shown in the menus stay with the menus.";
+                            color: Theme.text-faint;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            capture := Rectangle {
+                                property <string> keys;
+                                width: root.narrow ? 110px : 150px;
+                                height: 32px;
+                                border-radius: Theme.radius;
+                                background: capture-focus.has-focus ? Theme.accent.with-alpha(0.15) : #ffffff10;
+                                border-width: 1px;
+                                border-color: capture-focus.has-focus ? Theme.accent : Theme.border;
+                                Text {
+                                    text: capture.keys != "" ? capture.keys : capture-focus.has-focus ? "Press keys…" : root.narrow ? "Click here" : "Click, then press keys";
+                                    color: capture.keys != "" ? Theme.text : Theme.text-faint;
+                                    font-size: capture.keys != "" ? 13px : 11px;
+                                }
+                                TouchArea { mouse-cursor: pointer; clicked => { capture-focus.focus(); } }
+                                capture-focus := FocusScope {
+                                    key-pressed(e) => {
+                                        let k = root.shortcut-capture(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift);
+                                        if (k != "") { capture.keys = k; }
+                                        accept
+                                    }
+                                }
+                            }
+                            action-box := ComboBox {
+                                horizontal-stretch: 1;
+                                min-width: 120px;
+                                model: root.shortcut-actions;
+                            }
+                            Button {
+                                text: "Add";
+                                clicked => {
+                                    root.shortcut-add(capture.keys, action-box.current-index);
+                                    capture.keys = "";
+                                }
+                            }
+                        }
+                        for r[i] in root.shortcut-rows: HorizontalLayout {
+                            spacing: 12px;
+                            Rectangle {
+                                width: root.narrow ? 110px : 150px;
+                                height: 28px;
+                                border-radius: 6px;
+                                background: #ffffff0c;
+                                Text { text: r.keys; color: Theme.accent; font-weight: 700; }
+                            }
+                            Text {
+                                text: r.action;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                                overflow: elide;
+                            }
+                            Button { text: "Remove"; clicked => { root.shortcut-remove(i); } }
+                        }
+                        if root.shortcut-rows.length == 0: Text {
+                            text: "None yet.";
+                            color: Theme.text-faint;
+                        }
+                    }
+                }
+                if root.tab == 7: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Streaming quality";
+                            hint: "Highest quality to pick for YouTube and similar sites.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Best available", "Up to 4K", "Up to 1080p", "Up to 720p", "Up to 480p", "Audio only"];
+                                current-index <=> root.stream-quality;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Sponsors in YouTube videos";
+                            hint: "Skips parts other viewers marked (SponsorBlock, CC BY-NC-SA 4.0, sponsor.ajay.app). Only four characters of a code made from the video's ID are sent, so the service can't tell what you watch. Also works for videos downloaded with yt-dlp.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Show a Skip button", "Skip by itself", "Off"];
+                                current-index <=> root.sponsor-skip;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        if root.sponsor-skip != 2: Row {
+                            label: "What to skip";
+                            hint: root.sponsor-kinds == 0 ? "Paid sponsors only."
+                                : root.sponsor-kinds == 1 ? "Paid sponsors, the channel's own promotion, and reminders to like and subscribe."
+                                : "Also intros, endings, previews, and the parts of music videos without music.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Sponsors", "Sponsors, promotion", "Everything marked"];
+                                current-index <=> root.sponsor-kinds;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "yt-dlp";
+                            hint: root.ytdlp-status;
+                            Button {
+                                text: "Install / update";
+                                enabled: !root.busy;
+                                clicked => { root.install-ytdlp(); }
+                            }
+                        }
+                        Row {
+                            label: "Update automatically";
+                            hint: "Checks for a new yt-dlp once a week and refreshes the Blu-ray key database once a month (only if you downloaded it). Only copies the player installed are updated.";
+                            CheckBox {
+                                checked <=> root.auto-update;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 8: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Blu-ray decryption";
+                            hint: "libaacs with a key database, or MakeMKV's libmmbd if MakeMKV is installed. Applies after a restart.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Automatic", "libaacs + key database", "MakeMKV (libmmbd)"];
+                                current-index <=> root.bluray-decryption;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "DVD menus";
+                            hint: "Start a DVD with its own menu. Off: the main film starts right away, and Playback → Disc menu still opens the menu.";
+                            CheckBox {
+                                checked <=> root.dvd-menus;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Audio CD names and covers";
+                            hint: "Looks the CD up on MusicBrainz by its track layout (no audio is sent); without it, names come from CD-Text when the disc has any.";
+                            CheckBox {
+                                checked <=> root.cd-online;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Blu-ray key database";
+                            hint: root.keydb-status;
+                            Button {
+                                text: "Download / update";
+                                enabled: !root.busy;
+                                clicked => { root.install-keydb(); }
+                            }
+                        }
+                        Text {
+                            text: root.disc-status;
+                            color: Theme.text-faint;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                if root.tab == 9: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Playback engine (FFmpeg)";
+                            hint: root.engine-info + ". FFmpeg decodes every video and song; updates bring security and format fixes.";
+                            Button {
+                                text: "Check for updates";
+                                enabled: !root.busy;
+                                clicked => { root.update-ffmpeg(); }
+                            }
+                        }
+                        Row {
+                            label: "System check";
+                            hint: "Scan for missing libraries, a broken MakeMKV, an old key database, and drives that can't read their disc, with how to fix each.";
+                            Button {
+                                text: "Run check";
+                                clicked => { root.run-check(); }
+                            }
+                        }
+                        Row {
+                            label: "Window system (Linux)";
+                            hint: "Drag and drop of files needs X11 (XWayland on a Wayland desktop), which can look soft with fractional scaling. Ctrl+V pastes files and links on all. Applies after a restart.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Automatic", "X11 (drag and drop)", "Wayland"];
+                                current-index <=> root.window-system;
+                                selected => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "One player window";
+                            hint: "Files opened from the file manager while the player runs play in it, instead of in a second player.";
+                            CheckBox {
+                                checked <=> root.single-instance;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                    }
+                }
+                if root.tab == 10: ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding-right: 14px;
+                        spacing: 16px;
+                        alignment: start;
+                        Row {
+                            label: "Run mpv scripts";
+                            hint: "Lua scripts made for mpv, from your scripts folder. They run with your rights, like any program: only add ones you trust. Applies after a restart.";
+                            CheckBox {
+                                checked <=> root.scripts;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Your scripts";
+                            hint: "Their actions are in the command palette (Ctrl+K), and can be given keys under Shortcuts. A changed script needs a restart.";
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button { text: "Open folder"; clicked => { root.scripts-action("folder", ""); } }
+                                Button { text: "Look again"; enabled: root.scripts; clicked => { root.scripts-action("refresh", ""); } }
+                            }
+                        }
+                        for r in root.script-rows: HorizontalLayout {
+                            spacing: 14px;
+                            VerticalLayout {
+                                alignment: center;
+                                horizontal-stretch: 1;
+                                Text {
+                                    text: r.file;
+                                    color: Theme.text;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: r.detail;
+                                    color: r.problem ? #ff7a8e : Theme.text-faint;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            VerticalLayout {
+                                alignment: center;
+                                CheckBox {
+                                    checked: r.on;
+                                    enabled: root.scripts;
+                                    toggled => { root.scripts-action("toggle", r.file); }
+                                }
+                            }
+                        }
+                        if root.script-rows.length == 0: Text {
+                            text: "None yet. Open the folder and put .lua files in it.";
+                            color: Theme.text-faint;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

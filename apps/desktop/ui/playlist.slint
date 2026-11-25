@@ -1,0 +1,96 @@
+import { Theme } from "theme.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "controls.slint";
+import { PlaylistItem } from "types.slint";
+
+// Scrollable playlist rows. Double-click plays an entry; the × on hover removes it.
+export component PlaylistList inherits Flickable {
+    in property <[PlaylistItem]> items;
+    in property <length> row-height: 46px;
+    in property <bool> dense: false;
+    callback play(int);
+    callback remove(int);
+    // Rows that match the search (empty: all), and moving a row.
+    in property <[bool]> shown;
+    in property <bool> can-move: false;
+    callback move-up(int);
+    callback move-down(int);
+
+    content-height: list.preferred-height;
+    list := VerticalLayout {
+        alignment: start;
+        spacing: root.dense ? 0px : 2px;
+        for item[i] in root.items: Rectangle {
+            property <bool> match: root.shown.length == 0 || root.shown[i];
+            height: self.match ? root.row-height : 0px;
+            visible: self.match;
+            border-radius: root.dense ? 4px : 10px;
+            background: item.current ? Theme.accent.with-alpha(0.11) : row-touch.has-hover ? #ffffff0e : transparent;
+            animate background { duration: Theme.fast; }
+            row-touch := TouchArea {
+                mouse-cursor: pointer;
+                double-clicked => { root.play(i); }
+            }
+            if item.current: Rectangle {
+                x: 0;
+                width: 3px;
+                height: parent.height - (root.dense ? 8px : 16px);
+                border-radius: 2px;
+                background: Theme.accent-gradient;
+            }
+            HorizontalLayout {
+                padding-left: root.dense ? 8px : 12px;
+                padding-right: 6px;
+                spacing: 10px;
+                Text {
+                    text: i + 1;
+                    color: item.current ? Theme.accent : Theme.text-faint;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                    min-width: 18px;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: item.title;
+                        color: item.current ? Theme.text : Theme.text-dim;
+                        font-weight: item.current ? 600 : 400;
+                        font-size: root.dense ? Theme.font-small : Theme.font-normal;
+                        overflow: elide;
+                    }
+                    if item.detail != "" && !root.dense: Text {
+                        text: item.detail;
+                        color: Theme.text-faint;
+                        font-size: 11px;
+                        overflow: elide;
+                    }
+                }
+                if row-touch.has-hover && root.can-move && i > 0: IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.up;
+                    stroked: true;
+                    size: 26px;
+                    icon-size: 14px;
+                    clicked => { root.move-up(i); }
+                }
+                if row-touch.has-hover && root.can-move && i < root.items.length - 1: IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.down;
+                    stroked: true;
+                    size: 26px;
+                    icon-size: 14px;
+                    clicked => { root.move-down(i); }
+                }
+                if row-touch.has-hover: IconButton {
+                    y: (parent.height - self.height) / 2;
+                    icon: Icons.close;
+                    stroked: true;
+                    size: root.dense ? 22px : 28px;
+                    icon-size: root.dense ? 12px : 14px;
+                    clicked => { root.remove(i); }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,312 @@
+// Building blocks shared by the skinned views (compact, classic, silver).
+import { Theme, Clock } from "theme.slint";
+
+// Spectrum bars drawn by the UI, for when no visualizer runs. `levels` are
+// live band heights (0..1, bass first) measured from the music (meter.rs);
+// `count` bars share them out, so any bar count works.
+export component MiniBars inherits Rectangle {
+    in property <bool> playing;
+    in property <[float]> levels;
+    in property <int> count: 20;
+    in property <brush> bar-brush: @linear-gradient(0deg, Theme.accent 0%, Theme.accent-2 100%);
+    in property <length> gap: 2px;
+    clip: true;
+    HorizontalLayout {
+        spacing: root.gap;
+        padding: 4px;
+        for i in root.count: Rectangle {
+            property <float> a: root.playing ? root.levels[Math.floor(i * root.levels.length / root.count)] : 0;
+            Rectangle {
+                y: parent.height - self.height;
+                height: 2px + (parent.height - 2px) * parent.a;
+                background: root.bar-brush;
+                opacity: 0.5 + 0.5 * parent.a;
+            }
+        }
+    }
+}
+
+// A line of text that scrolls sideways when it is wider than its box.
+export component Marquee inherits Rectangle {
+    in property <bool> active: true;
+    in property <string> text;
+    in property <brush> text-color: Theme.text;
+    in property <length> font-size: 15px;
+    in property <int> font-weight: 600;
+    in property <string> font-family;
+    clip: true;
+    height: label.preferred-height;
+    property <length> gap: 60px;
+    property <bool> scrolls: label.preferred-width > root.width;
+    property <length> offset: root.scrolls && root.active
+        ? mod(Clock.ms / 28 * 1px, label.preferred-width + root.gap) : 0px;
+    label := Text {
+        x: -root.offset;
+        text: root.text;
+        color: root.text-color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        font-family: root.font-family;
+    }
+    if root.scrolls: Text {
+        x: label.preferred-width + root.gap - root.offset;
+        text: root.text;
+        color: root.text-color;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        font-family: root.font-family;
+    }
+}
+
+// One piece of a Holed fill: a clipped window onto the full-size fill, so
+// gradients line up across the pieces.
+component HolePiece inherits Rectangle {
+    in property <length> full-width;
+    in property <length> full-height;
+    in property <brush> fill;
+    in property <length> radius;
+    in property <length> stroke-width;
+    in property <brush> stroke;
+    clip: true;
+    Rectangle {
+        x: -root.x;
+        y: -root.y;
+        width: root.full-width;
+        height: root.full-height;
+        background: root.fill;
+        border-radius: root.radius;
+        border-width: root.stroke-width;
+        border-color: root.stroke;
+    }
+}
+
+// Fills its whole area with `fill`, except a rectangular hole: mpv draws the
+// video or visualizer underneath the UI, and it has to show through there.
+export component Holed inherits Rectangle {
+    in property <length> hole-x;
+    in property <length> hole-y;
+    in property <length> hole-width;
+    in property <length> hole-height;
+    // No hole while nothing is drawn underneath.
+    in property <bool> open: true;
+    in property <brush> fill;
+    in property <length> radius;
+    in property <length> stroke-width;
+    in property <brush> stroke: transparent;
+
+    property <length> hx: root.open ? root.hole-x : 0px;
+    property <length> hy: root.open ? root.hole-y : root.height;
+    property <length> hw: root.open ? root.hole-width : 0px;
+    property <length> hh: root.open ? root.hole-height : 0px;
+
+    // Above, below, left, right of the hole. The side pieces overlap the
+    // others by a pixel: at fractional scale factors the shared edges would
+    // otherwise be anti-aliased twice into a visible seam.
+    HolePiece {
+        x: 0; y: 0; width: root.width; height: root.hy;
+        full-width: root.width; full-height: root.height;
+        fill: root.fill; radius: root.radius; stroke-width: root.stroke-width; stroke: root.stroke;
+    }
+    HolePiece {
+        x: 0; y: root.hy + root.hh; width: root.width; height: Math.max(0px, root.height - self.y);
+        full-width: root.width; full-height: root.height;
+        fill: root.fill; radius: root.radius; stroke-width: root.stroke-width; stroke: root.stroke;
+    }
+    HolePiece {
+        x: 0; y: root.hy - 1px; width: root.hx; height: root.hh + 2px;
+        full-width: root.width; full-height: root.height;
+        fill: root.fill; radius: root.radius; stroke-width: root.stroke-width; stroke: root.stroke;
+    }
+    HolePiece {
+        x: root.hx + root.hw; y: root.hy - 1px; width: Math.max(0px, root.width - self.x); height: root.hh + 2px;
+        full-width: root.width; full-height: root.height;
+        fill: root.fill; radius: root.radius; stroke-width: root.stroke-width; stroke: root.stroke;
+    }
+}
+
+// A round knob: drag up/down or use the mouse wheel to turn it.
+export component Knob inherits Rectangle {
+    in property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <string> label;
+    in property <string> value-text;
+    in property <brush> face: @radial-gradient(circle, #ffffff 0%, #d9dee5 45%, #9aa3ad 100%);
+    in property <color> mark: #2b6fd6;
+    in property <color> label-color: #3a4350;
+    callback changed(float);
+
+    width: 64px;
+    height: 80px;
+    property <float> frac: (root.value - root.minimum) / (root.maximum - root.minimum);
+    // The pointer sweeps 270°, from the lower left to the lower right.
+    property <angle> turn: -135deg + 270deg * Math.clamp(root.frac, 0, 1);
+    property <float> start-value;
+    property <length> knob-size: Math.min(root.width, root.height - 18px);
+
+    function set(v: float) {
+        root.changed(Math.clamp(v, root.minimum, root.maximum));
+    }
+
+    dial := Rectangle {
+        x: (root.width - self.width) / 2;
+        y: 0;
+        width: root.knob-size;
+        height: root.knob-size;
+        border-radius: self.width / 2;
+        background: #5d6570;
+        drop-shadow-blur: 6px;
+        drop-shadow-offset-y: 2px;
+        drop-shadow-color: #00000070;
+        Rectangle {
+            x: 3px;
+            y: 3px;
+            width: parent.width - 6px;
+            height: parent.height - 6px;
+            border-radius: self.width / 2;
+            background: root.face;
+        }
+        // Pointer dot on the rim.
+        Rectangle {
+            width: 7px;
+            height: 7px;
+            border-radius: 3.5px;
+            background: root.mark;
+            x: parent.width / 2 + (parent.width / 2 - 11px) * Math.sin(root.turn) - self.width / 2;
+            y: parent.height / 2 - (parent.height / 2 - 11px) * Math.cos(root.turn) - self.height / 2;
+        }
+        touch := TouchArea {
+            mouse-cursor: ns-resize;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down) {
+                    root.start-value = root.value;
+                }
+            }
+            moved => {
+                if (self.pressed) {
+                    root.set(root.start-value
+                        + (self.pressed-y - self.mouse-y) / 120px * (root.maximum - root.minimum));
+                }
+            }
+            scroll-event(e) => {
+                root.set(root.value + (e.delta-y > 0 ? 1 : -1) * (root.maximum - root.minimum) / 30);
+                accept
+            }
+        }
+    }
+    Text {
+        y: root.knob-size + 2px;
+        width: root.width;
+        horizontal-alignment: center;
+        text: touch.pressed || touch.has-hover ? root.value-text : root.label;
+        color: root.label-color;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+}
+
+// A styleable horizontal groove with a thumb. Reports the fraction (0..1)
+// while dragging and when released; the wheel nudges it.
+export component GrooveSlider inherits Rectangle {
+    in property <float> value; // 0..1
+    in property <bool> enabled: true;
+    in property <brush> groove: #0a0a10;
+    in property <brush> groove-border: #00000080;
+    in property <brush> fill: transparent;
+    in property <brush> thumb: @linear-gradient(180deg, #d8dce4 0%, #8b92a0 100%);
+    in property <brush> thumb-border: #2a2d36;
+    in property <length> groove-height: 6px;
+    in property <length> thumb-width: 22px;
+    in property <length> thumb-height: 12px;
+    in property <length> thumb-radius: 2px;
+    callback dragged(float);
+    callback released(float);
+    callback wheel(float);
+
+    property <bool> dragging: false;
+    property <float> drag-value;
+    property <float> shown: root.dragging ? root.drag-value : Math.clamp(root.value, 0, 1);
+    property <length> travel: root.width - root.thumb-width;
+    height: Math.max(root.thumb-height, root.groove-height) + 2px;
+
+    function frac-at(x: length) -> float {
+        Math.clamp((x - root.thumb-width / 2) / Math.max(1px, root.travel), 0, 1)
+    }
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: root.groove-height;
+        border-radius: self.height / 2;
+        background: root.groove;
+        border-width: 1px;
+        border-color: root.groove-border;
+        Rectangle {
+            x: 1px;
+            y: 1px;
+            height: parent.height - 2px;
+            width: Math.max(0px, (root.thumb-width / 2 + root.travel * root.shown) - 1px);
+            border-radius: self.height / 2;
+            background: root.fill;
+        }
+    }
+    if root.enabled: Rectangle {
+        x: root.travel * root.shown;
+        y: (parent.height - self.height) / 2;
+        width: root.thumb-width;
+        height: root.thumb-height;
+        border-radius: root.thumb-radius;
+        background: root.thumb;
+        border-width: 1px;
+        border-color: root.thumb-border;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.dragging = true;
+                root.drag-value = root.frac-at(self.mouse-x);
+                root.dragged(root.drag-value);
+            } else if (e.kind == PointerEventKind.up && root.dragging) {
+                root.dragging = false;
+                root.released(root.drag-value);
+            }
+        }
+        moved => {
+            if (root.dragging) {
+                root.drag-value = root.frac-at(self.mouse-x);
+                root.dragged(root.drag-value);
+            }
+        }
+        scroll-event(e) => {
+            root.wheel(e.delta-y > 0 ? 1 : -1);
+            accept
+        }
+    }
+}
+
+// A small square button for a skin's title bar: menu, minimize, close.
+export component TitleButton inherits Rectangle {
+    in property <string> glyph;
+    in property <brush> face: @linear-gradient(180deg, #6a6f86 0%, #3c4052 100%);
+    in property <color> edge: #81869e;
+    in property <color> ink: #d6d9e8;
+    callback clicked();
+    width: 16px;
+    height: 14px;
+    border-radius: 2px;
+    background: touch.pressed ? #2a2c38 : root.face;
+    border-width: 1px;
+    border-color: root.edge;
+    Text {
+        text: root.glyph;
+        color: touch.has-hover ? #ffffff : root.ink;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

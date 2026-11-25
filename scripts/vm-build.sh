@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Build the Linux packages on a separate build machine (a VM) over ssh, so
+# the long engine build doesn't tie up this one. The VM must run the same
+# Ubuntu release as the machines the packages are for (or an older one):
+# programs built on a newer system need its newer glibc.
+#
+#   scripts/vm-build.sh setup    once: install the build packages (asks for the
+#                                VM's sudo password) and Rust on the VM
+#   scripts/vm-build.sh          copy the source over and start the build; it
+#                                runs on the VM by itself and sends a phone
+#                                notification when done (see below)
+#   scripts/vm-build.sh sync     only copy the source over (no build, no cron):
+#                                for when build-hub runs the builds and the
+#                                daily check
+#   scripts/vm-build.sh status   show the end of the VM's build log
+#   scripts/vm-build.sh fetch    copy the finished packages into dist/
+#   scripts/vm-build.sh schedule   copy the source over and turn on the daily
+#                                check (scripts/vm-daily.sh, 05:30 VM time):
+#                                rebuilds when a bundled library has an update
+#   scripts/vm-build.sh unschedule turn the daily check off
+#   scripts/vm-build.sh daily    run the daily check now (--force: rebuild anyway)
+#
+# The VM's address comes from vm-build.conf here (git-ignored):
+#   BUILD_HOST=user@host         (or an alias from ~/.ssh/config)
+#   BUILD_DIR=super-media-player (folder on the VM, under its home; optional)
+# ssh must log in with a key (no password prompt).
+#
+# Notifications: put NTFY_URL=https://ntfy.sh/<topic> in notify.conf inside
+# BUILD_DIR on the VM (see scripts/notify.sh). Without it, nothing is sent.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+conf="$root/vm-build.conf"
+[[ -f "$conf" ]] && source "$conf"
+: "${BUILD_HOST:?set BUILD_HOST in vm-build.conf}"
+BUILD_DIR="${BUILD_DIR:-super-media-player}"
+
+remote() { ssh -o BatchMode=yes "$BUILD_HOST" "$@"; }
+running() { remote "pgrep -f '$BUILD_DIR/scripts/[v]m-(job|daily).sh' >/dev/null"; }
+cron_line="30 5 * * * \$HOME/$BUILD_DIR/scripts/vm-daily.sh"
+
+sync_source() {
+    echo "==> copying source to $BUILD_HOST:$BUILD_DIR"
+    # Build outputs and the VM's own state stay on each side; excluded files
+    # (the VM's engine, notify.conf, the daily check's versions) are never
+    # deleted by --delete.
+    rsync -az --delete \
+        --exclude=/target --exclude=/dist --exclude=/.devlibs --exclude=/.git \
+        --exclude=/notify.conf --exclude=/vm-build.conf --exclude=/build.log \
+        --exclude='/engine-versions.conf*' --exclude=/daily.log --exclude=/.daily.lock \
+        "$root/" "$BUILD_HOST:$BUILD_DIR/"
+}
+
+case "${1:-start}" in
+setup)
+    # Everything the engine build lists, plus what the app and the packager need.
+    deps=$("$root/scripts/build-engine.sh" --deps | sed 's/^sudo apt install //')
+    extra="rsync dpkg-dev libfontconfig-dev libxkbcommon-dev libaacs0 libbdplus0 libbluray2"
+    echo "==> installing build packages on $BUILD_HOST (asks for its sudo password)"
+    ssh -t "$BUILD_HOST" "sudo apt-get update -qq && sudo apt-get install -y $deps $extra"
+    echo "==> Rust"
+    remote 'command -v cargo >/dev/null || [ -x ~/.cargo/bin/cargo ] && echo "    already installed" ||
+        (curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal)'
+    echo "Setup done. Put NTFY_URL=... in ~/$BUILD_DIR/notify.conf on the VM for phone notifications."
+    ;;
+start)
+    if running; then
+        echo "A build is already running on $BUILD_HOST: scripts/vm-build.sh status" >&2
+        exit 1
+    fi
+    sync_source
+    echo "==> starting the build"
+    remote "cd $BUILD_DIR && nohup setsid \"\$PWD/scripts/vm-job.sh\" >build.log 2>&1 </dev/null &"
+    echo "Running on $BUILD_HOST. You'll get a notification when it's done;"
+    echo "meanwhile: scripts/vm-build.sh status"
+    ;;
+sync)
+    if running; then
+        echo "A build is running on $BUILD_HOST; try again when it's done" >&2
+        exit 1
+    fi
+    sync_source
+    echo "Source copied. build-hub's jobs use it from their next run."
+    ;;
+status)
+    if running; then echo "(running)"; else echo "(not running)"; fi
+    remote "tail -n 20 $BUILD_DIR/build.log 2>/dev/null || echo 'no build log yet'"
+    remote "crontab -l 2>/dev/null | grep -q '$BUILD_DIR/scripts/vm-daily.sh'" &&
+        { echo "--- daily check (on; last lines of daily.log):"; remote "tail -n 5 $BUILD_DIR/daily.log 2>/dev/null"; }
+    ;;
+schedule)
+    if running; then
+        echo "A build is running on $BUILD_HOST; try again when it's done" >&2
+        exit 1
+    fi
+    sync_source
+    remote "(crontab -l 2>/dev/null | grep -v '$BUILD_DIR/scripts/vm-daily.sh'; echo '$cron_line') | crontab -"
+    echo "Daily check on: $cron_line"
+    ;;
+unschedule)
+    remote "crontab -l 2>/dev/null | grep -v '$BUILD_DIR/scripts/vm-daily.sh' | crontab -"
+    echo "Daily check off."
+    ;;
+daily)
+    remote "nohup setsid \"\$HOME/$BUILD_DIR/scripts/vm-daily.sh\" ${2:-} >/dev/null 2>&1 </dev/null &"
+    echo "Daily check started on $BUILD_HOST; result by notification, log in ~/$BUILD_DIR/daily.log"
+    ;;
+fetch)
+    version=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version *= *"\(.*\)"/\1/p' "$root/Cargo.toml")
+    mkdir -p "$root/dist"
+    rsync -av "$BUILD_HOST:$BUILD_DIR/dist/*$version*" "$root/dist/"
+    ;;
+*)
+    sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'
+    exit 1
+    ;;
+esac

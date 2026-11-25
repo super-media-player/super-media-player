@@ -1,0 +1,11 @@
+[package]
+name = "player-core"
+description = "Safe playback engine API built on libmpv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mpv-sys.workspace = true
+thiserror.workspace = true
+log.workspace = true
