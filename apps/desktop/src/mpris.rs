@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use zbus::blocking;
+use zbus::interface;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
-use zbus::interface;
 
 const PATH: &str = "/org/mpris/MediaPlayer2";
 const NAME: &str = "org.mpris.MediaPlayer2.super_media_player";
@@ -99,13 +99,23 @@ impl Root {
     }
     #[zbus(property)]
     fn supported_uri_schemes(&self) -> Vec<String> {
-        ["file", "http", "https", "dvd", "bd", "cdda"].map(String::from).to_vec()
+        ["file", "http", "https", "dvd", "bd", "cdda"]
+            .map(String::from)
+            .to_vec()
     }
     #[zbus(property)]
     fn supported_mime_types(&self) -> Vec<String> {
-        ["audio/mpeg", "audio/flac", "audio/ogg", "audio/x-wav", "video/mp4", "video/x-matroska", "video/webm"]
-            .map(String::from)
-            .to_vec()
+        [
+            "audio/mpeg",
+            "audio/flac",
+            "audio/ogg",
+            "audio/x-wav",
+            "video/mp4",
+            "video/x-matroska",
+            "video/webm",
+        ]
+        .map(String::from)
+        .to_vec()
     }
 }
 
@@ -121,8 +131,9 @@ impl PlayerIface {
 }
 
 fn track_path(track: u64) -> ObjectPath<'static> {
-    ObjectPath::try_from(format!("/org/super_media_player/track/{track}"))
-        .unwrap_or_else(|_| ObjectPath::from_static_str_unchecked("/org/mpris/MediaPlayer2/TrackList/NoTrack"))
+    ObjectPath::try_from(format!("/org/super_media_player/track/{track}")).unwrap_or_else(|_| {
+        ObjectPath::from_static_str_unchecked("/org/mpris/MediaPlayer2/TrackList/NoTrack")
+    })
 }
 
 fn owned(v: Value<'_>) -> Option<OwnedValue> {
@@ -294,7 +305,13 @@ impl Mpris {
             blocking::connection::Builder::session()?
                 .name(name.to_owned())?
                 .serve_at(PATH, Root { send: send.clone() })?
-                .serve_at(PATH, PlayerIface { send: send.clone(), state: state.clone() })?
+                .serve_at(
+                    PATH,
+                    PlayerIface {
+                        send: send.clone(),
+                        state: state.clone(),
+                    },
+                )?
                 .build()
         };
         // A second player (single instance turned off) takes its own name.
@@ -303,7 +320,11 @@ impl Mpris {
             .map_err(|e| log::info!("MPRIS unavailable: {e}"))
             .ok()?;
         log::info!("MPRIS: registered on the session bus");
-        Some(Mpris { conn, state, last: Snapshot::default() })
+        Some(Mpris {
+            conn,
+            state,
+            last: Snapshot::default(),
+        })
     }
 
     /// Publish the player's state; announce what changed.
@@ -381,6 +402,12 @@ mod tests {
         assert!(m.contains_key("xesam:artist"));
         assert!(m.contains_key("mpris:length"));
         assert!(!m.contains_key("xesam:album"));
-        assert!(metadata(&Snapshot { status: "Stopped", ..s }).is_empty());
+        assert!(
+            metadata(&Snapshot {
+                status: "Stopped",
+                ..s
+            })
+            .is_empty()
+        );
     }
 }

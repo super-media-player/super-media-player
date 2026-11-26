@@ -24,8 +24,11 @@ const AGENT: &str = concat!("SuperMediaPlayer/", env!("CARGO_PKG_VERSION"));
 /// Saved link groups, as the Saved tab shows them.
 pub const GROUPS: [&str; 3] = ["radio", "audio", "video"];
 /// radio-browser.info mirrors, tried in turn.
-const RADIO_SERVERS: [&str; 3] =
-    ["https://de1.api.radio-browser.info", "https://nl1.api.radio-browser.info", "https://at1.api.radio-browser.info"];
+const RADIO_SERVERS: [&str; 3] = [
+    "https://de1.api.radio-browser.info",
+    "https://nl1.api.radio-browser.info",
+    "https://at1.api.radio-browser.info",
+];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Link {
@@ -79,13 +82,20 @@ pub fn parse_links(text: &str) -> Vec<Link> {
             let group = it.next()?.to_owned();
             let name = it.next()?.to_owned();
             let url = it.next()?.trim().to_owned();
-            (GROUPS.contains(&group.as_str()) && !url.is_empty()).then_some(Link { group, name, url })
+            (GROUPS.contains(&group.as_str()) && !url.is_empty()).then_some(Link {
+                group,
+                name,
+                url,
+            })
         })
         .collect()
 }
 
 fn load_links() -> Vec<Link> {
-    links_file().and_then(|f| std::fs::read_to_string(f).ok()).map(|t| parse_links(&t)).unwrap_or_default()
+    links_file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .map(|t| parse_links(&t))
+        .unwrap_or_default()
 }
 
 fn save_links(list: &[Link]) {
@@ -93,25 +103,52 @@ fn save_links(list: &[Link]) {
     if let Some(d) = f.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    let text: String =
-        list.iter().map(|l| format!("{}\t{}\t{}\n", l.group, clean(&l.name), clean(&l.url))).collect();
+    let text: String = list
+        .iter()
+        .map(|l| format!("{}\t{}\t{}\n", l.group, clean(&l.name), clean(&l.url)))
+        .collect();
     let _ = std::fs::write(f, text);
 }
 
 /// "kissfm.chisinau" from "https://live.kissfm.ro/kissfm.chisinau".
 pub fn name_from_url(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |x| x.1);
-    let rest = rest.split(['?', '#']).next().unwrap_or(rest).trim_end_matches('/');
+    let rest = rest
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(rest)
+        .trim_end_matches('/');
     let last = rest.rsplit('/').next().unwrap_or(rest);
-    if last.is_empty() { rest.to_owned() } else { last.to_owned() }
+    if last.is_empty() {
+        rest.to_owned()
+    } else {
+        last.to_owned()
+    }
 }
 
 /// What a URL most likely is, for the group to save it in.
 pub fn guess_group(url: &str, has_video: bool) -> &'static str {
     let u = url.to_lowercase();
-    if has_video || ["youtube.", "youtu.be", "vimeo.", "twitch.", ".mp4", ".mkv", ".webm"].iter().any(|k| u.contains(k)) {
+    if has_video
+        || [
+            "youtube.", "youtu.be", "vimeo.", "twitch.", ".mp4", ".mkv", ".webm",
+        ]
+        .iter()
+        .any(|k| u.contains(k))
+    {
         "video"
-    } else if [".mp3", ".flac", ".m4a", ".ogg", ".opus", "soundcloud.", "bandcamp."].iter().any(|k| u.contains(k)) {
+    } else if [
+        ".mp3",
+        ".flac",
+        ".m4a",
+        ".ogg",
+        ".opus",
+        "soundcloud.",
+        "bandcamp.",
+    ]
+    .iter()
+    .any(|k| u.contains(k))
+    {
         "audio"
     } else {
         "radio"
@@ -128,7 +165,12 @@ fn get_json(url: &str) -> Result<Value, String> {
         .build()
         .call()
         .map_err(|e| e.to_string())?;
-    let body = resp.body_mut().with_config().limit(32 * 1024 * 1024).read_to_string().map_err(|e| e.to_string())?;
+    let body = resp
+        .body_mut()
+        .with_config()
+        .limit(32 * 1024 * 1024)
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
     serde_json::from_str(&body).map_err(|e| e.to_string())
 }
 
@@ -136,7 +178,9 @@ fn enc(s: &str) -> String {
     let mut o = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => o.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                o.push(b as char)
+            }
             _ => o.push_str(&format!("%{b:02X}")),
         }
     }
@@ -162,7 +206,10 @@ pub fn search_stations(text: &str, country: &str) -> Result<Vec<Station>, String
                 let mut list = stations_of(&v);
                 // Nothing by name: the words may be a genre ("jazz").
                 if list.is_empty() && !text.is_empty() {
-                    let q2 = q.replace(&format!("&name={}", enc(text)), &format!("&tag={}", enc(&text.to_lowercase())));
+                    let q2 = q.replace(
+                        &format!("&name={}", enc(text)),
+                        &format!("&tag={}", enc(&text.to_lowercase())),
+                    );
                     if let Ok(v) = get_json(&format!("{server}/json/stations/search?{q2}")) {
                         list = stations_of(&v);
                     }
@@ -180,13 +227,23 @@ pub fn stations_of(v: &Value) -> Vec<Station> {
         .map(|a| {
             a.iter()
                 .filter_map(|s| {
-                    let url = s["url_resolved"].as_str().filter(|u| !u.is_empty()).or(s["url"].as_str())?.to_owned();
+                    let url = s["url_resolved"]
+                        .as_str()
+                        .filter(|u| !u.is_empty())
+                        .or(s["url"].as_str())?
+                        .to_owned();
                     let name = s["name"].as_str()?.trim().to_owned();
                     let mut d = Vec::new();
                     if let Some(c) = s["country"].as_str().filter(|c| !c.is_empty()) {
                         d.push(c.to_owned());
                     }
-                    let tags: Vec<&str> = s["tags"].as_str().unwrap_or("").split(',').filter(|t| !t.is_empty()).take(3).collect();
+                    let tags: Vec<&str> = s["tags"]
+                        .as_str()
+                        .unwrap_or("")
+                        .split(',')
+                        .filter(|t| !t.is_empty())
+                        .take(3)
+                        .collect();
                     if !tags.is_empty() {
                         d.push(tags.join(", "));
                     }
@@ -221,8 +278,11 @@ fn count_click(uuid: String) {
 // ---- podcasts ----
 
 pub fn search_podcasts(text: &str) -> Result<Vec<Show>, String> {
-    let v = get_json(&format!("https://itunes.apple.com/search?media=podcast&limit=50&term={}", enc(text.trim())))
-        .map_err(|e| format!("Podcast search couldn't be reached ({e})"))?;
+    let v = get_json(&format!(
+        "https://itunes.apple.com/search?media=podcast&limit=50&term={}",
+        enc(text.trim())
+    ))
+    .map_err(|e| format!("Podcast search couldn't be reached ({e})"))?;
     Ok(v["results"]
         .as_array()
         .map(|a| {
@@ -248,16 +308,25 @@ pub fn episodes(feed: &str) -> Result<Vec<Episode>, String> {
         .build()
         .call()
         .map_err(|e| format!("The podcast feed couldn't be loaded ({e})"))?;
-    let xml = resp.body_mut().with_config().limit(64 * 1024 * 1024).read_to_string().map_err(|e| e.to_string())?;
+    let xml = resp
+        .body_mut()
+        .with_config()
+        .limit(64 * 1024 * 1024)
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
     let mut list = parse_feed(&xml)?;
     list.iter_mut().for_each(|e| feed.clone_into(&mut e.show));
     Ok(list)
 }
 
 pub fn parse_feed(xml: &str) -> Result<Vec<Episode>, String> {
-    let doc = roxmltree::Document::parse(xml).map_err(|e| format!("The podcast feed isn't valid ({e})"))?;
+    let doc = roxmltree::Document::parse(xml)
+        .map_err(|e| format!("The podcast feed isn't valid ({e})"))?;
     let child_text = |n: roxmltree::Node, name: &str| {
-        n.children().find(|c| c.tag_name().name() == name).and_then(|c| c.text()).map(|t| t.trim().to_owned())
+        n.children()
+            .find(|c| c.tag_name().name() == name)
+            .and_then(|c| c.text())
+            .map(|t| t.trim().to_owned())
     };
     let mut out = Vec::new();
     for item in doc.descendants().filter(|n| n.has_tag_name("item")) {
@@ -274,12 +343,21 @@ pub fn parse_feed(xml: &str) -> Result<Vec<Episode>, String> {
         if let Some(date) = child_text(item, "pubDate") {
             // "Tue, 18 Nov 2026 10:00:00 GMT" → "18 Nov 2026"
             let words: Vec<&str> = date.split_whitespace().collect();
-            d.push(if words.len() >= 4 { words[1..4].join(" ") } else { date });
+            d.push(if words.len() >= 4 {
+                words[1..4].join(" ")
+            } else {
+                date
+            });
         }
         if let Some(dur) = child_text(item, "duration").filter(|s| !s.is_empty()) {
             d.push(fmt_duration(&dur));
         }
-        out.push(Episode { title, url, detail: d.join(" · "), show: String::new() });
+        out.push(Episode {
+            title,
+            url,
+            detail: d.join(" · "),
+            show: String::new(),
+        });
     }
     Ok(out)
 }
@@ -293,11 +371,17 @@ fn fmt_duration(d: &str) -> String {
 }
 
 fn load_shows() -> Vec<Show> {
-    let text = podcasts_file().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    let text = podcasts_file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .unwrap_or_default();
     text.lines()
         .filter_map(|l| {
             let mut it = l.splitn(3, '\t');
-            Some(Show { name: it.next()?.to_owned(), author: it.next()?.to_owned(), feed: it.next()?.trim().to_owned() })
+            Some(Show {
+                name: it.next()?.to_owned(),
+                author: it.next()?.to_owned(),
+                feed: it.next()?.trim().to_owned(),
+            })
         })
         .filter(|s| !s.feed.is_empty())
         .collect()
@@ -308,8 +392,17 @@ fn save_shows(list: &[Show]) {
     if let Some(d) = f.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    let text: String =
-        list.iter().map(|s| format!("{}\t{}\t{}\n", clean(&s.name), clean(&s.author), clean(&s.feed))).collect();
+    let text: String = list
+        .iter()
+        .map(|s| {
+            format!(
+                "{}\t{}\t{}\n",
+                clean(&s.name),
+                clean(&s.author),
+                clean(&s.feed)
+            )
+        })
+        .collect();
     let _ = std::fs::write(f, text);
 }
 
@@ -319,7 +412,12 @@ fn country_from_locale() -> String {
         .iter()
         .filter_map(|k| std::env::var(k).ok())
         .find_map(|l| {
-            let region = l.split(['.', '@']).next()?.split('_').nth(1)?.to_uppercase();
+            let region = l
+                .split(['.', '@'])
+                .next()?
+                .split('_')
+                .nth(1)?
+                .to_uppercase();
             (region.len() == 2).then_some(region)
         })
         .unwrap_or_default()
@@ -341,9 +439,21 @@ enum Rows {
 #[derive(Clone, Debug)]
 enum Net {
     Server(network::Server),
-    Share { uri: String, user: String },
-    Folder { control: String, id: String, title: String, count: Option<u32> },
-    Item { url: String, title: String, detail: String },
+    Share {
+        uri: String,
+        user: String,
+    },
+    Folder {
+        control: String,
+        id: String,
+        title: String,
+        count: Option<u32>,
+    },
+    Item {
+        url: String,
+        title: String,
+        detail: String,
+    },
     Dir(PathBuf),
     File(PathBuf),
 }
@@ -359,22 +469,47 @@ thread_local! {
 }
 
 fn row(title: &str, detail: &str, primary: &str, secondary: &str) -> LibraryRow {
-    LibraryRow { title: title.into(), detail: detail.into(), primary: primary.into(), secondary: secondary.into() }
+    LibraryRow {
+        title: title.into(),
+        detail: detail.into(),
+        primary: primary.into(),
+        secondary: secondary.into(),
+    }
 }
 
 fn file_name(p: &std::path::Path) -> String {
-    p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned())
+    p.file_name().map_or_else(
+        || p.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
 }
 
 fn net_row(n: &Net) -> LibraryRow {
     match n {
-        Net::Server(s) => row(&s.name, "Media server (DLNA / UPnP) on your network", "Open", ""),
-        Net::Share { uri, user } => {
-            row(uri, &if user.is_empty() { "Saved share".to_string() } else { format!("Saved share · {user}") }, "Connect", "Forget")
-        }
-        Net::Folder { title, count, .. } => {
-            row(title, &count.map(|c| format!("{c} items")).unwrap_or_else(|| "Folder".into()), "Open", "Play all")
-        }
+        Net::Server(s) => row(
+            &s.name,
+            "Media server (DLNA / UPnP) on your network",
+            "Open",
+            "",
+        ),
+        Net::Share { uri, user } => row(
+            uri,
+            &if user.is_empty() {
+                "Saved share".to_string()
+            } else {
+                format!("Saved share · {user}")
+            },
+            "Connect",
+            "Forget",
+        ),
+        Net::Folder { title, count, .. } => row(
+            title,
+            &count
+                .map(|c| format!("{c} items"))
+                .unwrap_or_else(|| "Folder".into()),
+            "Open",
+            "Play all",
+        ),
         Net::Item { title, detail, .. } => row(title, detail, "Play", "Add"),
         Net::Dir(p) => row(&file_name(p), "Folder", "Open", "Play all"),
         Net::File(p) => row(&file_name(p), "", "Play", "Add"),
@@ -383,32 +518,68 @@ fn net_row(n: &Net) -> LibraryRow {
 
 fn show_rows(ui: &AppWindow, rows: Rows) {
     let saved_urls: Vec<String> = LINKS.with_borrow(|l| l.iter().map(|x| x.url.clone()).collect());
-    let saved_feeds: Vec<String> = SHOWS.with_borrow(|l| l.iter().map(|x| x.feed.clone()).collect());
-    let group = GROUPS.get(ui.get_library_group().max(0) as usize).copied().unwrap_or("radio");
+    let saved_feeds: Vec<String> =
+        SHOWS.with_borrow(|l| l.iter().map(|x| x.feed.clone()).collect());
+    let group = GROUPS
+        .get(ui.get_library_group().max(0) as usize)
+        .copied()
+        .unwrap_or("radio");
     let list: Vec<LibraryRow> = match &rows {
         Rows::Links => LINKS.with_borrow(|l| {
-            l.iter().filter(|x| x.group == group).map(|x| row(&x.name, &x.url, "Play", "Remove")).collect()
+            l.iter()
+                .filter(|x| x.group == group)
+                .map(|x| row(&x.name, &x.url, "Play", "Remove"))
+                .collect()
         }),
         Rows::Stations(s) => s
             .iter()
-            .map(|x| row(&x.name, &x.detail, "Play", if saved_urls.contains(&x.url) { "★ Saved" } else { "☆ Save" }))
+            .map(|x| {
+                row(
+                    &x.name,
+                    &x.detail,
+                    "Play",
+                    if saved_urls.contains(&x.url) {
+                        "★ Saved"
+                    } else {
+                        "☆ Save"
+                    },
+                )
+            })
             .collect(),
         Rows::Shows(s) => s
             .iter()
-            .map(|x| row(&x.name, &x.author, "Episodes", if saved_feeds.contains(&x.feed) { "Unsubscribe" } else { "Subscribe" }))
+            .map(|x| {
+                row(
+                    &x.name,
+                    &x.author,
+                    "Episodes",
+                    if saved_feeds.contains(&x.feed) {
+                        "Unsubscribe"
+                    } else {
+                        "Subscribe"
+                    },
+                )
+            })
             .collect(),
-        Rows::Episodes(e) => e.iter().map(|x| row(&x.title, &x.detail, "Play", "Add")).collect(),
+        Rows::Episodes(e) => e
+            .iter()
+            .map(|x| row(&x.title, &x.detail, "Play", "Add"))
+            .collect(),
         Rows::Net(n) => n.iter().map(net_row).collect(),
     };
     ui.set_library_rows(ModelRc::new(VecModel::from(list)));
-    let can_back = matches!(rows, Rows::Episodes(_)) || (matches!(rows, Rows::Net(_)) && NET_STACK.with_borrow(|s| !s.is_empty()));
+    let can_back = matches!(rows, Rows::Episodes(_))
+        || (matches!(rows, Rows::Net(_)) && NET_STACK.with_borrow(|s| !s.is_empty()));
     ui.set_library_episodes(can_back);
     ROWS.with_borrow_mut(|r| *r = Some(rows));
 }
 
 /// The saved links of the chosen group, in list order.
 fn group_links(ui: &AppWindow) -> Vec<Link> {
-    let group = GROUPS.get(ui.get_library_group().max(0) as usize).copied().unwrap_or("radio");
+    let group = GROUPS
+        .get(ui.get_library_group().max(0) as usize)
+        .copied()
+        .unwrap_or("radio");
     LINKS.with_borrow(|l| l.iter().filter(|x| x.group == group).cloned().collect())
 }
 
@@ -422,7 +593,14 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
     LINKS.with_borrow_mut(|l| *l = load_links());
     SHOWS.with_borrow_mut(|l| *l = load_shows());
     let saved = settings.borrow().radio_country.clone();
-    ui.set_library_country(if saved.is_empty() { country_from_locale() } else { saved }.into());
+    ui.set_library_country(
+        if saved.is_empty() {
+            country_from_locale()
+        } else {
+            saved
+        }
+        .into(),
+    );
 
     // Switching tabs (0 saved, 1 radio, 2 podcasts) or saved groups.
     let weak = ui.as_weak();
@@ -487,7 +665,12 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
                             _ => 0,
                         };
                         ui.set_library_status(
-                            if n == 0 { "Nothing found".to_string() } else { format!("{n} found") }.into(),
+                            if n == 0 {
+                                "Nothing found".to_string()
+                            } else {
+                                format!("{n} found")
+                            }
+                            .into(),
                         );
                         show_rows(&ui, rows);
                     }
@@ -523,7 +706,9 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
                 }
             }
             Some(Rows::Shows(s)) => {
-                let Some(show) = s.get(i).cloned() else { return };
+                let Some(show) = s.get(i).cloned() else {
+                    return;
+                };
                 ui.set_library_busy(true);
                 ui.set_library_status(format!("Loading {}…", show.name).into());
                 let weak = ui.as_weak();
@@ -533,7 +718,9 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
                         ui.set_library_busy(false);
                         match r {
                             Ok(eps) => {
-                                ui.set_library_status(format!("{} · {} episodes", show.name, eps.len()).into());
+                                ui.set_library_status(
+                                    format!("{} · {} episodes", show.name, eps.len()).into(),
+                                );
                                 show_rows(&ui, Rows::Episodes(eps));
                             }
                             Err(e) => ui.set_library_status(e.into()),
@@ -571,7 +758,11 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
                         if let Some(p) = all.iter().position(|x| x.url == st.url) {
                             all.remove(p);
                         } else {
-                            all.push(Link { group: "radio".into(), name: st.name.clone(), url: st.url.clone() });
+                            all.push(Link {
+                                group: "radio".into(),
+                                name: st.name.clone(),
+                                url: st.url.clone(),
+                            });
                         }
                         save_links(all);
                     });
@@ -619,11 +810,23 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
             ui.set_library_status("Type a full link, starting with http:// or https://".into());
             return;
         }
-        let group = GROUPS.get(ui.get_library_group().max(0) as usize).copied().unwrap_or("radio").to_owned();
-        let name = if name.trim().is_empty() { name_from_url(&url) } else { name.trim().to_owned() };
+        let group = GROUPS
+            .get(ui.get_library_group().max(0) as usize)
+            .copied()
+            .unwrap_or("radio")
+            .to_owned();
+        let name = if name.trim().is_empty() {
+            name_from_url(&url)
+        } else {
+            name.trim().to_owned()
+        };
         LINKS.with_borrow_mut(|all| {
             all.retain(|x| x.url != url || x.group != group);
-            all.push(Link { group, name: name.clone(), url });
+            all.push(Link {
+                group,
+                name: name.clone(),
+                url,
+            });
             save_links(all);
         });
         ui.set_library_status(format!("Saved {name}").into());
@@ -637,21 +840,40 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
             return;
         };
         let has_video = ui.get_has_video();
-        let group = if url.contains("://") { guess_group(&url, has_video) } else if has_video { "video" } else { "audio" };
+        let group = if url.contains("://") {
+            guess_group(&url, has_video)
+        } else if has_video {
+            "video"
+        } else {
+            "audio"
+        };
         // A stream's own name, else the title shown, else from the link.
         let name = p
             .get_string("metadata/by-key/icy-name")
             .filter(|s| !s.trim().is_empty())
-            .or_else(|| p.get_string("media-title").filter(|t| !t.is_empty() && *t != url))
+            .or_else(|| {
+                p.get_string("media-title")
+                    .filter(|t| !t.is_empty() && *t != url)
+            })
             .unwrap_or_else(|| name_from_url(&url));
         LINKS.with_borrow_mut(|all| {
             all.retain(|x| x.url != url);
-            all.push(Link { group: group.into(), name: name.clone(), url });
+            all.push(Link {
+                group: group.into(),
+                name: name.clone(),
+                url,
+            });
             save_links(all);
         });
         let gi = GROUPS.iter().position(|g| *g == group).unwrap_or(0) as i32;
         ui.set_library_group(gi);
-        ui.set_toast(format!("Saved to {}: {name}", ["Radio", "Audio", "Video"][gi as usize]).into());
+        ui.set_toast(
+            format!(
+                "Saved to {}: {name}",
+                ["Radio", "Audio", "Video"][gi as usize]
+            )
+            .into(),
+        );
         if ui.get_library_open() && ui.get_library_tab() == 0 {
             show_rows(&ui, Rows::Links);
         }
@@ -660,7 +882,10 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<setting
     let weak = ui.as_weak();
     ui.on_library_play_all(move || {
         let Some(ui) = weak.upgrade() else { return };
-        let inputs: Vec<_> = group_links(&ui).iter().filter_map(|l| crate::parse_input(&l.url)).collect();
+        let inputs: Vec<_> = group_links(&ui)
+            .iter()
+            .filter_map(|l| crate::parse_input(&l.url))
+            .collect();
         if !inputs.is_empty() {
             crate::open_inputs(&ui, inputs, false);
         }
@@ -674,7 +899,9 @@ fn shares_file() -> Option<PathBuf> {
 }
 
 fn load_shares() -> Vec<(String, String)> {
-    let text = shares_file().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    let text = shares_file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .unwrap_or_default();
     text.lines()
         .filter_map(|l| {
             let (uri, user) = l.split_once('\t').unwrap_or((l, ""));
@@ -688,14 +915,24 @@ fn save_shares(list: &[(String, String)]) {
     if let Some(d) = f.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    let text: String = list.iter().map(|(u, n)| format!("{}\t{}\n", clean(u), clean(n))).collect();
+    let text: String = list
+        .iter()
+        .map(|(u, n)| format!("{}\t{}\n", clean(u), clean(n)))
+        .collect();
     let _ = std::fs::write(f, text);
 }
 
 /// The top of the Network tab: media servers found, then saved shares.
 fn net_home() -> Vec<Net> {
     let mut v: Vec<Net> = SERVERS.with_borrow(|s| s.iter().cloned().map(Net::Server).collect());
-    v.extend(SHARES.with_borrow(|s| s.iter().map(|(uri, user)| Net::Share { uri: uri.clone(), user: user.clone() }).collect::<Vec<_>>()));
+    v.extend(SHARES.with_borrow(|s| {
+        s.iter()
+            .map(|(uri, user)| Net::Share {
+                uri: uri.clone(),
+                user: user.clone(),
+            })
+            .collect::<Vec<_>>()
+    }));
     v
 }
 
@@ -710,13 +947,22 @@ fn enter(ui: &AppWindow, entries: Vec<Net>, status: String) {
 
 fn dir_entries(dir: &std::path::Path) -> Result<Vec<Net>, String> {
     let (dirs, files) = network::list_dir(dir)?;
-    Ok(dirs.into_iter().map(Net::Dir).chain(files.into_iter().map(Net::File)).collect())
+    Ok(dirs
+        .into_iter()
+        .map(Net::Dir)
+        .chain(files.into_iter().map(Net::File))
+        .collect())
 }
 
 fn dlna_entries(control: &str, list: Vec<network::Entry>) -> Vec<Net> {
     list.into_iter()
         .map(|e| match e {
-            network::Entry::Folder { title, id, count } => Net::Folder { control: control.to_owned(), id, title, count },
+            network::Entry::Folder { title, id, count } => Net::Folder {
+                control: control.to_owned(),
+                id,
+                title,
+                count,
+            },
             network::Entry::Item { title, url, detail } => Net::Item { url, title, detail },
         })
         .collect()
@@ -734,7 +980,11 @@ fn open_dlna(ui: &AppWindow, control: String, id: String, title: String) {
             match r {
                 Ok(list) => {
                     let n = list.len();
-                    enter(&ui, dlna_entries(&control, list), format!("{title} · {n} items"));
+                    enter(
+                        &ui,
+                        dlna_entries(&control, list),
+                        format!("{title} · {n} items"),
+                    );
                 }
                 Err(e) => ui.set_library_status(e.into()),
             }
@@ -745,7 +995,9 @@ fn open_dlna(ui: &AppWindow, control: String, id: String, title: String) {
 fn net_activate(ui: &AppWindow, entry: Net) {
     match entry {
         Net::Server(s) => open_dlna(ui, s.control, "0".into(), s.name),
-        Net::Folder { control, id, title, .. } => open_dlna(ui, control, id, title),
+        Net::Folder {
+            control, id, title, ..
+        } => open_dlna(ui, control, id, title),
         Net::Item { url, .. } => play(ui, &url, false),
         Net::File(p) => crate::open_inputs(ui, vec![crate::Input::Path(p)], false),
         Net::Dir(p) => match dir_entries(&p) {
@@ -758,7 +1010,11 @@ fn net_activate(ui: &AppWindow, entry: Net) {
         Net::Share { uri, user } => {
             // The password field, when filled, is for this share.
             let password = ui.get_library_password().to_string();
-            let user = if ui.get_library_user().trim().is_empty() { user } else { ui.get_library_user().trim().to_owned() };
+            let user = if ui.get_library_user().trim().is_empty() {
+                user
+            } else {
+                ui.get_library_user().trim().to_owned()
+            };
             connect(ui, uri, user, password);
         }
     }
@@ -779,7 +1035,9 @@ fn net_secondary(ui: &AppWindow, entry: Net) {
         }
         Net::File(p) => crate::open_inputs(ui, vec![crate::Input::Path(p)], true),
         Net::Dir(p) => crate::open_inputs(ui, vec![crate::Input::Path(p)], false),
-        Net::Folder { control, id, title, .. } => {
+        Net::Folder {
+            control, id, title, ..
+        } => {
             // Everything playable in the folder (not its subfolders).
             ui.set_library_status(format!("Queueing {title}…").into());
             let weak = ui.as_weak();
@@ -794,7 +1052,9 @@ fn net_secondary(ui: &AppWindow, entry: Net) {
                                 _ => None,
                             })
                             .collect();
-                        ui.set_library_status(format!("{}: {} files queued", title, inputs.len()).into());
+                        ui.set_library_status(
+                            format!("{}: {} files queued", title, inputs.len()).into(),
+                        );
                         if !inputs.is_empty() {
                             crate::open_inputs(&ui, inputs, false);
                         }
@@ -818,7 +1078,8 @@ fn connect(ui: &AppWindow, uri: String, user: String, password: String) {
     ui.set_library_status(format!("Connecting to {uri}…").into());
     let weak = ui.as_weak();
     std::thread::spawn(move || {
-        let r = network::mount(&uri, &user, &password).and_then(|dir| dir_entries(&dir).map(|e| (dir, e)));
+        let r = network::mount(&uri, &user, &password)
+            .and_then(|dir| dir_entries(&dir).map(|e| (dir, e)));
         let _ = weak.upgrade_in_event_loop(move |ui| {
             ui.set_library_busy(false);
             match r {
@@ -873,16 +1134,25 @@ fn install_network(ui: &AppWindow) {
     let weak = ui.as_weak();
     ui.on_library_connect(move |uri, user, password| {
         if let Some(ui) = weak.upgrade() {
-            connect(&ui, uri.to_string(), user.trim().to_owned(), password.to_string());
+            connect(
+                &ui,
+                uri.to_string(),
+                user.trim().to_owned(),
+                password.to_string(),
+            );
         }
     });
     let weak = ui.as_weak();
     ui.on_library_back(move || {
         let Some(ui) = weak.upgrade() else { return };
         match ROWS.with_borrow(|r| r.clone()) {
-            Some(Rows::Episodes(_)) => show_rows(&ui, Rows::Shows(SHOWS.with_borrow(|s| s.clone()))),
+            Some(Rows::Episodes(_)) => {
+                show_rows(&ui, Rows::Shows(SHOWS.with_borrow(|s| s.clone())))
+            }
             Some(Rows::Net(_)) => {
-                let prev = NET_STACK.with_borrow_mut(|s| s.pop()).unwrap_or_else(net_home);
+                let prev = NET_STACK
+                    .with_borrow_mut(|s| s.pop())
+                    .unwrap_or_else(net_home);
                 ui.set_library_status(SharedString::new());
                 show_rows(&ui, Rows::Net(prev));
             }
@@ -900,30 +1170,52 @@ mod tests {
     #[ignore]
     fn live_services() {
         let st = search_stations("kiss", "MD").unwrap();
-        println!("{} stations; first: {} | {} | {}", st.len(), st[0].name, st[0].url, st[0].detail);
+        println!(
+            "{} stations; first: {} | {} | {}",
+            st.len(),
+            st[0].name,
+            st[0].url,
+            st[0].detail
+        );
         assert!(st.iter().any(|s| s.name.to_lowercase().contains("kiss")));
         let jazz = search_stations("jazz", "").unwrap();
         println!("jazz: {} stations", jazz.len());
         let shows = search_podcasts("history").unwrap();
         println!("{} podcasts; first: {}", shows.len(), shows[0].name);
         let eps = episodes(&shows[0].feed).unwrap();
-        println!("{} episodes; first: {} | {}", eps.len(), eps[0].title, eps[0].detail);
+        println!(
+            "{} episodes; first: {} | {}",
+            eps.len(),
+            eps[0].title,
+            eps[0].detail
+        );
         assert!(!eps.is_empty());
     }
 
     #[test]
     fn link_names_and_groups() {
-        assert_eq!(name_from_url("https://live.kissfm.ro/kissfm.chisinau"), "kissfm.chisinau");
+        assert_eq!(
+            name_from_url("https://live.kissfm.ro/kissfm.chisinau"),
+            "kissfm.chisinau"
+        );
         assert_eq!(name_from_url("https://radio.example/stream/?x=1"), "stream");
         assert_eq!(name_from_url("http://host:8000/"), "host:8000");
-        assert_eq!(guess_group("https://www.youtube.com/watch?v=x", false), "video");
+        assert_eq!(
+            guess_group("https://www.youtube.com/watch?v=x", false),
+            "video"
+        );
         assert_eq!(guess_group("https://x/song.flac", false), "audio");
-        assert_eq!(guess_group("https://live.kissfm.ro/kissfm.chisinau", false), "radio");
+        assert_eq!(
+            guess_group("https://live.kissfm.ro/kissfm.chisinau", false),
+            "radio"
+        );
     }
 
     #[test]
     fn links_file_round_trip() {
-        let l = parse_links("radio\tKiss FM\thttps://live.kissfm.ro/kissfm.chisinau\nbad\tx\ty\nvideo\tT\t\n");
+        let l = parse_links(
+            "radio\tKiss FM\thttps://live.kissfm.ro/kissfm.chisinau\nbad\tx\ty\nvideo\tT\t\n",
+        );
         assert_eq!(l.len(), 1);
         assert_eq!(l[0].name, "Kiss FM");
     }

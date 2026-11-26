@@ -130,7 +130,11 @@ pub fn install_flatpak() -> Result<(), String> {
             Ok(())
         } else {
             let err = String::from_utf8_lossy(&out.stderr);
-            let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("failed");
+            let last = err
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("failed");
             Err(format!("flatpak {}: {}", args[0], last.trim()))
         }
     };
@@ -141,28 +145,49 @@ pub fn install_flatpak() -> Result<(), String> {
         "flathub",
         "https://dl.flathub.org/repo/flathub.flatpakrepo",
     ])?;
-    run(&["install", "--user", "-y", "--noninteractive", "flathub", FLATPAK_ID])
+    run(&[
+        "install",
+        "--user",
+        "-y",
+        "--noninteractive",
+        "flathub",
+        FLATPAK_ID,
+    ])
 }
 
 /// The Flatpak MakeMKV's version, e.g. "2.0.0".
 fn flatpak_version() -> Option<String> {
-    let out = Command::new("flatpak").args(["info", FLATPAK_ID]).output().ok()?;
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("Version:").map(|v| v.trim().to_owned()))
+    let out = Command::new("flatpak")
+        .args(["info", FLATPAK_ID])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).lines().find_map(|l| {
+        l.trim()
+            .strip_prefix("Version:")
+            .map(|v| v.trim().to_owned())
+    })
 }
 
 /// Asks MakeMKV for nothing: it starts, says whether it is registered, and
 /// leaves the drives alone. Without `--noscan` (or with `info disc:9999`) it
 /// looks into every drive, which switches a Blu-ray drive to raw reads until
 /// the disc is ejected (see bluray.rs).
-const CHECK_ARGS: &[&str] = &["-r", "--cache=1", "--noscan", "info", "iso:/nonexistent.iso"];
+const CHECK_ARGS: &[&str] = &[
+    "-r",
+    "--cache=1",
+    "--noscan",
+    "info",
+    "iso:/nonexistent.iso",
+];
 
 /// What the MakeMKV help panel shows at the top: which MakeMKV is used and
 /// whether it is ready. Blocking (runs MakeMKV once). `(ready, text)`.
 pub fn status() -> (bool, String) {
     let Some(tool) = tool() else {
-        return (false, "MakeMKV isn't installed yet: start with step 1.".into());
+        return (
+            false,
+            "MakeMKV isn't installed yet: start with step 1.".into(),
+        );
     };
     let version = (tool.label == "MakeMKV (Flatpak)")
         .then(flatpak_version)
@@ -180,7 +205,10 @@ pub fn status() -> (bool, String) {
             false,
             format!("{name} is installed but not registered (or too old): do steps 2 and 3."),
         ),
-        Ok(_) => (true, format!("{name} is installed and registered: ready for Rip & play.")),
+        Ok(_) => (
+            true,
+            format!("{name} is installed and registered: ready for Rip & play."),
+        ),
         Err(e) => (false, format!("{name} is installed but doesn't start: {e}")),
     }
 }
@@ -198,7 +226,9 @@ pub enum RipError {
 impl std::fmt::Display for RipError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RipError::NeedsKey => write!(f, "MakeMKV needs its registration key (or a newer version)"),
+            RipError::NeedsKey => {
+                write!(f, "MakeMKV needs its registration key (or a newer version)")
+            }
             RipError::StillLoading => write!(
                 f,
                 "The drive keeps trying to load the disc but never manages to: it spins without \
@@ -269,7 +299,9 @@ fn fields(s: &str) -> Vec<String> {
 /// "2:13:44" → seconds.
 fn duration_secs(s: &str) -> u64 {
     s.split(':')
-        .try_fold(0u64, |acc, p| p.trim().parse::<u64>().ok().map(|n| acc * 60 + n))
+        .try_fold(0u64, |acc, p| {
+            p.trim().parse::<u64>().ok().map(|n| acc * 60 + n)
+        })
         .unwrap_or(0)
 }
 
@@ -279,7 +311,9 @@ fn needs_key(line: &str) -> bool {
     let l = line.to_lowercase();
     line.starts_with("MSG:5021,")
         || (line.starts_with("MSG:")
-            && (l.contains("too old") || l.contains("evaluation period") || l.contains("registration key")))
+            && (l.contains("too old")
+                || l.contains("evaluation period")
+                || l.contains("registration key")))
 }
 
 /// Parse `makemkvcon -r info` output for the disc in `device`.
@@ -293,7 +327,9 @@ fn parse_info(out: &str, device: &str) -> Result<DiscInfo, RipError> {
         if needs_key(line) {
             return Err(RipError::NeedsKey);
         }
-        let Some((kind, rest)) = line.split_once(':') else { continue };
+        let Some((kind, rest)) = line.split_once(':') else {
+            continue;
+        };
         let f = fields(rest);
         match kind {
             "CINFO" if f.len() >= 3 => {
@@ -312,7 +348,10 @@ fn parse_info(out: &str, device: &str) -> Result<DiscInfo, RipError> {
                 let i = match info.titles.iter().position(|t| t.id == id) {
                     Some(i) => i,
                     None => {
-                        info.titles.push(Title { id, ..Title::default() });
+                        info.titles.push(Title {
+                            id,
+                            ..Title::default()
+                        });
                         info.titles.len() - 1
                     }
                 };
@@ -430,7 +469,9 @@ pub fn register(tool: &Tool, key: &str) -> Result<(), String> {
             .output()
             .is_ok_and(|o| {
                 o.status.success()
-                    && !String::from_utf8_lossy(&o.stdout).to_lowercase().contains("invalid")
+                    && !String::from_utf8_lossy(&o.stdout)
+                        .to_lowercase()
+                        .contains("invalid")
             });
     if !via_reg {
         let path = tool.settings.clone().ok_or("no home folder")?;
@@ -470,7 +511,10 @@ pub struct Progress {
 
 /// Lets the UI stop a running rip.
 #[derive(Clone, Default)]
-pub struct Cancel(Arc<Mutex<Option<Child>>>, Arc<std::sync::atomic::AtomicBool>);
+pub struct Cancel(
+    Arc<Mutex<Option<Child>>>,
+    Arc<std::sync::atomic::AtomicBool>,
+);
 
 impl Cancel {
     pub fn cancel(&self) {
@@ -503,7 +547,8 @@ pub fn rip(
     // Files from earlier rips into the same folder are older than this; only
     // what this rip wrote may be cleaned up or reported.
     let started = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
-    let mut child = tool.command()
+    let mut child = tool
+        .command()
         .args(["-r", "--progress=-same", "--cache=1", "mkv"])
         .arg(format!("dev:{device}"))
         .arg(title.id.to_string())
@@ -527,11 +572,16 @@ pub fn rip(
         if needs_key(&line) {
             key_problem = true;
         }
-        let Some((kind, rest)) = line.split_once(':') else { continue };
+        let Some((kind, rest)) = line.split_once(':') else {
+            continue;
+        };
         let f = fields(rest);
         match kind {
             "PRGV" if f.len() >= 3 => {
-                let (total, max) = (f[1].parse::<u64>().unwrap_or(0), f[2].parse::<u64>().unwrap_or(0));
+                let (total, max) = (
+                    f[1].parse::<u64>().unwrap_or(0),
+                    f[2].parse::<u64>().unwrap_or(0),
+                );
                 if let Some(pct) = (total * 100).checked_div(max) {
                     let pct = pct.min(100) as u32;
                     if pct != state.percent {
@@ -598,7 +648,11 @@ fn newest_mkv(dir: &Path) -> Option<PathBuf> {
     std::fs::read_dir(dir)
         .ok()?
         .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("mkv")))
+        .filter(|e| {
+            e.path()
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("mkv"))
+        })
         .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
         .map(|e| e.path())
 }
@@ -611,17 +665,31 @@ fn newest_mkv(dir: &Path) -> Option<PathBuf> {
 pub fn temp_root() -> Option<PathBuf> {
     let home = PathBuf::from(std::env::var_os("HOME")?);
     let videos = videos_dir(&home).unwrap_or_else(|| home.join("Videos"));
-    Some(videos.join("Super Media Player").join("Rip & play (temporary)"))
+    Some(
+        videos
+            .join("Super Media Player")
+            .join("Rip & play (temporary)"),
+    )
 }
 
 /// The folder one disc is ripped into: [`temp_root`]/<disc name>.
 pub fn destination(disc_name: &str) -> Option<PathBuf> {
     let safe: String = disc_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || " -_.()".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || " -_.()".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let safe = safe.trim().trim_matches('.').to_owned();
-    let safe = if safe.is_empty() { "Disc".to_owned() } else { safe };
+    let safe = if safe.is_empty() {
+        "Disc".to_owned()
+    } else {
+        safe
+    };
     Some(temp_root()?.join(safe))
 }
 
@@ -629,7 +697,11 @@ pub fn destination(disc_name: &str) -> Option<PathBuf> {
 /// outside [`temp_root`] is left alone.
 pub fn discard(file: &Path) {
     let Some(root) = temp_root() else { return };
-    if !file.starts_with(&root) || file.components().any(|c| c == std::path::Component::ParentDir) {
+    if !file.starts_with(&root)
+        || file
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+    {
         return;
     }
     match std::fs::remove_file(file) {
@@ -645,7 +717,12 @@ pub fn discard(file: &Path) {
 /// Delete a whole disc folder under [`temp_root`] (a rip stopped by quitting).
 pub fn discard_dir(dir: &Path) {
     let Some(root) = temp_root() else { return };
-    if dir.starts_with(&root) && dir != root && !dir.components().any(|c| c == std::path::Component::ParentDir) {
+    if dir.starts_with(&root)
+        && dir != root
+        && !dir
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+    {
         let _ = std::fs::remove_dir_all(dir);
     }
 }
@@ -655,7 +732,9 @@ pub fn discard_dir(dir: &Path) {
 /// player may be ripping or playing them.
 pub fn clean_leftovers(min_age: std::time::Duration) {
     let Some(root) = temp_root() else { return };
-    let Ok(dirs) = std::fs::read_dir(&root) else { return };
+    let Ok(dirs) = std::fs::read_dir(&root) else {
+        return;
+    };
     let old = |p: &Path| {
         std::fs::metadata(p)
             .and_then(|m| m.modified())
@@ -665,7 +744,12 @@ pub fn clean_leftovers(min_age: std::time::Duration) {
     };
     for dir in dirs.flatten().map(|e| e.path()) {
         if dir.is_dir() {
-            for f in std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()) {
+            for f in std::fs::read_dir(&dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path())
+            {
                 if f.is_file() && old(&f) {
                     discard(&f);
                 }
@@ -693,8 +777,17 @@ pub fn free_bytes(dir: &Path) -> Option<u64> {
     while !d.exists() {
         d = d.parent()?;
     }
-    let out = Command::new("df").args(["-B1", "--output=avail"]).arg(d).output().ok()?;
-    String::from_utf8_lossy(&out.stdout).lines().nth(1)?.trim().parse().ok()
+    let out = Command::new("df")
+        .args(["-B1", "--output=avail"])
+        .arg(d)
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .nth(1)?
+        .trim()
+        .parse()
+        .ok()
 }
 
 /// "2:13:44"
@@ -779,13 +872,20 @@ TINFO:2,11,0,"60000000000"
         let out = "DRV:0,3,999,0,\"BD-RE HL-DT-ST BD-RE  WH14NS40 1.00\",\"\",\"/dev/sr1\"\n\
             MSG:5010,0,0,\"Failed to open disc\",\"Failed to open disc\"\n";
         assert_eq!(parse_info(out, "/dev/sr1"), Err(RipError::StillLoading));
-        assert!(RipError::StillLoading.to_string().contains("keeps trying to load the disc"));
+        assert!(
+            RipError::StillLoading
+                .to_string()
+                .contains("keeps trying to load the disc")
+        );
     }
 
     #[test]
     fn key_goes_into_settings() {
         let key = "T-abcdefghijklmnopqrstuvwxyz0123456789";
-        assert_eq!(with_key("", key), format!("# MakeMKV settings file\napp_Key = \"{key}\"\n"));
+        assert_eq!(
+            with_key("", key),
+            format!("# MakeMKV settings file\napp_Key = \"{key}\"\n")
+        );
         let old = "# x\napp_DestinationDir = \"/home/u\"\napp_Key = \"\"\nsdf_Stop = \"\"\n";
         let new = with_key(old, key);
         assert!(new.contains(&format!("app_Key = \"{key}\"")));
@@ -795,7 +895,10 @@ TINFO:2,11,0,"60000000000"
 
     #[test]
     fn field_splitting() {
-        assert_eq!(fields(r#"0,2,0,"A, \"quoted\" name""#), ["0", "2", "0", "A, \"quoted\" name"]);
+        assert_eq!(
+            fields(r#"0,2,0,"A, \"quoted\" name""#),
+            ["0", "2", "0", "A, \"quoted\" name"]
+        );
         assert_eq!(fields(r#"1,"x""y""#), ["1", "x\"y"]);
         assert_eq!(duration_secs("1:02:03"), 3723);
         assert_eq!(duration_secs("garbage"), 0);
@@ -804,8 +907,16 @@ TINFO:2,11,0,"60000000000"
     #[test]
     fn destination_is_a_safe_plain_folder() {
         let d = destination("My/Movie: Part*2").unwrap();
-        assert!(d.ends_with("Rip & play (temporary)/My_Movie_ Part_2"), "{}", d.display());
-        assert!(destination("..").unwrap().ends_with("Rip & play (temporary)/Disc"));
+        assert!(
+            d.ends_with("Rip & play (temporary)/My_Movie_ Part_2"),
+            "{}",
+            d.display()
+        );
+        assert!(
+            destination("..")
+                .unwrap()
+                .ends_with("Rip & play (temporary)/Disc")
+        );
     }
 
     #[test]
@@ -834,7 +945,11 @@ mod machine {
         };
         println!("tool: {tool:?}");
         match super::disc_info(&tool, "/dev/sr1") {
-            Ok(info) => println!("{} titles, main: {:?}", info.titles.len(), info.main_title()),
+            Ok(info) => println!(
+                "{} titles, main: {:?}",
+                info.titles.len(),
+                info.main_title()
+            ),
             Err(e) => println!("error: {e} ({e:?})"),
         }
     }
@@ -848,7 +963,10 @@ mod tool_tests {
     fn flatpak_tool_runs_makemkvcon_with_drive_access() {
         let t = Tool::flatpak();
         let c = t.command();
-        let args: Vec<_> = c.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<_> = c
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert_eq!(c.get_program(), "flatpak");
         assert_eq!(args.last().map(String::as_str), Some(FLATPAK_ID));
         assert!(args.contains(&"--command=makemkvcon".to_owned()));

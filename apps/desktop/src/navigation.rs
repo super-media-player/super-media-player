@@ -25,8 +25,8 @@ use crate::{AppWindow, NavState, NavWindow, Theme};
 
 /// Step sizes offered, in milliseconds; -1 is one frame.
 pub const STEPS_MS: &[f64] = &[
-    -1.0, 1.0, 5.0, 10.0, 20.0, 40.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0,
-    10_000.0, 30_000.0, 60_000.0, 300_000.0,
+    -1.0, 1.0, 5.0, 10.0, 20.0, 40.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0, 10_000.0,
+    30_000.0, 60_000.0, 300_000.0,
 ];
 /// Seconds of media in one turn of the jog wheel (kept in settings.rs,
 /// which checks saved values against it).
@@ -60,7 +60,11 @@ pub fn step_label(ms: f64) -> String {
 }
 
 fn turn_label(s: f64) -> String {
-    if s < 60.0 { format!("{} s", trim_num(s)) } else { format!("{} min", trim_num(s / 60.0)) }
+    if s < 60.0 {
+        format!("{} s", trim_num(s))
+    } else {
+        format!("{} min", trim_num(s / 60.0))
+    }
 }
 
 /// 2.0 → "2", 0.5 → "0.5", 41.708 → "41.71".
@@ -121,7 +125,11 @@ pub fn parse_time(text: &str, fps: Option<f64>) -> Option<TimeInput> {
     if !secs.is_finite() {
         return None;
     }
-    Some(if sign == 0.0 { TimeInput::At(secs) } else { TimeInput::By(sign * secs) })
+    Some(if sign == 0.0 {
+        TimeInput::At(secs)
+    } else {
+        TimeInput::By(sign * secs)
+    })
 }
 
 /// Shuttle position (-1..1) to a speed (negative: backwards); 0 near the middle.
@@ -234,7 +242,10 @@ impl Nav {
             Some(d) if d > 0.0 => to.clamp(0.0, d),
             _ => to.max(0.0),
         };
-        if let Err(e) = self.player.command(&["seek", &format!("{to:.6}"), "absolute+exact"]) {
+        if let Err(e) = self
+            .player
+            .command(&["seek", &format!("{to:.6}"), "absolute+exact"])
+        {
             log::debug!("seek: {e}");
         }
         self.target.set(Some(to));
@@ -284,7 +295,11 @@ impl Nav {
     fn frame(&self, forward: bool) {
         self.stop_motion();
         self.target.set(None);
-        let cmd = if forward { "frame-step" } else { "frame-back-step" };
+        let cmd = if forward {
+            "frame-step"
+        } else {
+            "frame-back-step"
+        };
         if let Err(e) = self.player.command(&[cmd]) {
             log::debug!("{cmd}: {e}");
         }
@@ -329,11 +344,12 @@ impl Nav {
             }
             self.target.set(None);
             let me = Rc::downgrade(self);
-            self.jog_idle.start(slint::TimerMode::SingleShot, JOG_IDLE, move || {
-                if let Some(me) = me.upgrade() {
-                    me.jog_still();
-                }
-            });
+            self.jog_idle
+                .start(slint::TimerMode::SingleShot, JOG_IDLE, move || {
+                    if let Some(me) = me.upgrade() {
+                        me.jog_still();
+                    }
+                });
         } else {
             self.jog_still();
             self.step_by(secs, false);
@@ -370,20 +386,27 @@ impl Nav {
             if rate < 0.0 && was >= 0.0 {
                 self.target.set(None);
                 let me = Rc::downgrade(self);
-                self.reverse.start(slint::TimerMode::Repeated, REVERSE_TICK, move || {
-                    let Some(me) = me.upgrade() else { return };
-                    let r = me.shuttle.get();
-                    let Some(base) = me.target.get().or_else(|| me.time()) else { return };
-                    if base <= 0.0 {
-                        me.stop_shuttle(false);
-                        return;
-                    }
-                    let to = (base + r * REVERSE_TICK.as_secs_f64()).max(0.0);
-                    // Fast: whole pictures only (keyframes), which keeps up.
-                    let flags = if r < -2.0 { "absolute+keyframes" } else { "absolute+exact" };
-                    let _ = me.player.command(&["seek", &format!("{to:.6}"), flags]);
-                    me.target.set(Some(to));
-                });
+                self.reverse
+                    .start(slint::TimerMode::Repeated, REVERSE_TICK, move || {
+                        let Some(me) = me.upgrade() else { return };
+                        let r = me.shuttle.get();
+                        let Some(base) = me.target.get().or_else(|| me.time()) else {
+                            return;
+                        };
+                        if base <= 0.0 {
+                            me.stop_shuttle(false);
+                            return;
+                        }
+                        let to = (base + r * REVERSE_TICK.as_secs_f64()).max(0.0);
+                        // Fast: whole pictures only (keyframes), which keeps up.
+                        let flags = if r < -2.0 {
+                            "absolute+keyframes"
+                        } else {
+                            "absolute+exact"
+                        };
+                        let _ = me.player.command(&["seek", &format!("{to:.6}"), flags]);
+                        me.target.set(Some(to));
+                    });
             } else if rate == 0.0 {
                 self.reverse.stop();
             }
@@ -416,7 +439,11 @@ impl Nav {
             }
             return;
         }
-        let next = if r * dir <= 0.0 { dir } else { (r * 2.0).clamp(-MAX_SPEED, MAX_SPEED) };
+        let next = if r * dir <= 0.0 {
+            dir
+        } else {
+            (r * 2.0).clamp(-MAX_SPEED, MAX_SPEED)
+        };
         self.set_shuttle(next);
     }
 
@@ -459,15 +486,24 @@ impl Nav {
     }
 
     fn mark(&self, which: &str) {
-        let name = if which == "a" { "ab-loop-a" } else { "ab-loop-b" };
+        let name = if which == "a" {
+            "ab-loop-a"
+        } else {
+            "ab-loop-b"
+        };
         let Some(t) = self.base() else { return };
         if let Err(e) = self.player.set_double(name, t) {
             log::debug!("{name}: {e}");
         }
-        match (self.player.get_double("ab-loop-a"), self.player.get_double("ab-loop-b")) {
-            (Some(a), Some(b)) if b > a => {
-                self.toast(&format!("Repeating {} – {}", fmt_precise(a), fmt_precise(b)))
-            }
+        match (
+            self.player.get_double("ab-loop-a"),
+            self.player.get_double("ab-loop-b"),
+        ) {
+            (Some(a), Some(b)) if b > a => self.toast(&format!(
+                "Repeating {} – {}",
+                fmt_precise(a),
+                fmt_precise(b)
+            )),
             (Some(a), Some(b)) => self.toast(&format!(
                 "B ({}) is before A ({}): set B later than A to repeat",
                 fmt_precise(b),
@@ -619,7 +655,11 @@ impl Nav {
             paused,
             idle,
             has_video: ui.get_has_video(),
-            clock: if idle { "0:00.000".into() } else { fmt_precise(shown).into() },
+            clock: if idle {
+                "0:00.000".into()
+            } else {
+                fmt_precise(shown).into()
+            },
             total: fmt_precise(duration).into(),
             frame: frame.into(),
             chapter: chapter.into(),
@@ -634,7 +674,10 @@ impl Nav {
             } else {
                 SharedString::default()
             },
-            turn_index: TURNS.iter().position(|t| (t - s.nav_turn).abs() < 1e-6).unwrap_or(2) as i32,
+            turn_index: TURNS
+                .iter()
+                .position(|t| (t - s.nav_turn).abs() < 1e-6)
+                .unwrap_or(2) as i32,
             turn_seconds: s.nav_turn as f32,
             shuttle: shuttle_position(rate) as f32,
             shuttle_label: shuttle_text(rate).into(),
@@ -730,48 +773,55 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     let weak = ui.as_weak();
     let nav_tick: Weak<Nav> = Rc::downgrade(&nav);
     let timer = slint::Timer::default();
-    timer.start(slint::TimerMode::Repeated, Duration::from_millis(33), move || {
-        let (Some(ui), Some(nav)) = (weak.upgrade(), nav_tick.upgrade()) else { return };
-        let on = ui.get_s_nav_enabled();
-        if on != nav.enabled.replace(on) {
-            if on {
-                nav.turn_on();
-            } else {
-                nav.turn_off();
+    timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_millis(33),
+        move || {
+            let (Some(ui), Some(nav)) = (weak.upgrade(), nav_tick.upgrade()) else {
+                return;
+            };
+            let on = ui.get_s_nav_enabled();
+            if on != nav.enabled.replace(on) {
+                if on {
+                    nav.turn_on();
+                } else {
+                    nav.turn_off();
+                }
             }
-        }
-        let player_view = nav.settings.borrow().view_mode == "player";
-        let in_window = on && (!ui.get_s_nav_docked() || !player_view);
-        if let Some(w) = &nav.window {
-            if in_window && !w.window().is_visible() {
-                copy_theme(&ui, w);
-                // Beside the player, where the window system lets us place it.
-                let scale = ui.window().scale_factor();
-                let pos = ui.window().position().to_logical(scale);
-                let size = ui.window().size().to_logical(scale);
-                w.window().set_position(slint::LogicalPosition::new(pos.x + size.width + 8.0, pos.y));
-                let _ = w.show();
-            } else if !in_window && w.window().is_visible() {
-                let _ = w.hide();
-            }
-            w.set_can_dock(player_view);
-        }
-        if !on {
-            return;
-        }
-        let step_ms = nav.settings.borrow().nav_step_ms;
-        if nav.labels_for.replace(step_ms) != step_ms {
-            ui.set_nav_step_labels(step_labels(step_ms));
+            let player_view = nav.settings.borrow().view_mode == "player";
+            let in_window = on && (!ui.get_s_nav_docked() || !player_view);
             if let Some(w) = &nav.window {
-                w.set_step_labels(step_labels(step_ms));
+                if in_window && !w.window().is_visible() {
+                    copy_theme(&ui, w);
+                    // Beside the player, where the window system lets us place it.
+                    let scale = ui.window().scale_factor();
+                    let pos = ui.window().position().to_logical(scale);
+                    let size = ui.window().size().to_logical(scale);
+                    w.window()
+                        .set_position(slint::LogicalPosition::new(pos.x + size.width + 8.0, pos.y));
+                    let _ = w.show();
+                } else if !in_window && w.window().is_visible() {
+                    let _ = w.hide();
+                }
+                w.set_can_dock(player_view);
             }
-        }
-        let state = nav.state(&ui);
-        if let Some(w) = nav.window.as_ref().filter(|w| w.window().is_visible()) {
-            w.set_state(state.clone());
-        }
-        ui.set_nav_state(state);
-    });
+            if !on {
+                return;
+            }
+            let step_ms = nav.settings.borrow().nav_step_ms;
+            if nav.labels_for.replace(step_ms) != step_ms {
+                ui.set_nav_step_labels(step_labels(step_ms));
+                if let Some(w) = &nav.window {
+                    w.set_step_labels(step_labels(step_ms));
+                }
+            }
+            let state = nav.state(&ui);
+            if let Some(w) = nav.window.as_ref().filter(|w| w.window().is_visible()) {
+                w.set_state(state.clone());
+            }
+            ui.set_nav_state(state);
+        },
+    );
     std::mem::forget(timer);
 }
 
@@ -796,7 +846,10 @@ mod tests {
     fn typed_times() {
         assert_eq!(parse_time("1:23.5", None), Some(TimeInput::At(83.5)));
         assert_eq!(parse_time(" 83,5 ", None), Some(TimeInput::At(83.5)));
-        assert_eq!(parse_time("1:02:03.250", None), Some(TimeInput::At(3723.25)));
+        assert_eq!(
+            parse_time("1:02:03.250", None),
+            Some(TimeInput::At(3723.25))
+        );
         assert_eq!(parse_time("+2", None), Some(TimeInput::By(2.0)));
         assert_eq!(parse_time("-1:00", None), Some(TimeInput::By(-60.0)));
         assert_eq!(parse_time("f240", Some(24.0)), Some(TimeInput::At(10.0)));

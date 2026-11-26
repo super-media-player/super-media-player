@@ -158,7 +158,10 @@ impl Default for Tone {
 fn tone_graph(t: &Tone, layout: &str) -> String {
     let mut g = String::from("aformat=sample_fmts=fltp|flt,");
     g += &voice_stages(t, layout);
-    g += &format!("bass@lo=g={:.1}:f=100,treble@hi=g={:.1}:f=3000,", t.bass, t.treble);
+    g += &format!(
+        "bass@lo=g={:.1}:f=100,treble@hi=g={:.1}:f=3000,",
+        t.bass, t.treble
+    );
     if t.eq_enabled {
         for (i, (f, gain)) in crate::settings::EQ_BANDS.iter().zip(t.eq).enumerate() {
             // One octave wide peaking filters, one per band.
@@ -200,12 +203,17 @@ fn voice_stages(t: &Tone, layout: &str) -> String {
     if t.dialogue {
         if layout == "stereo" {
             g += "dialoguenhance=original=1:enhance=2:voice=2,pan=stereo|c0=c0+c2|c1=c1+c2,";
-        } else if let (Some(c), Some((_, n))) =
-            (centre_channel(layout), LAYOUTS.iter().find(|(l, _)| *l == layout))
-        {
+        } else if let (Some(c), Some((_, n))) = (
+            centre_channel(layout),
+            LAYOUTS.iter().find(|(l, _)| *l == layout),
+        ) {
             g += &format!("pan={layout}");
             for i in 0..*n {
-                g += &if i == c { format!("|c{i}=2.0*c{i}") } else { format!("|c{i}=c{i}") };
+                g += &if i == c {
+                    format!("|c{i}=2.0*c{i}")
+                } else {
+                    format!("|c{i}=c{i}")
+                };
             }
             g += ",";
         }
@@ -286,7 +294,10 @@ fn parse(meta: &Value, channels: usize) -> Option<Vec<f32>> {
 /// A real video track is playing (cover art doesn't count).
 fn mpv_has_video(player: &Player) -> bool {
     player.get_string("current-tracks/video/id").is_some()
-        && player.get_string("current-tracks/video/albumart").as_deref() != Some("yes")
+        && player
+            .get_string("current-tracks/video/albumart")
+            .as_deref()
+            != Some("yes")
 }
 
 /// What the file-local filter chain was built for: path, channel layout,
@@ -394,10 +405,10 @@ impl Meter {
     /// tone settings.
     fn install(&mut self, player: &Player, measure: bool) {
         let path = player.get_string("path").unwrap_or_default();
-        let layout = player.get_string("audio-params/channels").unwrap_or_default();
-        let rate = player
-            .get_double("audio-params/samplerate")
-            .unwrap_or(0.0) as u32;
+        let layout = player
+            .get_string("audio-params/channels")
+            .unwrap_or_default();
+        let rate = player.get_double("audio-params/samplerate").unwrap_or(0.0) as u32;
         if path.is_empty() || layout.is_empty() || rate == 0 {
             return;
         }
@@ -481,11 +492,17 @@ mod tests {
 
     #[test]
     fn tone_filter() {
-        let mut t = Tone { bass: 3.0, treble: -2.5, ..Default::default() };
+        let mut t = Tone {
+            bass: 3.0,
+            treble: -2.5,
+            ..Default::default()
+        };
         let g = tone_graph(&t, "stereo");
         assert!(g.starts_with("aformat=sample_fmts=fltp|flt,"), "{g}");
         assert!(
-            g.contains("bass@lo=g=3.0:f=100,treble@hi=g=-2.5:f=3000,volume@xf=volume=1.000,alimiter@lim="),
+            g.contains(
+                "bass@lo=g=3.0:f=100,treble@hi=g=-2.5:f=3000,volume@xf=volume=1.000,alimiter@lim="
+            ),
             "{g}"
         );
         t.eq_enabled = true;
@@ -516,7 +533,12 @@ mod tests {
         assert!(height(BANDS - 1, -30.0) > height(0, -30.0));
         let meta = Value::Map(
             (1..=BANDS + 2)
-                .map(|c| (format!("lavfi.astats.{c}.RMS_level"), Value::Str("-30.0".into())))
+                .map(|c| {
+                    (
+                        format!("lavfi.astats.{c}.RMS_level"),
+                        Value::Str("-30.0".into()),
+                    )
+                })
                 .collect(),
         );
         let l = parse(&meta, 2).unwrap();
@@ -530,9 +552,28 @@ mod tests {
     fn boosted_tone_does_not_clip() {
         let src = "sine=f=60:d=1,volume=8,alimiter=limit=1:level=0,aformat=sample_fmts=s16:channel_layouts=stereo";
         // Everything at full boost, equalizer included, mid-fade.
-        let tone = Tone { bass: 12.0, treble: 12.0, eq_enabled: true, eq: [12.0; 10], fade: 0.5, ..Default::default() };
+        let tone = Tone {
+            bass: 12.0,
+            treble: 12.0,
+            eq_enabled: true,
+            eq: [12.0; 10],
+            fade: 0.5,
+            ..Default::default()
+        };
         let Ok(out) = std::process::Command::new("ffmpeg")
-            .args(["-v", "warning", "-f", "lavfi", "-i", src, "-af", &tone_graph(&tone, "stereo"), "-f", "null", "-"])
+            .args([
+                "-v",
+                "warning",
+                "-f",
+                "lavfi",
+                "-i",
+                src,
+                "-af",
+                &tone_graph(&tone, "stereo"),
+                "-f",
+                "null",
+                "-",
+            ])
             .output()
         else {
             eprintln!("ffmpeg not found; skipping");
@@ -548,21 +589,35 @@ mod tests {
     /// present.
     #[test]
     fn voice_stages_run_in_ffmpeg() {
-        let t = Tone { night: true, dialogue: true, karaoke: true, ..Default::default() };
+        let t = Tone {
+            night: true,
+            dialogue: true,
+            karaoke: true,
+            ..Default::default()
+        };
         assert!(tone_graph(&t, "stereo").contains("stereotools"));
         assert!(tone_graph(&t, "5.1").contains("|c2=2.0*c2"));
         assert!(!tone_graph(&t, "mono").contains("stereotools"));
         for (layout, _) in LAYOUTS {
             let src = format!("sine=f=440:d=0.3,aformat=channel_layouts={layout}");
-            let g = format!("{},aformat=channel_layouts={layout}", tone_graph(&t, layout));
+            let g = format!(
+                "{},aformat=channel_layouts={layout}",
+                tone_graph(&t, layout)
+            );
             let Ok(out) = std::process::Command::new("ffmpeg")
-                .args(["-v", "error", "-f", "lavfi", "-i", &src, "-af", &g, "-f", "null", "-"])
+                .args([
+                    "-v", "error", "-f", "lavfi", "-i", &src, "-af", &g, "-f", "null", "-",
+                ])
                 .output()
             else {
                 eprintln!("ffmpeg not found; skipping");
                 return;
             };
-            assert!(out.status.success(), "{layout}: {}", String::from_utf8_lossy(&out.stderr));
+            assert!(
+                out.status.success(),
+                "{layout}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
         }
     }
 
@@ -574,7 +629,9 @@ mod tests {
             let g = graph(layout, 44_100).unwrap();
             let src = format!("sine=f=440:d=0.2,aformat=channel_layouts={layout}");
             let Ok(out) = std::process::Command::new("ffmpeg")
-                .args(["-v", "error", "-f", "lavfi", "-i", &src, "-af", &g, "-f", "null", "-"])
+                .args([
+                    "-v", "error", "-f", "lavfi", "-i", &src, "-af", &g, "-f", "null", "-",
+                ])
                 .output()
             else {
                 eprintln!("ffmpeg not found; skipping");
@@ -596,7 +653,17 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("tone.wav");
         let made = std::process::Command::new("ffmpeg")
-            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=1000:d=3", "-ac", "2"])
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=f=1000:d=3",
+                "-ac",
+                "2",
+            ])
             .arg(&file)
             .status()
             .is_ok_and(|s| s.success());
@@ -623,12 +690,26 @@ mod tests {
             std::thread::sleep(Duration::from_millis(33));
         }
         // The tone filter rides along and takes live changes.
-        assert!(player.get_string("af").unwrap_or_default().contains("@tone:"));
-        assert!(player.command(&["af-command", "tone", "g", "6.0", "bass@lo"]).is_ok());
+        assert!(
+            player
+                .get_string("af")
+                .unwrap_or_default()
+                .contains("@tone:")
+        );
+        assert!(
+            player
+                .command(&["af-command", "tone", "g", "6.0", "bass@lo"])
+                .is_ok()
+        );
         let _ = std::fs::remove_dir_all(&dir);
-        let loudest = (0..BANDS).max_by(|&a, &b| peak[a].total_cmp(&peak[b])).unwrap();
+        let loudest = (0..BANDS)
+            .max_by(|&a, &b| peak[a].total_cmp(&peak[b]))
+            .unwrap();
         let hz = centers(44_100)[loudest];
-        assert!((600.0..1700.0).contains(&hz), "loudest band {hz} Hz: {peak:?}");
+        assert!(
+            (600.0..1700.0).contains(&hz),
+            "loudest band {hz} Hz: {peak:?}"
+        );
         assert!(peak[0] < 0.3 && peak[BANDS - 1] < 0.3, "{peak:?}");
     }
 }

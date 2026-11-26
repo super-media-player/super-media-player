@@ -126,7 +126,11 @@ fn base64_mb(data: &[u8]) -> String {
     const ABC: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._";
     let mut out = String::new();
     for chunk in data.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = u32::from(b[0]) << 16 | u32::from(b[1]) << 8 | u32::from(b[2]);
         for i in 0..4 {
             if i <= chunk.len() {
@@ -148,7 +152,11 @@ fn cache_file(id: &str) -> Option<PathBuf> {
 /// The names of the songs on the CD with this TOC: from the cache, then
 /// MusicBrainz (when `online`), then the disc's CD-Text. Blocks for up to a
 /// few seconds; run it off the UI thread.
-pub fn names(toc: &[(u8, u32, bool)], cd_text: impl FnOnce() -> Option<Album>, online: bool) -> Option<Album> {
+pub fn names(
+    toc: &[(u8, u32, bool)],
+    cd_text: impl FnOnce() -> Option<Album>,
+    online: bool,
+) -> Option<Album> {
     let songs = toc.iter().filter(|e| !e.2).count().saturating_sub(1);
     let id = disc_id(toc);
     let cached = id.as_deref().and_then(cache_file);
@@ -192,13 +200,22 @@ fn musicbrainz(id: &str) -> Result<Option<Album>, String> {
     let url = format!(
         "https://musicbrainz.org/ws/2/discid/{id}?inc=recordings+artist-credits&cdstubs=no&fmt=json"
     );
-    let resp = agent(6).get(&url).header("User-Agent", AGENT).header("Accept", "application/json").call();
+    let resp = agent(6)
+        .get(&url)
+        .header("User-Agent", AGENT)
+        .header("Accept", "application/json")
+        .call();
     let mut resp = match resp {
         Ok(r) => r,
         Err(ureq::Error::StatusCode(404)) => return Ok(None),
         Err(e) => return Err(e.to_string()),
     };
-    let body = resp.body_mut().with_config().limit(4 << 20).read_to_vec().map_err(|e| e.to_string())?;
+    let body = resp
+        .body_mut()
+        .with_config()
+        .limit(4 << 20)
+        .read_to_vec()
+        .map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
     Ok(parse_musicbrainz(&json, id))
 }
@@ -210,7 +227,10 @@ fn credit(v: &serde_json::Value) -> String {
             parts
                 .iter()
                 .map(|p| {
-                    let name = p["name"].as_str().or(p["artist"]["name"].as_str()).unwrap_or_default();
+                    let name = p["name"]
+                        .as_str()
+                        .or(p["artist"]["name"].as_str())
+                        .unwrap_or_default();
                     format!("{name}{}", p["joinphrase"].as_str().unwrap_or_default())
                 })
                 .collect::<String>()
@@ -222,9 +242,13 @@ fn credit(v: &serde_json::Value) -> String {
 /// (reissues, other countries), the first one MusicBrainz lists.
 fn parse_musicbrainz(json: &serde_json::Value, id: &str) -> Option<Album> {
     for release in json["releases"].as_array()? {
-        let Some(media) = release["media"].as_array() else { continue };
+        let Some(media) = release["media"].as_array() else {
+            continue;
+        };
         let Some(medium) = media.iter().find(|m| {
-            m["discs"].as_array().is_some_and(|d| d.iter().any(|d| d["id"].as_str() == Some(id)))
+            m["discs"]
+                .as_array()
+                .is_some_and(|d| d.iter().any(|d| d["id"].as_str() == Some(id)))
         }) else {
             continue;
         };
@@ -234,12 +258,18 @@ fn parse_musicbrainz(json: &serde_json::Value, id: &str) -> Option<Album> {
             .map(|ts| {
                 ts.iter()
                     .map(|t| {
-                        let title = t["title"].as_str().or(t["recording"]["title"].as_str()).unwrap_or_default();
+                        let title = t["title"]
+                            .as_str()
+                            .or(t["recording"]["title"].as_str())
+                            .unwrap_or_default();
                         let mut a = credit(&t["artist-credit"]);
                         if a.is_empty() {
                             a = credit(&t["recording"]["artist-credit"]);
                         }
-                        TrackName { title: title.to_owned(), artist: a }
+                        TrackName {
+                            title: title.to_owned(),
+                            artist: a,
+                        }
                     })
                     .collect()
             })
@@ -272,7 +302,9 @@ pub fn cover(album: &Album, online: bool) -> Option<PathBuf> {
     if !id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
         return None;
     }
-    let file = crate::settings::cache_dir()?.join("cd").join(format!("{id}.jpg"));
+    let file = crate::settings::cache_dir()?
+        .join("cd")
+        .join(format!("{id}.jpg"));
     if file.is_file() {
         return Some(file);
     }
@@ -280,8 +312,17 @@ pub fn cover(album: &Album, online: bool) -> Option<PathBuf> {
         return None;
     }
     let url = format!("https://coverartarchive.org/release/{id}/front-500");
-    let mut resp = agent(10).get(&url).header("User-Agent", AGENT).call().ok()?;
-    let data = resp.body_mut().with_config().limit(8 << 20).read_to_vec().ok()?;
+    let mut resp = agent(10)
+        .get(&url)
+        .header("User-Agent", AGENT)
+        .call()
+        .ok()?;
+    let data = resp
+        .body_mut()
+        .with_config()
+        .limit(8 << 20)
+        .read_to_vec()
+        .ok()?;
     if !data.starts_with(&[0xFF, 0xD8]) {
         return None;
     }
@@ -342,7 +383,12 @@ pub fn parse_cd_text(packs: &[u8]) -> Option<Album> {
         title: get(&titles, 0),
         artist: get(&performers, 0),
         date: String::new(),
-        tracks: (1..=songs).map(|i| TrackName { title: get(&titles, i), artist: get(&performers, i) }).collect(),
+        tracks: (1..=songs)
+            .map(|i| TrackName {
+                title: get(&titles, i),
+                artist: get(&performers, i),
+            })
+            .collect(),
         release_id: None,
         source: "CD-Text".into(),
     };
@@ -389,11 +435,21 @@ pub fn track_edl(track: &CdTrack, index: usize, album: Option<&Album>) -> String
 fn file_name(s: &str) -> String {
     let clean: String = s
         .chars()
-        .map(|c| if c == '/' || c == '\\' || c.is_control() || ":*?\"<>|".contains(c) { '_' } else { c })
+        .map(|c| {
+            if c == '/' || c == '\\' || c.is_control() || ":*?\"<>|".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
         .take(120)
         .collect();
     let clean = clean.trim().trim_start_matches('.').trim().to_owned();
-    if clean.is_empty() { "Unknown".into() } else { clean }
+    if clean.is_empty() {
+        "Unknown".into()
+    } else {
+        clean
+    }
 }
 
 /// The user's Music folder (XDG), else ~/Music.
@@ -405,10 +461,17 @@ pub fn music_dir() -> PathBuf {
 pub fn rip_folder(root: &Path, album: Option<&Album>, disc_id: Option<&str>) -> PathBuf {
     match album {
         Some(a) if !a.title.trim().is_empty() => {
-            let artist = if a.artist.trim().is_empty() { "Unknown artist" } else { a.artist.as_str() };
+            let artist = if a.artist.trim().is_empty() {
+                "Unknown artist"
+            } else {
+                a.artist.as_str()
+            };
             root.join(file_name(artist)).join(file_name(&a.title))
         }
-        _ => root.join(format!("Audio CD {}", disc_id.map(|i| &i[..8.min(i.len())]).unwrap_or("(no name)"))),
+        _ => root.join(format!(
+            "Audio CD {}",
+            disc_id.map(|i| &i[..8.min(i.len())]).unwrap_or("(no name)")
+        )),
     }
 }
 
@@ -457,7 +520,9 @@ pub fn rip(
         if cancel.load(Ordering::Relaxed) {
             return Err("Cancelled".into());
         }
-        let title = album.map(|a| a.track_title(i, t.number)).unwrap_or_else(|| format!("Track {}", t.number));
+        let title = album
+            .map(|a| a.track_title(i, t.number))
+            .unwrap_or_else(|| format!("Track {}", t.number));
         let out = dir.join(format!("{:02} - {}.flac", t.number, file_name(&title)));
         let start = first_lba + t.start;
         let (corrected, skipped) = paranoia::counts();
@@ -470,8 +535,10 @@ pub fn rip(
         }
         let flac = with_tags(&flac, &tags(album, i, t.number, total), picture.as_deref())?;
         let part = out.with_extension("flac.part");
-        std::fs::write(&part, flac).map_err(|e| format!("couldn't write {}: {e}", part.display()))?;
-        std::fs::rename(&part, &out).map_err(|e| format!("couldn't write {}: {e}", out.display()))?;
+        std::fs::write(&part, flac)
+            .map_err(|e| format!("couldn't write {}: {e}", part.display()))?;
+        std::fs::rename(&part, &out)
+            .map_err(|e| format!("couldn't write {}: {e}", out.display()))?;
         report.files.push(out);
     }
     if let Some(c) = cover {
@@ -510,7 +577,10 @@ mod paranoia {
 
     /// (sectors corrected, sectors skipped) so far, over all rips.
     pub fn counts() -> (u64, u64) {
-        (CORRECTED.load(Ordering::Relaxed), SKIPPED.load(Ordering::Relaxed))
+        (
+            CORRECTED.load(Ordering::Relaxed),
+            SKIPPED.load(Ordering::Relaxed),
+        )
     }
 
     extern "C" fn callback(_pos: c_long, mode: c_int) {
@@ -532,7 +602,8 @@ mod paranoia {
     type Free = unsafe extern "C" fn(*mut c_void);
     type ModeSet = unsafe extern "C" fn(*mut c_void, c_int);
     type Seek = unsafe extern "C" fn(*mut c_void, i32, c_int) -> i32;
-    type Read = unsafe extern "C" fn(*mut c_void, extern "C" fn(c_long, c_int), c_int) -> *const i16;
+    type Read =
+        unsafe extern "C" fn(*mut c_void, extern "C" fn(c_long, c_int), c_int) -> *const i16;
 
     pub struct Reader {
         // Kept loaded while the handles live.
@@ -548,21 +619,34 @@ mod paranoia {
 
     impl Reader {
         pub fn open(device: &str) -> Result<Reader, String> {
-            let missing = || "the CD reading library (libcdio-paranoia) is missing: on Ubuntu, sudo apt install libcdio-paranoia2t64".to_owned();
-            let cdda = crate::disc::open_bundled_library(&["libcdio_cdda.so.2", "libcdio_cdda.so"]).ok_or_else(missing)?;
-            let paranoia = crate::disc::open_bundled_library(&["libcdio_paranoia.so.2", "libcdio_paranoia.so"]).ok_or_else(missing)?;
+            let missing = || {
+                "the CD reading library (libcdio-paranoia) is missing: on Ubuntu, sudo apt install libcdio-paranoia2t64".to_owned()
+            };
+            let cdda = crate::disc::open_bundled_library(&["libcdio_cdda.so.2", "libcdio_cdda.so"])
+                .ok_or_else(missing)?;
+            let paranoia = crate::disc::open_bundled_library(&[
+                "libcdio_paranoia.so.2",
+                "libcdio_paranoia.so",
+            ])
+            .ok_or_else(missing)?;
             // SAFETY: the signatures match libcdio-paranoia 10.2+2.x's headers
             // (cdio/paranoia/cdda.h and paranoia.h).
             unsafe {
                 let sym = |e: libloading::Error| format!("libcdio-paranoia is too old: {e}");
-                let identify = *cdda.get::<Identify>(b"cdio_cddap_identify\0").map_err(sym)?;
+                let identify = *cdda
+                    .get::<Identify>(b"cdio_cddap_identify\0")
+                    .map_err(sym)?;
                 let open = *cdda.get::<Open>(b"cdio_cddap_open\0").map_err(sym)?;
                 let close = *cdda.get::<Close>(b"cdio_cddap_close\0").map_err(sym)?;
                 let init = *paranoia.get::<Init>(b"cdio_paranoia_init\0").map_err(sym)?;
                 let free = *paranoia.get::<Free>(b"cdio_paranoia_free\0").map_err(sym)?;
-                let modeset = *paranoia.get::<ModeSet>(b"cdio_paranoia_modeset\0").map_err(sym)?;
+                let modeset = *paranoia
+                    .get::<ModeSet>(b"cdio_paranoia_modeset\0")
+                    .map_err(sym)?;
                 let seek = *paranoia.get::<Seek>(b"cdio_paranoia_seek\0").map_err(sym)?;
-                let read = *paranoia.get::<Read>(b"cdio_paranoia_read_limited\0").map_err(sym)?;
+                let read = *paranoia
+                    .get::<Read>(b"cdio_paranoia_read_limited\0")
+                    .map_err(sym)?;
                 let dev = CString::new(device).map_err(|_| "bad device name".to_owned())?;
                 let drive = identify(dev.as_ptr(), 0, std::ptr::null_mut());
                 if drive.is_null() {
@@ -578,7 +662,16 @@ mod paranoia {
                     return Err("couldn't start cdparanoia".into());
                 }
                 modeset(p, MODE);
-                Ok(Reader { _cdda: cdda, _paranoia: paranoia, drive, p, close, free, seek, read })
+                Ok(Reader {
+                    _cdda: cdda,
+                    _paranoia: paranoia,
+                    drive,
+                    p,
+                    close,
+                    free,
+                    seek,
+                    read,
+                })
             }
         }
 
@@ -594,7 +687,15 @@ mod paranoia {
             if unsafe { (self.seek)(self.p, lba as i32, 0) } < 0 {
                 return Err(format!("couldn't seek to sector {lba}"));
             }
-            let mut src = Sectors { reader: self, left: sectors, total: sectors, cancel, progress, error: None, pending: Vec::new() };
+            let mut src = Sectors {
+                reader: self,
+                left: sectors,
+                total: sectors,
+                cancel,
+                progress,
+                error: None,
+                pending: Vec::new(),
+            };
             let mut config = flacenc::config::Encoder::default();
             config.multithread = false;
             let config = config.into_verified().map_err(|e| format!("{e:?}"))?;
@@ -605,7 +706,9 @@ mod paranoia {
             }
             let stream = stream.map_err(|e| format!("FLAC encoder: {e}"))?;
             let mut sink = flacenc::bitsink::ByteSink::new();
-            stream.write(&mut sink).map_err(|e| format!("FLAC encoder: {e:?}"))?;
+            stream
+                .write(&mut sink)
+                .map_err(|e| format!("FLAC encoder: {e:?}"))?;
             Ok(sink.into_inner())
         }
 
@@ -614,7 +717,8 @@ mod paranoia {
             // SAFETY: the returned buffer holds one raw sector and stays valid
             // until the next read.
             let data = unsafe { (self.read)(self.p, callback, RETRIES) };
-            (!data.is_null()).then(|| unsafe { std::slice::from_raw_parts(data, SECTOR_SAMPLES * 2) })
+            (!data.is_null())
+                .then(|| unsafe { std::slice::from_raw_parts(data, SECTOR_SAMPLES * 2) })
         }
     }
 
@@ -653,7 +757,11 @@ mod paranoia {
         fn len_hint(&self) -> Option<usize> {
             Some(self.total as usize * SECTOR_SAMPLES)
         }
-        fn read_samples<F: Fill>(&mut self, block_size: usize, dest: &mut F) -> Result<usize, flacenc::error::SourceError> {
+        fn read_samples<F: Fill>(
+            &mut self,
+            block_size: usize,
+            dest: &mut F,
+        ) -> Result<usize, flacenc::error::SourceError> {
             let fail = |s: &mut Self, e: String| {
                 s.error = Some(e);
                 Err(flacenc::error::SourceError::from_unknown())
@@ -684,7 +792,10 @@ mod paranoia {
 
 /// The Vorbis comments of song `i` (0-based, number `number` of `total`).
 fn tags(album: Option<&Album>, i: usize, number: u8, total: usize) -> Vec<(&'static str, String)> {
-    let mut t = vec![("TRACKNUMBER", number.to_string()), ("TRACKTOTAL", total.to_string())];
+    let mut t = vec![
+        ("TRACKNUMBER", number.to_string()),
+        ("TRACKTOTAL", total.to_string()),
+    ];
     match album {
         Some(a) => {
             t.push(("TITLE", a.track_title(i, number)));
@@ -707,13 +818,20 @@ fn tags(album: Option<&Album>, i: usize, number: u8, total: usize) -> Vec<(&'sta
 /// tag editors don't have to rewrite the file) added after STREAMINFO.
 /// Written here, not by a tag library afterwards, so the audio frames are
 /// never rewritten.
-fn with_tags(flac: &[u8], tags: &[(&str, String)], cover: Option<&[u8]>) -> Result<Vec<u8>, String> {
+fn with_tags(
+    flac: &[u8],
+    tags: &[(&str, String)],
+    cover: Option<&[u8]>,
+) -> Result<Vec<u8>, String> {
     // "fLaC", then STREAMINFO: a 4-byte header and 34 bytes.
     if flac.len() < 42 || &flac[..4] != b"fLaC" || flac[4] & 0x7f != 0 {
         return Err("the FLAC encoder wrote something unexpected".into());
     }
     let block = |out: &mut Vec<u8>, kind: u8, last: bool, body: &[u8]| -> Result<(), String> {
-        let len = u32::try_from(body.len()).ok().filter(|&l| l < 1 << 24).ok_or("a tag is too large")?;
+        let len = u32::try_from(body.len())
+            .ok()
+            .filter(|&l| l < 1 << 24)
+            .ok_or("a tag is too large")?;
         out.push(kind | if last { 0x80 } else { 0 });
         out.extend(&len.to_be_bytes()[1..]);
         out.extend(body);
@@ -729,13 +847,18 @@ fn with_tags(flac: &[u8], tags: &[(&str, String)], cover: Option<&[u8]>) -> Resu
         comments.extend((field.len() as u32).to_le_bytes());
         comments.extend(field.as_bytes());
     }
-    let mut out = Vec::with_capacity(flac.len() + comments.len() + cover.map_or(0, <[u8]>::len) + 8300);
+    let mut out =
+        Vec::with_capacity(flac.len() + comments.len() + cover.map_or(0, <[u8]>::len) + 8300);
     out.extend(b"fLaC");
     out.push(flac[4] & 0x7f); // STREAMINFO, no longer the last block
     out.extend(&flac[5..42]);
     block(&mut out, 4, false, &comments)?;
     if let Some(data) = cover {
-        let mime = if data.starts_with(b"\x89PNG") { "image/png" } else { "image/jpeg" };
+        let mime = if data.starts_with(b"\x89PNG") {
+            "image/png"
+        } else {
+            "image/jpeg"
+        };
         let mut pic = Vec::new();
         pic.extend(3u32.to_be_bytes()); // front cover
         pic.extend((mime.len() as u32).to_be_bytes());
@@ -759,17 +882,28 @@ mod tests {
     #[test]
     fn disc_id_matches_musicbrainz() {
         let starts = [150u32, 15363, 32314, 46592, 63414, 80489];
-        let mut toc: Vec<(u8, u32, bool)> =
-            starts.iter().enumerate().map(|(i, &s)| (i as u8 + 1, s - 150, false)).collect();
+        let mut toc: Vec<(u8, u32, bool)> = starts
+            .iter()
+            .enumerate()
+            .map(|(i, &s)| (i as u8 + 1, s - 150, false))
+            .collect();
         toc.push((0xAA, 95462 - 150, false));
-        assert_eq!(disc_id(&toc).as_deref(), Some("49HHV7Eb8UKF3aQiNmu1GR8vKTY-"));
+        assert_eq!(
+            disc_id(&toc).as_deref(),
+            Some("49HHV7Eb8UKF3aQiNmu1GR8vKTY-")
+        );
     }
 
     /// An Enhanced CD: the data track and its gap are not part of the ID.
     #[test]
     fn enhanced_cd_leaves_the_data_track_out() {
         let plain = vec![(1, 0, false), (2, 20_000, false), (0xAA, 40_000, false)];
-        let enhanced = vec![(1, 0, false), (2, 20_000, false), (3, 51_400, true), (0xAA, 90_000, false)];
+        let enhanced = vec![
+            (1, 0, false),
+            (2, 20_000, false),
+            (3, 51_400, true),
+            (0xAA, 90_000, false),
+        ];
         assert_eq!(disc_id(&plain), disc_id(&enhanced));
     }
 
@@ -796,10 +930,19 @@ mod tests {
         assert_eq!(a.title, "Album (disc 2)");
         assert_eq!(a.artist, "A & B");
         assert_eq!(a.date, "2001-02-03");
-        assert_eq!(a.tracks, vec![
-            TrackName { title: "One".into(), artist: "A".into() },
-            TrackName { title: "Two".into(), artist: "C".into() },
-        ]);
+        assert_eq!(
+            a.tracks,
+            vec![
+                TrackName {
+                    title: "One".into(),
+                    artist: "A".into()
+                },
+                TrackName {
+                    title: "Two".into(),
+                    artist: "C".into()
+                },
+            ]
+        );
         assert_eq!(a.release_id.as_deref(), Some("r1"));
         assert!(parse_musicbrainz(&json, "nope").is_none());
         // Round trip through the cache format.
@@ -829,32 +972,56 @@ mod tests {
         assert_eq!(a.title, "The Album");
         assert_eq!(a.artist, "The Band");
         assert_eq!(a.tracks.len(), 3);
-        assert_eq!(a.tracks[1], TrackName { title: "First song".into(), artist: "Guest".into() });
+        assert_eq!(
+            a.tracks[1],
+            TrackName {
+                title: "First song".into(),
+                artist: "Guest".into()
+            }
+        );
         assert_eq!(a.tracks[2].title, "Third");
         assert!(parse_cd_text(&[]).is_none());
     }
 
     #[test]
     fn rip_folder_names() {
-        let a = Album { title: "A/B: C".into(), artist: ".Hidden".into(), ..Default::default() };
-        assert_eq!(rip_folder(Path::new("/m"), Some(&a), None), Path::new("/m/Hidden/A_B_ C"));
-        assert_eq!(rip_folder(Path::new("/m"), None, Some("49HHV7Eb8UKF")), Path::new("/m/Audio CD 49HHV7Eb"));
+        let a = Album {
+            title: "A/B: C".into(),
+            artist: ".Hidden".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            rip_folder(Path::new("/m"), Some(&a), None),
+            Path::new("/m/Hidden/A_B_ C")
+        );
+        assert_eq!(
+            rip_folder(Path::new("/m"), None, Some("49HHV7Eb8UKF")),
+            Path::new("/m/Audio CD 49HHV7Eb")
+        );
     }
 
     /// mpv takes the tags from the EDL header, escapes and all.
     #[test]
     fn edl_tags_reach_mpv() {
-        let Ok(player) = player_core::Player::new(&player_core::PlayerConfig::headless(), |_| {}) else {
+        let Ok(player) = player_core::Player::new(&player_core::PlayerConfig::headless(), |_| {})
+        else {
             eprintln!("no libmpv, skipped");
             return;
         };
         let album = Album {
             title: "Greatest; Hits, Vol. 1".into(),
             artist: "Ünïcode = Band".into(),
-            tracks: vec![TrackName { title: "Song, with %percent%".into(), artist: String::new() }],
+            tracks: vec![TrackName {
+                title: "Song, with %percent%".into(),
+                artist: String::new(),
+            }],
             ..Default::default()
         };
-        let t = CdTrack { number: 1, start: 0, frames: 75 * 3 };
+        let t = CdTrack {
+            number: 1,
+            start: 0,
+            frames: 75 * 3,
+        };
         // A WAV file stands in for the CD (mpv 0.42 has no av://lavfi).
         let wav = std::env::temp_dir().join(format!("smp-edl-{}.wav", std::process::id()));
         let samples = 44_100 * 3 * 2;
@@ -873,7 +1040,8 @@ mod tests {
         data.extend((samples as u32 * 2).to_le_bytes());
         data.resize(data.len() + samples * 2, 0);
         std::fs::write(&wav, data).unwrap();
-        let edl = track_edl(&t, 0, Some(&album)).replace("%7%cdda://", &edl_escape(&wav.to_string_lossy()));
+        let edl = track_edl(&t, 0, Some(&album))
+            .replace("%7%cdda://", &edl_escape(&wav.to_string_lossy()));
         let _ = player.set_string("ao", "null");
         if let Some(log) = std::env::var_os("SMP_TEST_MPV_LOG") {
             let _ = player.set_string("log-file", &log.to_string_lossy());
@@ -883,7 +1051,11 @@ mod tests {
         for _ in 0..50 {
             std::thread::sleep(Duration::from_millis(100));
             if let Some(t) = player.get_string("metadata/by-key/title") {
-                tags = Some((t, player.get_string("metadata/by-key/artist"), player.get_string("metadata/by-key/album")));
+                tags = Some((
+                    t,
+                    player.get_string("metadata/by-key/artist"),
+                    player.get_string("metadata/by-key/album"),
+                ));
                 break;
             }
         }
@@ -900,17 +1072,23 @@ mod tests {
     fn ripped_file_is_tagged() {
         use flacenc::component::BitRepr;
         use flacenc::error::Verify;
-        let samples: Vec<i32> = (0..44_100 * 2).map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i32).collect();
+        let samples: Vec<i32> = (0..44_100 * 2)
+            .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i32)
+            .collect();
         let config = flacenc::config::Encoder::default().into_verified().unwrap();
         let src = flacenc::source::MemSource::from_samples(&samples, 2, 16, 44_100);
-        let stream = flacenc::encode_with_fixed_block_size(&config, src, config.block_size).unwrap();
+        let stream =
+            flacenc::encode_with_fixed_block_size(&config, src, config.block_size).unwrap();
         let mut sink = flacenc::bitsink::ByteSink::new();
         stream.write(&mut sink).unwrap();
         let album = Album {
             title: "Album".into(),
             artist: "Band".into(),
             date: "1999".into(),
-            tracks: vec![TrackName { title: "Song = One".into(), artist: "Guest".into() }],
+            tracks: vec![TrackName {
+                title: "Song = One".into(),
+                artist: "Guest".into(),
+            }],
             release_id: Some("abc".into()),
             source: "MusicBrainz".into(),
         };
@@ -938,7 +1116,11 @@ mod tests {
             .args(["-f", "s16le", "-"])
             .output()
         {
-            let back: Vec<i32> = o.stdout.chunks(2).map(|c| i32::from(i16::from_le_bytes([c[0], c[1]]))).collect();
+            let back: Vec<i32> = o
+                .stdout
+                .chunks(2)
+                .map(|c| i32::from(i16::from_le_bytes([c[0], c[1]])))
+                .collect();
             assert!(o.status.success() && back == samples, "decoded differently");
         }
         let _ = std::fs::remove_dir_all(&dir);
@@ -951,9 +1133,16 @@ mod tests {
     #[test]
     #[ignore = "needs an audio CD: SMP_TEST_CD"]
     fn cd_this_machine() {
-        let Ok(device) = std::env::var("SMP_TEST_CD") else { return };
-        let songs: usize = std::env::var("SMP_TEST_CD_SONGS").ok().and_then(|s| s.parse().ok()).unwrap_or(1);
-        let root = std::env::var_os("SMP_TEST_OUT").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let Ok(device) = std::env::var("SMP_TEST_CD") else {
+            return;
+        };
+        let songs: usize = std::env::var("SMP_TEST_CD_SONGS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+        let root = std::env::var_os("SMP_TEST_OUT")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let toc = crate::disc::toc::read(&device).expect("no table of contents");
         let tracks = crate::disc::audio_tracks(&toc);
         let id = disc_id(&toc);
@@ -963,14 +1152,29 @@ mod tests {
         println!("MusicBrainz: {:?}", musicbrainz(id.as_deref().unwrap()));
         let album = names(&toc, || text.as_deref().and_then(parse_cd_text), true);
         for (i, t) in tracks.iter().enumerate() {
-            println!("{:02} {:?} {}", t.number, album.as_ref().map(|a| a.track_title(i, t.number)), t.frames / 75);
+            println!(
+                "{:02} {:?} {}",
+                t.number,
+                album.as_ref().map(|a| a.track_title(i, t.number)),
+                t.frames / 75
+            );
         }
         let art = album.as_ref().and_then(|a| cover(a, true));
         println!("cover: {art:?}");
         let dir = rip_folder(&root, album.as_ref(), id.as_deref());
         let start = std::time::Instant::now();
         let origin = toc.iter().find(|e| !e.2).map_or(0, |e| e.1);
-        let report = rip(&device, &tracks[..songs.min(tracks.len())], origin, album.as_ref(), art.as_deref(), &dir, &AtomicBool::new(false), |_, _| {}).unwrap();
+        let report = rip(
+            &device,
+            &tracks[..songs.min(tracks.len())],
+            origin,
+            album.as_ref(),
+            art.as_deref(),
+            &dir,
+            &AtomicBool::new(false),
+            |_, _| {},
+        )
+        .unwrap();
         println!("{report:?} in {:?}", start.elapsed());
     }
 }

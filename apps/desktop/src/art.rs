@@ -28,7 +28,11 @@ pub enum Key {
     /// The cover of the album this song is on.
     Cover(String),
     /// An artist, with one of their songs; may look online.
-    Artist { name: String, path: String, online: bool },
+    Artist {
+        name: String,
+        path: String,
+        online: bool,
+    },
     /// A frame of a video.
     Video(String),
 }
@@ -43,11 +47,17 @@ struct Queue {
 
 impl Queue {
     const fn new() -> Self {
-        Self { list: Mutex::new(Vec::new()), wake: Condvar::new() }
+        Self {
+            list: Mutex::new(Vec::new()),
+            wake: Condvar::new(),
+        }
     }
 
     fn push(&self, key: Key) {
-        self.list.lock().unwrap_or_else(|e| e.into_inner()).push(key);
+        self.list
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(key);
         self.wake.notify_one();
     }
 
@@ -102,7 +112,12 @@ pub fn get(key: &Key) -> Option<Image> {
                 start("library-covers", &COVERS);
                 start("library-frames", &FRAMES);
             }
-            if matches!(key, Key::Video(_)) { &FRAMES } else { &COVERS }.push(key.clone());
+            if matches!(key, Key::Video(_)) {
+                &FRAMES
+            } else {
+                &COVERS
+            }
+            .push(key.clone());
         }
         None
     })
@@ -120,16 +135,18 @@ pub fn clear() {
 }
 
 fn start(name: &str, queue: &'static Queue) {
-    let spawned = std::thread::Builder::new().name(name.into()).spawn(move || {
-        low_priority();
-        loop {
-            let key = queue.pop();
-            // A broken picture mustn't end the thread.
-            let k = key.clone();
-            let pixels = std::panic::catch_unwind(move || load(&k)).ok().flatten();
-            let _ = slint::invoke_from_event_loop(move || deliver(key, pixels));
-        }
-    });
+    let spawned = std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            low_priority();
+            loop {
+                let key = queue.pop();
+                // A broken picture mustn't end the thread.
+                let k = key.clone();
+                let pixels = std::panic::catch_unwind(move || load(&k)).ok().flatten();
+                let _ = slint::invoke_from_event_loop(move || deliver(key, pixels));
+            }
+        });
     if let Err(e) = spawned {
         log::warn!("{name}: {e}");
     }
@@ -188,7 +205,11 @@ fn cache_file(key: &Key) -> Option<PathBuf> {
     };
     let hash = Sha256::digest(text.as_bytes());
     let name: String = hash[..12].iter().map(|b| format!("{b:02x}")).collect();
-    Some(crate::settings::cache_dir()?.join("library").join(format!("{name}.jpg")))
+    Some(
+        crate::settings::cache_dir()?
+            .join("library")
+            .join(format!("{name}.jpg")),
+    )
 }
 
 fn load(key: &Key) -> Option<Pixels> {
@@ -198,7 +219,10 @@ fn load(key: &Key) -> Option<Pixels> {
             return None;
         }
         if meta.len() > 0
-            && let Some(img) = cache.as_deref().and_then(|c| std::fs::read(c).ok()).and_then(|b| decode(&b))
+            && let Some(img) = cache
+                .as_deref()
+                .and_then(|c| std::fs::read(c).ok())
+                .and_then(|b| decode(&b))
         {
             return Some(pixels(&img.to_rgba8()));
         }
@@ -212,7 +236,8 @@ fn load(key: &Key) -> Option<Pixels> {
     }
     let img = match key {
         Key::Cover(p) => cover(p).map(|i| i.thumbnail(COVER, COVER)),
-        Key::Artist { name, path, online } => artist(name, path, *online).map(|i| i.resize_to_fill(COVER, COVER, image::imageops::FilterType::Triangle)),
+        Key::Artist { name, path, online } => artist(name, path, *online)
+            .map(|i| i.resize_to_fill(COVER, COVER, image::imageops::FilterType::Triangle)),
         Key::Video(p) => frame(p),
     };
     if let Some(file) = cache {
@@ -227,7 +252,9 @@ fn load(key: &Key) -> Option<Pixels> {
 }
 
 fn decode(bytes: &[u8]) -> Option<image::DynamicImage> {
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?;
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_SIDE);
     limits.max_image_height = Some(MAX_SIDE);
@@ -237,7 +264,10 @@ fn decode(bytes: &[u8]) -> Option<image::DynamicImage> {
 
 fn decode_file(path: &Path) -> Option<image::DynamicImage> {
     let size = std::fs::metadata(path).ok()?.len();
-    (size < 40 * 1024 * 1024).then(|| std::fs::read(path).ok()).flatten().and_then(|b| decode(&b))
+    (size < 40 * 1024 * 1024)
+        .then(|| std::fs::read(path).ok())
+        .flatten()
+        .and_then(|b| decode(&b))
 }
 
 fn encode(img: &image::DynamicImage) -> Option<Vec<u8>> {
@@ -259,7 +289,10 @@ fn cover(path: &str) -> Option<image::DynamicImage> {
         && let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag())
     {
         let pics = tag.pictures();
-        let front = pics.iter().find(|p| p.pic_type() == lofty::picture::PictureType::CoverFront).or_else(|| pics.first());
+        let front = pics
+            .iter()
+            .find(|p| p.pic_type() == lofty::picture::PictureType::CoverFront)
+            .or_else(|| pics.first());
         if let Some(img) = front.and_then(|p| decode(p.data())) {
             return Some(img);
         }
@@ -269,11 +302,17 @@ fn cover(path: &str) -> Option<image::DynamicImage> {
 
 fn artist(name: &str, path: &str, online: bool) -> Option<image::DynamicImage> {
     let local = crate::artist::find_local(path).filter(|p| {
-        p.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().starts_with("artist"))
+        p.file_stem()
+            .is_some_and(|s| s.to_string_lossy().to_lowercase().starts_with("artist"))
     });
     local
         .and_then(|p| decode_file(&p))
-        .or_else(|| online.then(|| crate::artist::fetch_online(name)).flatten().and_then(|p| decode_file(&p)))
+        .or_else(|| {
+            online
+                .then(|| crate::artist::fetch_online(name))
+                .flatten()
+                .and_then(|p| decode_file(&p))
+        })
         .or_else(|| cover(path))
 }
 
@@ -299,7 +338,8 @@ mod tests {
 
     #[test]
     fn pictures_round_trip_and_bad_ones_are_refused() {
-        let img: image::DynamicImage = image::RgbaImage::from_pixel(600, 300, image::Rgba([200, 10, 10, 255])).into();
+        let img: image::DynamicImage =
+            image::RgbaImage::from_pixel(600, 300, image::Rgba([200, 10, 10, 255])).into();
         let small = img.thumbnail(COVER, COVER);
         assert_eq!((small.width(), small.height()), (240, 120));
         let back = decode(&encode(&small).unwrap()).unwrap();

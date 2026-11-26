@@ -55,7 +55,16 @@ const NAMED: &[(Key, &str)] = &[
     (Key::F12, "F12"),
 ];
 
-const MODIFIERS: &[Key] = &[Key::Shift, Key::ShiftR, Key::Control, Key::ControlR, Key::Alt, Key::AltGr, Key::Meta, Key::MetaR];
+const MODIFIERS: &[Key] = &[
+    Key::Shift,
+    Key::ShiftR,
+    Key::Control,
+    Key::ControlR,
+    Key::Alt,
+    Key::AltGr,
+    Key::Meta,
+    Key::MetaR,
+];
 
 /// "Ctrl+Shift+Left", "Alt+X", "Space", "+"; None for a modifier on its own
 /// or a key we can't name.
@@ -68,7 +77,8 @@ pub fn combo(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
     if MODIFIERS.iter().any(|m| char::from(*m) == c) {
         return None;
     }
-    let (name, shift_counts) = if let Some((_, n)) = NAMED.iter().find(|(k, _)| char::from(*k) == c) {
+    let (name, shift_counts) = if let Some((_, n)) = NAMED.iter().find(|(k, _)| char::from(*k) == c)
+    {
         ((*n).to_owned(), true)
     } else if c == ' ' {
         ("Space".to_owned(), true)
@@ -108,7 +118,9 @@ pub fn parse(text: &str) -> Vec<(String, String)> {
             continue;
         }
         // "+ = mute" binds "+": split at the last " = ".
-        let Some((k, a)) = line.rsplit_once(" = ").or_else(|| line.split_once('=')) else { continue };
+        let Some((k, a)) = line.rsplit_once(" = ").or_else(|| line.split_once('=')) else {
+            continue;
+        };
         let (k, a) = (k.trim(), a.trim());
         if k.is_empty() || !(a == NOTHING || palette::has_action(a) || scripts::is_action(a)) {
             continue;
@@ -124,7 +136,8 @@ fn save(list: &[(String, String)]) {
     if let Some(d) = f.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    let mut text = String::from("# Super Media Player shortcuts: key = action (Settings → Shortcuts)\n");
+    let mut text =
+        String::from("# Super Media Player shortcuts: key = action (Settings → Shortcuts)\n");
     for (k, a) in list {
         text += &format!("{k} = {a}\n");
     }
@@ -144,7 +157,11 @@ fn title_of(action: &str) -> String {
 /// The actions a key can do, in the order the settings list shows them.
 fn choices() -> Vec<(String, String)> {
     let mut v = vec![(NOTHING.to_owned(), "Nothing (turn the key off)".to_owned())];
-    v.extend(palette::actions().into_iter().map(|(id, t)| (id.to_owned(), t.to_owned())));
+    v.extend(
+        palette::actions()
+            .into_iter()
+            .map(|(id, t)| (id.to_owned(), t.to_owned())),
+    );
     v.extend(scripts::actions().into_iter().map(|(id, t, _)| (id, t)));
     v
 }
@@ -158,35 +175,48 @@ pub fn show_actions(ui: &AppWindow) {
     }
     CHOICES.with_borrow_mut(|c| *c = ids);
     ui.set_shortcut_actions(ModelRc::new(VecModel::from(
-        list.into_iter().map(|(_, t)| SharedString::from(t)).collect::<Vec<_>>(),
+        list.into_iter()
+            .map(|(_, t)| SharedString::from(t))
+            .collect::<Vec<_>>(),
     )));
 }
 
 fn show(ui: &AppWindow) {
     let rows: Vec<ShortcutRow> = BINDINGS.with_borrow(|b| {
         b.iter()
-            .map(|(k, a)| ShortcutRow { keys: k.into(), action: title_of(a).into() })
+            .map(|(k, a)| ShortcutRow {
+                keys: k.into(),
+                action: title_of(a).into(),
+            })
             .collect()
     });
     ui.set_shortcut_rows(ModelRc::new(VecModel::from(rows)));
 }
 
 pub fn install(ui: &AppWindow, settings: Rc<RefCell<Settings>>) {
-    let list = file().and_then(|f| std::fs::read_to_string(f).ok()).map(|t| parse(&t)).unwrap_or_default();
+    let list = file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .map(|t| parse(&t))
+        .unwrap_or_default();
     BINDINGS.with_borrow_mut(|b| *b = list);
     show(ui);
     show_actions(ui);
 
     let weak = ui.as_weak();
     ui.on_key_binding(move |text, ctrl, alt, shift| {
-        let Some(ui) = weak.upgrade() else { return false };
-        let Some(k) = combo(&text, ctrl, alt, shift) else { return false };
+        let Some(ui) = weak.upgrade() else {
+            return false;
+        };
+        let Some(k) = combo(&text, ctrl, alt, shift) else {
+            return false;
+        };
         let script = scripts::wanted(&k);
         if script == scripts::Wanted::Forced {
             scripts::press(&k);
             return true;
         }
-        let Some(action) = BINDINGS.with_borrow(|b| b.iter().find(|(kk, _)| *kk == k).map(|(_, a)| a.clone()))
+        let Some(action) =
+            BINDINGS.with_borrow(|b| b.iter().find(|(kk, _)| *kk == k).map(|(_, a)| a.clone()))
         else {
             if script == scripts::Wanted::Ordinary {
                 scripts::press(&k);
@@ -199,11 +229,15 @@ pub fn install(ui: &AppWindow, settings: Rc<RefCell<Settings>>) {
         }
         true
     });
-    ui.on_shortcut_capture(|text, ctrl, alt, shift| combo(&text, ctrl, alt, shift).unwrap_or_default().into());
+    ui.on_shortcut_capture(|text, ctrl, alt, shift| {
+        combo(&text, ctrl, alt, shift).unwrap_or_default().into()
+    });
     let weak = ui.as_weak();
     ui.on_shortcut_add(move |keys, index| {
         let Some(ui) = weak.upgrade() else { return };
-        let Some(id) = CHOICES.with_borrow(|c| c.get(index.max(0) as usize).cloned()) else { return };
+        let Some(id) = CHOICES.with_borrow(|c| c.get(index.max(0) as usize).cloned()) else {
+            return;
+        };
         if keys.is_empty() {
             ui.set_toast("Click the key box and press the keys first".into());
             return;
@@ -270,7 +304,10 @@ mod tests {
         assert_eq!(combo(" ", false, false, false).as_deref(), Some("Space"));
         assert_eq!(combo("+", false, false, true).as_deref(), Some("+"));
         let left: String = char::from(Key::LeftArrow).into();
-        assert_eq!(combo(&left, true, false, true).as_deref(), Some("Ctrl+Shift+Left"));
+        assert_eq!(
+            combo(&left, true, false, true).as_deref(),
+            Some("Ctrl+Shift+Left")
+        );
         let f5: String = char::from(Key::F5).into();
         assert_eq!(combo(&f5, false, true, false).as_deref(), Some("Alt+F5"));
         let shift: String = char::from(Key::Shift).into();
@@ -279,8 +316,17 @@ mod tests {
 
     #[test]
     fn config_lines() {
-        let l = parse("# c\nCtrl+A = mute\n+ = fullscreen\nX = no-such-action\nG = script:\nH = script:a/b\nCtrl+A = nothing\n");
+        let l = parse(
+            "# c\nCtrl+A = mute\n+ = fullscreen\nX = no-such-action\nG = script:\nH = script:a/b\nCtrl+A = nothing\n",
+        );
         let s = |k: &str, a: &str| (k.to_owned(), a.to_owned());
-        assert_eq!(l, vec![s("+", "fullscreen"), s("H", "script:a/b"), s("Ctrl+A", "nothing")]);
+        assert_eq!(
+            l,
+            vec![
+                s("+", "fullscreen"),
+                s("H", "script:a/b"),
+                s("Ctrl+A", "nothing")
+            ]
+        );
     }
 }

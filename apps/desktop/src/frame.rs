@@ -57,11 +57,14 @@ pub fn install(ui: &AppWindow) {
         let weak = ui.as_weak();
         ui.on_system_window_menu(move |x, y| {
             // winit has it on Wayland, but not on X11.
-            let Some(ui) = weak.upgrade() else { return true };
+            let Some(ui) = weak.upgrade() else {
+                return true;
+            };
             if !crate::basics::on_wayland(&ui) {
                 return false;
             }
-            ui.window().with_winit_window(|w| w.show_window_menu(LogicalPosition::new(x, y)));
+            ui.window()
+                .with_winit_window(|w| w.show_window_menu(LogicalPosition::new(x, y)));
             release_mouse(&ui, PointerEventButton::Right);
             true
         });
@@ -77,7 +80,10 @@ fn release_mouse(ui: &AppWindow, button: PointerEventButton) {
     slint::Timer::single_shot(Duration::ZERO, move || {
         let Some(ui) = weak.upgrade() else { return };
         let position = slint::LogicalPosition::new(-1.0, -1.0);
-        for event in [WindowEvent::PointerReleased { position, button }, WindowEvent::PointerExited] {
+        for event in [
+            WindowEvent::PointerReleased { position, button },
+            WindowEvent::PointerExited,
+        ] {
             let _ = ui.window().dispatch_event_with_result(event);
         }
     });
@@ -107,19 +113,23 @@ fn follow_state(ui: &AppWindow) {
     LOOK.with(|timers| {
         for (timer, delay) in timers.iter().zip([0, 150, 1000]) {
             let weak = ui.as_weak();
-            timer.start(slint::TimerMode::SingleShot, Duration::from_millis(delay), move || {
-                let Some(ui) = weak.upgrade() else { return };
-                let maximized = ui.window().with_winit_window(|w| {
-                    if w.theme() != Some(Theme::Dark) {
-                        w.set_theme(Some(Theme::Dark));
+            timer.start(
+                slint::TimerMode::SingleShot,
+                Duration::from_millis(delay),
+                move || {
+                    let Some(ui) = weak.upgrade() else { return };
+                    let maximized = ui.window().with_winit_window(|w| {
+                        if w.theme() != Some(Theme::Dark) {
+                            w.set_theme(Some(Theme::Dark));
+                        }
+                        w.is_maximized()
+                    });
+                    let maximized = maximized.unwrap_or(false);
+                    if maximized != ui.get_window_maximized() {
+                        ui.set_window_maximized(maximized);
                     }
-                    w.is_maximized()
-                });
-                let maximized = maximized.unwrap_or(false);
-                if maximized != ui.get_window_maximized() {
-                    ui.set_window_maximized(maximized);
-                }
-            });
+                },
+            );
         }
     });
 }
@@ -245,8 +255,13 @@ impl Corners {
                 draw_arrays_instanced: f(get(c"glDrawArraysInstanced"))?,
             };
             let version = (gl.get_string)(GL_VERSION);
-            let es = !version.is_null() && CStr::from_ptr(version).to_bytes().starts_with(b"OpenGL ES");
-            let head = if es { "#version 300 es\nprecision highp float;\n" } else { "#version 150\n" };
+            let es =
+                !version.is_null() && CStr::from_ptr(version).to_bytes().starts_with(b"OpenGL ES");
+            let head = if es {
+                "#version 300 es\nprecision highp float;\n"
+            } else {
+                "#version 150\n"
+            };
             let program = (gl.create_program)();
             for (kind, body) in [(GL_VERTEX_SHADER, VERTEX), (GL_FRAGMENT_SHADER, FRAGMENT)] {
                 let source = CString::new(format!("{head}{body}")).ok()?;
@@ -294,12 +309,23 @@ impl Corners {
         // SAFETY: the window's GL context is current.
         unsafe {
             let (program, vao) = (int(GL_CURRENT_PROGRAM), int(GL_VERTEX_ARRAY_BINDING));
-            let blend = [GL_BLEND_SRC_RGB, GL_BLEND_DST_RGB, GL_BLEND_SRC_ALPHA, GL_BLEND_DST_ALPHA].map(int);
+            let blend = [
+                GL_BLEND_SRC_RGB,
+                GL_BLEND_DST_RGB,
+                GL_BLEND_SRC_ALPHA,
+                GL_BLEND_DST_ALPHA,
+            ]
+            .map(int);
             let mut view = [0i32; 4];
             (gl.get_integerv)(GL_VIEWPORT, view.as_mut_ptr());
             let mut mask = [1u8; 4];
             (gl.get_booleanv)(GL_COLOR_WRITEMASK, mask.as_mut_ptr());
-            let off = [GL_CULL_FACE, GL_DEPTH_TEST, GL_STENCIL_TEST, GL_SCISSOR_TEST];
+            let off = [
+                GL_CULL_FACE,
+                GL_DEPTH_TEST,
+                GL_STENCIL_TEST,
+                GL_SCISSOR_TEST,
+            ];
             let was = off.map(|c| (gl.is_enabled)(c) != 0);
             let blended = (gl.is_enabled)(GL_BLEND) != 0;
 
@@ -322,7 +348,10 @@ impl Corners {
             if !blended {
                 (gl.disable)(GL_BLEND);
             }
-            off.iter().zip(was).filter(|(_, on)| *on).for_each(|(c, _)| (gl.enable)(*c));
+            off.iter()
+                .zip(was)
+                .filter(|(_, on)| *on)
+                .for_each(|(c, _)| (gl.enable)(*c));
         }
     }
 }

@@ -86,7 +86,9 @@ pub struct Skip {
 // ---- which video ----
 
 fn is_id(s: &str) -> bool {
-    s.len() == 11 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    s.len() == 11
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// The video's ID in a YouTube link (watch, youtu.be, shorts, live, embed,
@@ -108,7 +110,9 @@ pub fn id_in_link(link: &str) -> Option<&str> {
     let (host, path) = rest.split_once('/')?;
     let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
     let host = host.split(':').next()?.to_ascii_lowercase();
-    let of = |domain: &str| host == domain || host.strip_suffix(domain).is_some_and(|h| h.ends_with('.'));
+    let of = |domain: &str| {
+        host == domain || host.strip_suffix(domain).is_some_and(|h| h.ends_with('.'))
+    };
     if of("youtu.be") {
         return id_at(path);
     }
@@ -120,9 +124,15 @@ pub fn id_in_link(link: &str) -> Option<&str> {
             return id_at(rest);
         }
     }
-    let query = path.strip_prefix("watch")?.trim_start_matches('/').strip_prefix('?')?;
+    let query = path
+        .strip_prefix("watch")?
+        .trim_start_matches('/')
+        .strip_prefix('?')?;
     let query = query.split('#').next()?;
-    query.split('&').find_map(|kv| kv.strip_prefix("v=")).filter(|id| is_id(id))
+    query
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("v="))
+        .filter(|id| is_id(id))
 }
 
 /// The ID at the end of a downloaded file's name: "Title [dQw4w9WgXcQ].mkv".
@@ -144,7 +154,10 @@ fn hash_prefix(id: &str) -> String {
 
 /// The segments marked in video `id`. Blocking. Err: couldn't ask (offline).
 pub fn fetch(id: &str) -> Result<Vec<Segment>, ()> {
-    let names: Vec<String> = Kind::ALL.iter().map(|(n, _)| format!("%22{n}%22")).collect();
+    let names: Vec<String> = Kind::ALL
+        .iter()
+        .map(|(n, _)| format!("%22{n}%22"))
+        .collect();
     let url = format!(
         "{API}/{}?categories=%5B{}%5D&actionTypes=%5B%22skip%22%5D",
         hash_prefix(id),
@@ -159,7 +172,9 @@ pub fn fetch(id: &str) -> Result<Vec<Segment>, ()> {
 }
 
 fn parse(body: &[u8], id: &str) -> Vec<Segment> {
-    let Ok(json) = serde_json::from_slice::<Value>(body) else { return Vec::new() };
+    let Ok(json) = serde_json::from_slice::<Value>(body) else {
+        return Vec::new();
+    };
     let mut list: Vec<Segment> = json
         .as_array()
         .into_iter()
@@ -194,17 +209,29 @@ pub fn skips(segments: &[Segment], level: &str, duration: f64) -> Vec<Skip> {
     let mut out: Vec<Skip> = Vec::new();
     for s in segments.iter().filter(|s| s.kind.in_level(level)) {
         let start = if s.start <= 1.0 { 0.0 } else { s.start };
-        let end = if duration - s.end <= 1.0 { duration } else { s.end };
+        let end = if duration - s.end <= 1.0 {
+            duration
+        } else {
+            s.end
+        };
         if end <= start {
             continue;
         }
-        let diff = if s.video > 0.0 { (duration - s.video).abs() } else { 0.0 };
+        let diff = if s.video > 0.0 {
+            (duration - s.video).abs()
+        } else {
+            0.0
+        };
         if !(diff < 1.0 || (diff < 5.0 && diff / (end - start) < 0.05)) {
             continue;
         }
         match out.last_mut() {
             Some(last) if start <= last.end + JOIN => last.end = last.end.max(end),
-            _ => out.push(Skip { start, end, kind: s.kind }),
+            _ => out.push(Skip {
+                start,
+                end,
+                kind: s.kind,
+            }),
         }
     }
     out
@@ -213,7 +240,9 @@ pub fn skips(segments: &[Segment], level: &str, duration: f64) -> Vec<Skip> {
 /// The part being played at `pos`, if any. Its last moments don't count:
 /// there is nothing left to skip.
 pub fn at(skips: &[Skip], pos: f64) -> Option<usize> {
-    skips.iter().position(|s| pos >= s.start - 0.2 && pos < s.end - 0.5)
+    skips
+        .iter()
+        .position(|s| pos >= s.start - 0.2 && pos < s.end - 0.5)
 }
 
 /// Whether playback went from `last` to `pos` by just playing, at `speed`
@@ -295,9 +324,23 @@ mod tests {
         let s = parse(&reply(), ID);
         assert_eq!(s.len(), 5);
         // Sponsors only; the one from a longer cut is left out.
-        assert_eq!(skips(&s, "sponsors", 600.0), vec![Skip { start: 20.0, end: 50.0, kind: Kind::Sponsor }]);
+        assert_eq!(
+            skips(&s, "sponsors", 600.0),
+            vec![Skip {
+                start: 20.0,
+                end: 50.0,
+                kind: Kind::Sponsor
+            }]
+        );
         // The self-promotion right after is skipped along with it.
-        assert_eq!(skips(&s, "promotion", 600.0), vec![Skip { start: 20.0, end: 70.0, kind: Kind::Sponsor }]);
+        assert_eq!(
+            skips(&s, "promotion", 600.0),
+            vec![Skip {
+                start: 20.0,
+                end: 70.0,
+                kind: Kind::Sponsor
+            }]
+        );
         let all = skips(&s, "all", 600.0);
         assert_eq!(all.len(), 3);
         assert_eq!((all[0].start, all[0].kind), (0.0, Kind::Intro));
@@ -308,14 +351,25 @@ mod tests {
 
     #[test]
     fn bad_replies_are_no_segments() {
-        for b in [&b""[..], b"Not Found", b"{}", b"[]", b"[1,2]", br#"[{"videoID":"dQw4w9WgXcQ"}]"#] {
+        for b in [
+            &b""[..],
+            b"Not Found",
+            b"{}",
+            b"[]",
+            b"[1,2]",
+            br#"[{"videoID":"dQw4w9WgXcQ"}]"#,
+        ] {
             assert!(parse(b, ID).is_empty());
         }
     }
 
     #[test]
     fn where_to_skip() {
-        let s = [Skip { start: 20.0, end: 50.0, kind: Kind::Sponsor }];
+        let s = [Skip {
+            start: 20.0,
+            end: 50.0,
+            kind: Kind::Sponsor,
+        }];
         assert_eq!(at(&s, 19.0), None);
         assert_eq!(at(&s, 19.9), Some(0));
         assert_eq!(at(&s, 49.0), Some(0));
@@ -328,7 +382,12 @@ mod tests {
     #[test]
     #[ignore]
     fn asks_sponsorblock() {
-        assert!(fetch("ByhVrrP1QkQ").unwrap().iter().any(|s| s.kind == Kind::Sponsor));
+        assert!(
+            fetch("ByhVrrP1QkQ")
+                .unwrap()
+                .iter()
+                .any(|s| s.kind == Kind::Sponsor)
+        );
         assert!(fetch("00000000000").unwrap().is_empty());
     }
 }

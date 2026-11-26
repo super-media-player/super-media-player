@@ -66,7 +66,10 @@ pub fn graph(layout: &str, channels: usize, rate: u32) -> Option<String> {
         // apad: near the end of the file the taps ahead are silent, rather
         // than ending the sound early.
         g += &match i.cmp(&BEHIND) {
-            std::cmp::Ordering::Less => format!(";[a{i}]adelay=delays={}S:all=1,apad[b{i}]", (BEHIND - i) * hop),
+            std::cmp::Ordering::Less => format!(
+                ";[a{i}]adelay=delays={}S:all=1,apad[b{i}]",
+                (BEHIND - i) * hop
+            ),
             std::cmp::Ordering::Equal => format!(";[a{i}]apad[b{i}]"),
             std::cmp::Ordering::Greater => {
                 let n = (i - BEHIND) * hop;
@@ -78,7 +81,9 @@ pub fn graph(layout: &str, channels: usize, rate: u32) -> Option<String> {
     for i in 0..taps {
         g += &format!("[b{i}]");
     }
-    let loudest = (1..taps).fold("abs(val(0))".to_owned(), |e, i| format!("max({e}\\,abs(val({i})))"));
+    let loudest = (1..taps).fold("abs(val(0))".to_owned(), |e, i| {
+        format!("max({e}\\,abs(val({i})))")
+    });
     g += &format!(
         "amerge=inputs={taps},aeval=exprs='{loudest}':c=mono[e];[m][r][e]amerge=inputs=3,asetnsamples=n={hop}:p=0,\
          astats=metadata=1:reset=1:measure_perchannel=Peak_level:measure_overall=none,\
@@ -133,7 +138,11 @@ impl Listener {
         // in a clean recording.
         let speech = percentile(&self.around, 0.6);
         let background = percentile(&self.alone, 0.05);
-        self.threshold = Some((background + 6.0).clamp(speech - 30.0, speech - 18.0).clamp(-70.0, -12.0));
+        self.threshold = Some(
+            (background + 6.0)
+                .clamp(speech - 30.0, speech - 18.0)
+                .clamp(-70.0, -12.0),
+        );
     }
 }
 
@@ -168,16 +177,26 @@ pub fn note_seek() {
 /// Whether a jump ahead in the position now comes from silence left out
 /// rather than from a seek.
 pub fn jumps(player: &Player) -> bool {
-    STATE.with_borrow(|s| s.sought.is_none_or(|t| t.elapsed() > Duration::from_secs(1))) && installed(player)
+    STATE.with_borrow(|s| {
+        s.sought
+            .is_none_or(|t| t.elapsed() > Duration::from_secs(1))
+    }) && installed(player)
 }
 
 fn installed(player: &Player) -> bool {
-    player.get_string("af").is_some_and(|af| af.contains(&format!("@{LABEL}:")))
+    player
+        .get_string("af")
+        .is_some_and(|af| af.contains(&format!("@{LABEL}:")))
 }
 
 fn level(v: Option<&Value>) -> Option<f64> {
     match v? {
-        Value::Str(s) => Some(s.parse::<f64>().ok().filter(|x| !x.is_nan()).unwrap_or(f64::NEG_INFINITY)),
+        Value::Str(s) => Some(
+            s.parse::<f64>()
+                .ok()
+                .filter(|x| !x.is_nan())
+                .unwrap_or(f64::NEG_INFINITY),
+        ),
         Value::Double(d) => Some(*d),
         _ => None,
     }
@@ -213,12 +232,18 @@ fn look(ui: &AppWindow, player: &Player, smooth_motion: bool) {
             if video {
                 let _ = player.set_string("file-local-options/mc", "1");
             } else if same_file {
-                let fps = player.get_double("container-fps").filter(|f| *f > 1.0).unwrap_or(25.0);
+                let fps = player
+                    .get_double("container-fps")
+                    .filter(|f| *f > 1.0)
+                    .unwrap_or(25.0);
                 let _ = player.set_string("file-local-options/mc", &format!("{:.5}", 0.1 / fps));
             }
             if smooth_motion {
                 // Frames timed by the screen would take seconds to catch up.
-                let _ = player.set_string("video-sync", if video { "audio" } else { "display-resample" });
+                let _ = player.set_string(
+                    "video-sync",
+                    if video { "audio" } else { "display-resample" },
+                );
             }
         }
         if !on || ui.get_paused() {
@@ -247,7 +272,11 @@ fn look(ui: &AppWindow, player: &Player, smooth_motion: bool) {
                 s.last = Some((now, pos));
             }
         }
-        let saved = if s.saved >= 1.0 { crate::fmt_clock(s.saved) } else { String::new() };
+        let saved = if s.saved >= 1.0 {
+            crate::fmt_clock(s.saved)
+        } else {
+            String::new()
+        };
         if ui.get_silence_saved() != saved.as_str() {
             ui.set_silence_saved(saved.as_str().into());
         }
@@ -269,7 +298,11 @@ pub fn obstacle(ui: &AppWindow, bit_perfect: bool) -> Option<&'static str> {
     }
 }
 
-pub fn install(ui: &AppWindow, player: &std::rc::Rc<Player>, settings: std::rc::Rc<RefCell<crate::settings::Settings>>) {
+pub fn install(
+    ui: &AppWindow,
+    player: &std::rc::Rc<Player>,
+    settings: std::rc::Rc<RefCell<crate::settings::Settings>>,
+) {
     let (weak, player) = (ui.as_weak(), player.clone());
     let timer = slint::Timer::default();
     timer.start(slint::TimerMode::Repeated, POLL, move || {
@@ -290,7 +323,10 @@ mod tests {
     fn graph_shape() {
         let g = graph("stereo", 2, 44_100).unwrap();
         assert!(g.contains("adelay=delays=2205S"), "{g}");
-        assert!(g.contains("[a3]apad[b3];[a4]atrim=start_sample=2205"), "{g}");
+        assert!(
+            g.contains("[a3]apad[b3];[a4]atrim=start_sample=2205"),
+            "{g}"
+        );
         assert!(g.contains("key=lavfi.astats.4.Peak_level"), "{g}");
         assert!(g.ends_with("pan=stereo|c0=c0|c1=c1"), "{g}");
         assert!(graph("mono", 1, 8000).unwrap().contains("lowpass=f=3600"));
@@ -335,8 +371,15 @@ mod tests {
     }
 
     fn ffmpeg(args: &[&str]) -> Option<String> {
-        let out = std::process::Command::new("ffmpeg").args(args).output().ok()?;
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let out = std::process::Command::new("ffmpeg")
+            .args(args)
+            .output()
+            .ok()?;
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         Some(String::from_utf8_lossy(&out.stdout).into_owned())
     }
 
@@ -350,19 +393,40 @@ mod tests {
                 let src = format!(
                     "aevalsrc=exprs='if(between(t\\,1\\,3)\\,0\\,0.3*sin(2*PI*440*t))':s={rate}:d=4,aformat=channel_layouts={layout}"
                 );
-                let af = format!("{},ametadata=mode=print:file=-", graph(layout, n, rate).unwrap());
-                let Some(out) = ffmpeg(&["-v", "error", "-f", "lavfi", "-i", &src, "-af", &af, "-f", "null", "-"]) else {
+                let af = format!(
+                    "{},ametadata=mode=print:file=-",
+                    graph(layout, n, rate).unwrap()
+                );
+                let Some(out) = ffmpeg(&[
+                    "-v", "error", "-f", "lavfi", "-i", &src, "-af", &af, "-f", "null", "-",
+                ]) else {
                     eprintln!("ffmpeg not found; skipping");
                     return;
                 };
-                let times: Vec<f64> =
-                    out.lines().filter_map(|l| l.split("pts_time:").nth(1)?.trim().parse().ok()).collect();
+                let times: Vec<f64> = out
+                    .lines()
+                    .filter_map(|l| l.split("pts_time:").nth(1)?.trim().parse().ok())
+                    .collect();
                 let gap = times.windows(2).map(|w| w[1] - w[0]).fold(0.0, f64::max);
                 assert!((1.3..1.9).contains(&gap), "{layout} {rate}: {gap}");
-                let before = times.iter().copied().filter(|t| *t < 2.0).fold(0.0, f64::max);
-                let after = times.iter().copied().filter(|t| *t > before).fold(9.0, f64::min);
-                assert!(before > 1.02 && after < 2.8, "{layout} {rate}: {before} {after}");
-                assert!(times.last().is_some_and(|t| *t > 3.9), "{layout} {rate}: the end is cut off");
+                let before = times
+                    .iter()
+                    .copied()
+                    .filter(|t| *t < 2.0)
+                    .fold(0.0, f64::max);
+                let after = times
+                    .iter()
+                    .copied()
+                    .filter(|t| *t > before)
+                    .fold(9.0, f64::min);
+                assert!(
+                    before > 1.02 && after < 2.8,
+                    "{layout} {rate}: {before} {after}"
+                );
+                assert!(
+                    times.last().is_some_and(|t| *t > 3.9),
+                    "{layout} {rate}: the end is cut off"
+                );
             }
         }
     }
@@ -392,7 +456,10 @@ mod tests {
         let wait = |at: f64| {
             let start = Instant::now();
             while player.get_double("time-pos").is_none_or(|t| t < at) {
-                assert!(start.elapsed() < Duration::from_secs(8), "stuck before {at}");
+                assert!(
+                    start.elapsed() < Duration::from_secs(8),
+                    "stuck before {at}"
+                );
                 std::thread::sleep(Duration::from_millis(10));
             }
             start.elapsed().as_secs_f64()
@@ -402,9 +469,16 @@ mod tests {
         assert!((0.7..2.8).contains(&took), "{took}");
         assert!(installed(&player));
         let meta = player.get_value("af-metadata/quiet").unwrap();
-        assert!(level(meta.get(&peak_key(3))).is_some_and(|l| (-14.0..-8.0).contains(&l)), "{meta:?}");
+        assert!(
+            level(meta.get(&peak_key(3))).is_some_and(|l| (-14.0..-8.0).contains(&l)),
+            "{meta:?}"
+        );
         assert!(level(meta.get(&peak_key(4))).is_some());
-        assert!(player.command(&["af-command", LABEL, "volume", "-3.0dB", "volume@ref"]).is_ok());
+        assert!(
+            player
+                .command(&["af-command", LABEL, "volume", "-3.0dB", "volume@ref"])
+                .is_ok()
+        );
         player.seek(player_core::Seek::Absolute(0.5)).unwrap();
         std::thread::sleep(Duration::from_millis(300));
         assert!(player.get_double("time-pos").is_some_and(|t| t < 2.0));

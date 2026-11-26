@@ -277,8 +277,12 @@ fn hidden_player_returns_raw_frames() {
         Err(e) => return eprintln!("skipping: {e}"),
     };
     player.load(path_str(&clip), LoadMode::Replace).unwrap();
-    wait_for(&rx, "first frame", |e| matches!(e, PlayerEvent::PlaybackRestart));
-    player.command(&["seek", "1.2", "absolute+keyframes"]).unwrap();
+    wait_for(&rx, "first frame", |e| {
+        matches!(e, PlayerEvent::PlaybackRestart)
+    });
+    player
+        .command(&["seek", "1.2", "absolute+keyframes"])
+        .unwrap();
     wait_for(&rx, "seek", |e| matches!(e, PlayerEvent::PlaybackRestart));
     let shot = player.command_ret(&["screenshot-raw", "video"]).unwrap();
     let w = shot.get("w").and_then(|v| v.as_i64()).unwrap();
@@ -317,7 +321,16 @@ fn hidden_player_encodes_a_clip() {
     };
     player.load(path_str(&clip), LoadMode::Replace).unwrap();
     let end = wait_for(&rx, "end", |e| matches!(e, PlayerEvent::EndFile { .. }));
-    assert!(matches!(end, PlayerEvent::EndFile { reason: EndReason::Eof, .. }), "{end:?}");
+    assert!(
+        matches!(
+            end,
+            PlayerEvent::EndFile {
+                reason: EndReason::Eof,
+                ..
+            }
+        ),
+        "{end:?}"
+    );
     drop(player);
     let len = std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0);
     assert!(len > 1000, "clip is {len} bytes");

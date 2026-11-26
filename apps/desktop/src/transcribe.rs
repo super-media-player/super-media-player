@@ -18,10 +18,30 @@ use sha2::{Digest, Sha256};
 
 /// Model: settings name, file, SHA-256, size in bytes.
 pub const MODELS: &[(&str, &str, &str, u64)] = &[
-    ("tiny", "ggml-tiny.bin", "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21", 77_691_713),
-    ("base", "ggml-base.bin", "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", 147_951_465),
-    ("small", "ggml-small.bin", "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b", 487_601_967),
-    ("medium", "ggml-medium.bin", "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208", 1_533_763_059),
+    (
+        "tiny",
+        "ggml-tiny.bin",
+        "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+        77_691_713,
+    ),
+    (
+        "base",
+        "ggml-base.bin",
+        "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+        147_951_465,
+    ),
+    (
+        "small",
+        "ggml-small.bin",
+        "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+        487_601_967,
+    ),
+    (
+        "medium",
+        "ggml-medium.bin",
+        "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+        1_533_763_059,
+    ),
     (
         "large-v3-turbo",
         "ggml-large-v3-turbo.bin",
@@ -32,7 +52,11 @@ pub const MODELS: &[(&str, &str, &str, u64)] = &[
 const MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
 fn exe_names() -> &'static [&'static str] {
-    if cfg!(windows) { &["whisper-cli.exe"] } else { &["whisper-cli", "whisper-cpp"] }
+    if cfg!(windows) {
+        &["whisper-cli.exe"]
+    } else {
+        &["whisper-cli", "whisper-cpp"]
+    }
 }
 
 /// The whisper-cli to use: `$SMP_WHISPER`, the package's copy, the one
@@ -42,7 +66,9 @@ pub fn whisper_cli() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("SMP_WHISPER").filter(|p| !p.is_empty()) {
         c.push(PathBuf::from(p));
     }
-    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf));
     for name in exe_names() {
         if let Some(d) = &exe_dir {
             c.push(d.join("whisper").join(name));
@@ -74,11 +100,17 @@ pub fn model_info(name: &str) -> Option<&'static (&'static str, &'static str, &'
 pub fn model_path(name: &str) -> Option<PathBuf> {
     let (_, file, _, size) = model_info(name)?;
     let p = model_dir()?.join(file);
-    std::fs::metadata(&p).is_ok_and(|m| m.len() == *size).then_some(p)
+    std::fs::metadata(&p)
+        .is_ok_and(|m| m.len() == *size)
+        .then_some(p)
 }
 
 /// Download model `name`, checking its SHA-256. `progress` gets 0..1.
-pub fn download_model(name: &str, cancel: &AtomicBool, progress: impl Fn(f32)) -> Result<PathBuf, String> {
+pub fn download_model(
+    name: &str,
+    cancel: &AtomicBool,
+    progress: impl Fn(f32),
+) -> Result<PathBuf, String> {
     let (_, file, want, size) = model_info(name).ok_or("unknown model")?;
     let dir = model_dir().ok_or("no data folder (HOME is not set)")?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -88,7 +120,10 @@ pub fn download_model(name: &str, cancel: &AtomicBool, progress: impl Fn(f32)) -
         .config()
         .timeout_connect(Some(std::time::Duration::from_secs(20)))
         .build()
-        .header("User-Agent", concat!("SuperMediaPlayer/", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            concat!("SuperMediaPlayer/", env!("CARGO_PKG_VERSION")),
+        )
         .call()
         .map_err(|e| format!("download failed: {e}"))?;
     let mut reader = resp.into_body().into_with_config().limit(size + 1).reader();
@@ -138,7 +173,11 @@ pub fn download_model(name: &str, cancel: &AtomicBool, progress: impl Fn(f32)) -
 /// are kept.
 pub fn subtitle_path(source: &str, model: &str, translate: bool) -> Option<PathBuf> {
     let dir = crate::settings::cache_dir()?.join("subtitles");
-    Some(dir.join(format!("{}-{model}{}.srt", key(source), if translate { "-en" } else { "" })))
+    Some(dir.join(format!(
+        "{}-{model}{}.srt",
+        key(source),
+        if translate { "-en" } else { "" }
+    )))
 }
 
 /// Subtitles made earlier for `source`, by any model, the newest first.
@@ -148,7 +187,11 @@ pub fn existing_subtitles(source: &str) -> Option<PathBuf> {
     let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)
         .ok()?
         .flatten()
-        .filter(|e| e.file_name().to_string_lossy().starts_with(&format!("{k}-")))
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with(&format!("{k}-"))
+        })
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();
     found.sort();
@@ -161,11 +204,17 @@ fn key(source: &str) -> String {
     h.update(source.as_bytes());
     if let Ok(m) = std::fs::metadata(source) {
         h.update(m.len().to_le_bytes());
-        if let Ok(t) = m.modified().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).map_err(std::io::Error::other)) {
+        if let Ok(t) = m.modified().and_then(|t| {
+            t.duration_since(std::time::UNIX_EPOCH)
+                .map_err(std::io::Error::other)
+        }) {
             h.update(t.as_secs().to_le_bytes());
         }
     }
-    h.finalize()[..10].iter().map(|b| format!("{b:02x}")).collect()
+    h.finalize()[..10]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// What to transcribe.
@@ -210,7 +259,9 @@ pub fn run(job: &Job, cancel: &AtomicBool, progress: impl Fn(Step)) -> Result<Pa
         aid: job.aid,
     };
     let duration = job.duration.max(1.0);
-    crate::pcm::render(&d, cancel, |t| progress(Step::Decode((t / duration).clamp(0.0, 1.0) as f32)))?;
+    crate::pcm::render(&d, cancel, |t| {
+        progress(Step::Decode((t / duration).clamp(0.0, 1.0) as f32))
+    })?;
 
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get().clamp(1, 8));
     let stem = out.with_extension("");
@@ -303,7 +354,11 @@ pub fn parse_time(s: &str) -> Option<f64> {
     let s = s.trim().replace(',', ".");
     let parts: Vec<&str> = s.split(':').collect();
     let (h, m, sec) = match parts.as_slice() {
-        [h, m, s] => (h.parse::<f64>().ok()?, m.parse::<f64>().ok()?, s.parse::<f64>().ok()?),
+        [h, m, s] => (
+            h.parse::<f64>().ok()?,
+            m.parse::<f64>().ok()?,
+            s.parse::<f64>().ok()?,
+        ),
         [m, s] => (0.0, m.parse::<f64>().ok()?, s.parse::<f64>().ok()?),
         _ => return None,
     };
@@ -316,11 +371,18 @@ pub fn parse_subtitles(text: &str) -> Vec<Line> {
     let text = text.replace("\r\n", "\n");
     for block in text.split("\n\n") {
         let mut lines = block.lines().map(str::trim).filter(|l| !l.is_empty());
-        let Some(timing) = lines.by_ref().find(|l| l.contains("-->")) else { continue };
-        let Some(time) = timing.split("-->").next().and_then(parse_time) else { continue };
+        let Some(timing) = lines.by_ref().find(|l| l.contains("-->")) else {
+            continue;
+        };
+        let Some(time) = timing.split("-->").next().and_then(parse_time) else {
+            continue;
+        };
         let words: Vec<String> = lines.map(strip_markup).filter(|l| !l.is_empty()).collect();
         if !words.is_empty() {
-            out.push(Line { time, text: words.join(" ") });
+            out.push(Line {
+                time,
+                text: words.join(" "),
+            });
         }
     }
     out
@@ -364,15 +426,27 @@ mod tests {
     fn reads_srt_and_vtt() {
         let srt = "1\r\n00:00:01,000 --> 00:00:02,500\r\n<i>Hello</i> there\r\n\r\n2\r\n00:01:02,250 --> 00:01:04,000\r\n{\\an8}The password is\r\nswordfish\r\n";
         let l = parse_subtitles(srt);
-        assert_eq!(l, vec![
-            Line { time: 1.0, text: "Hello there".into() },
-            Line { time: 62.25, text: "The password is swordfish".into() },
-        ]);
+        assert_eq!(
+            l,
+            vec![
+                Line {
+                    time: 1.0,
+                    text: "Hello there".into()
+                },
+                Line {
+                    time: 62.25,
+                    text: "The password is swordfish".into()
+                },
+            ]
+        );
         let vtt = "WEBVTT\n\n00:05.000 --> 00:06.000\nShort time\n";
         assert_eq!(parse_subtitles(vtt)[0].time, 5.0);
         assert_eq!(search(&l, "PASSWORD sword", 10).len(), 1);
         assert_eq!(search(&l, "nothing", 10).len(), 0);
-        assert_eq!(parse_progress("whisper_print_progress_callback: progress =  42%"), Some(0.42));
+        assert_eq!(
+            parse_progress("whisper_print_progress_callback: progress =  42%"),
+            Some(0.42)
+        );
         assert_eq!(parse_progress("whisper_init: loading"), None);
     }
 

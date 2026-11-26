@@ -15,7 +15,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-pub const AGENT: &str = concat!("SuperMediaPlayer/", env!("CARGO_PKG_VERSION"), " UPnP/1.0 DLNADOC/1.50");
+pub const AGENT: &str = concat!(
+    "SuperMediaPlayer/",
+    env!("CARGO_PKG_VERSION"),
+    " UPnP/1.0 DLNADOC/1.50"
+);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Server {
@@ -27,9 +31,17 @@ pub struct Server {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Entry {
     /// A DLNA folder: its object id.
-    Folder { title: String, id: String, count: Option<u32> },
+    Folder {
+        title: String,
+        id: String,
+        count: Option<u32>,
+    },
     /// A DLNA file: its HTTP link.
-    Item { title: String, url: String, detail: String },
+    Item {
+        title: String,
+        url: String,
+        detail: String,
+    },
 }
 
 // ---- DLNA ----
@@ -37,7 +49,12 @@ pub enum Entry {
 /// Media servers that answer within `wait`.
 pub fn discover(wait: Duration) -> Vec<Server> {
     let mut locations = Vec::new();
-    ssdp("urn:schemas-upnp-org:device:MediaServer:1", wait, None, |loc| locations.push(loc));
+    ssdp(
+        "urn:schemas-upnp-org:device:MediaServer:1",
+        wait,
+        None,
+        |loc| locations.push(loc),
+    );
     let mut out: Vec<Server> = Vec::new();
     for loc in locations {
         match describe(&loc) {
@@ -51,14 +68,25 @@ pub fn discover(wait: Duration) -> Vec<Server> {
 
 /// Ask for UPnP devices of type `st` on the network (or only the computer
 /// `only`) and report each one's description link, once, as it answers.
-pub fn ssdp(st: &str, wait: Duration, only: Option<std::net::Ipv4Addr>, mut found: impl FnMut(String)) {
-    let Ok(sock) = UdpSocket::bind("0.0.0.0:0") else { return };
+pub fn ssdp(
+    st: &str,
+    wait: Duration,
+    only: Option<std::net::Ipv4Addr>,
+    mut found: impl FnMut(String),
+) {
+    let Ok(sock) = UdpSocket::bind("0.0.0.0:0") else {
+        return;
+    };
     let _ = sock.set_multicast_ttl_v4(2);
     let _ = sock.set_read_timeout(Some(Duration::from_millis(300)));
     let msg = format!(
         "M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 2\r\nST: {st}\r\n\r\n"
     );
-    let to = std::net::SocketAddr::new(only.unwrap_or(std::net::Ipv4Addr::new(239, 255, 255, 250)).into(), 1900);
+    let to = std::net::SocketAddr::new(
+        only.unwrap_or(std::net::Ipv4Addr::new(239, 255, 255, 250))
+            .into(),
+        1900,
+    );
     // UDP can drop a packet: ask twice.
     for _ in 0..2 {
         let _ = sock.send_to(msg.as_bytes(), to);
@@ -71,7 +99,8 @@ pub fn ssdp(st: &str, wait: Duration, only: Option<std::net::Ipv4Addr>, mut foun
             let text = String::from_utf8_lossy(&buf[..n]);
             // Some devices answer every search, whatever it asks for.
             let right = header(&text, "st").is_none_or(|t| {
-                let no_version = |s: &str| s.trim_end_matches(|c: char| c.is_ascii_digit()).to_owned();
+                let no_version =
+                    |s: &str| s.trim_end_matches(|c: char| c.is_ascii_digit()).to_owned();
                 no_version(&t) == no_version(st)
             });
             if let Some(loc) = header(&text, "location").filter(|l| right && !seen.contains(l)) {
@@ -85,7 +114,9 @@ pub fn ssdp(st: &str, wait: Duration, only: Option<std::net::Ipv4Addr>, mut foun
 pub fn header(response: &str, name: &str) -> Option<String> {
     response.lines().find_map(|l| {
         let (k, v) = l.split_once(':')?;
-        k.trim().eq_ignore_ascii_case(name).then(|| v.trim().to_owned())
+        k.trim()
+            .eq_ignore_ascii_case(name)
+            .then(|| v.trim().to_owned())
     })
 }
 
@@ -97,7 +128,11 @@ pub fn get_text(url: &str) -> Result<String, String> {
         .build()
         .call()
         .map_err(|e| e.to_string())?;
-    resp.body_mut().with_config().limit(8 * 1024 * 1024).read_to_string().map_err(|e| e.to_string())
+    resp.body_mut()
+        .with_config()
+        .limit(8 * 1024 * 1024)
+        .read_to_string()
+        .map_err(|e| e.to_string())
 }
 
 fn describe(location: &str) -> Result<Server, String> {
@@ -110,7 +145,9 @@ pub fn join_url(base: &str, href: &str) -> String {
     if href.contains("://") {
         return href.to_owned();
     }
-    let Some((scheme, rest)) = base.split_once("://") else { return href.to_owned() };
+    let Some((scheme, rest)) = base.split_once("://") else {
+        return href.to_owned();
+    };
     let host = rest.split('/').next().unwrap_or(rest);
     if let Some(abs) = href.strip_prefix('/') {
         return format!("{scheme}://{host}/{abs}");
@@ -122,21 +159,35 @@ pub fn join_url(base: &str, href: &str) -> String {
 pub fn parse_description(xml: &str, location: &str) -> Option<Server> {
     let doc = roxmltree::Document::parse(xml).ok()?;
     let text = |n: roxmltree::Node, name: &str| {
-        n.descendants().find(|c| c.tag_name().name() == name).and_then(|c| c.text()).map(|t| t.trim().to_owned())
+        n.descendants()
+            .find(|c| c.tag_name().name() == name)
+            .and_then(|c| c.text())
+            .map(|t| t.trim().to_owned())
     };
     let root = doc.root_element();
-    let base = text(root, "URLBase").filter(|b| !b.is_empty()).unwrap_or_else(|| location.to_owned());
+    let base = text(root, "URLBase")
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| location.to_owned());
     let name = text(root, "friendlyName").unwrap_or_else(|| "Media server".into());
     let service = root.descendants().find(|n| {
         n.has_tag_name("service")
-            && n.children().any(|c| c.tag_name().name() == "serviceType" && c.text().is_some_and(|t| t.contains("ContentDirectory")))
+            && n.children().any(|c| {
+                c.tag_name().name() == "serviceType"
+                    && c.text().is_some_and(|t| t.contains("ContentDirectory"))
+            })
     })?;
     let control = text(service, "controlURL")?;
-    Some(Server { name, control: join_url(&base, &control) })
+    Some(Server {
+        name,
+        control: join_url(&base, &control),
+    })
 }
 
 pub fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// The children of folder `id` ("0" is the top).
@@ -156,13 +207,21 @@ pub fn browse(control: &str, id: &str) -> Result<Vec<Entry>, String> {
         let mut resp = ureq::post(control)
             .header("User-Agent", AGENT)
             .header("Content-Type", "text/xml; charset=\"utf-8\"")
-            .header("SOAPAction", "\"urn:schemas-upnp-org:service:ContentDirectory:1#Browse\"")
+            .header(
+                "SOAPAction",
+                "\"urn:schemas-upnp-org:service:ContentDirectory:1#Browse\"",
+            )
             .config()
             .timeout_global(Some(Duration::from_secs(15)))
             .build()
             .send(body.as_bytes())
             .map_err(|e| format!("The media server didn't answer ({e})"))?;
-        let xml = resp.body_mut().with_config().limit(32 * 1024 * 1024).read_to_string().map_err(|e| e.to_string())?;
+        let xml = resp
+            .body_mut()
+            .with_config()
+            .limit(32 * 1024 * 1024)
+            .read_to_string()
+            .map_err(|e| e.to_string())?;
         let (page, total) = parse_browse(&xml)?;
         let got = page.len() as u32;
         out.extend(page);
@@ -176,10 +235,17 @@ pub fn browse(control: &str, id: &str) -> Result<Vec<Entry>, String> {
 
 /// A Browse answer: the entries, and how many there are in all.
 pub fn parse_browse(xml: &str) -> Result<(Vec<Entry>, u32), String> {
-    let doc = roxmltree::Document::parse(xml).map_err(|e| format!("The media server's answer isn't valid ({e})"))?;
-    let field = |name: &str| doc.descendants().find(|n| n.tag_name().name() == name).and_then(|n| n.text());
+    let doc = roxmltree::Document::parse(xml)
+        .map_err(|e| format!("The media server's answer isn't valid ({e})"))?;
+    let field = |name: &str| {
+        doc.descendants()
+            .find(|n| n.tag_name().name() == name)
+            .and_then(|n| n.text())
+    };
     let didl = field("Result").unwrap_or("");
-    let total = field("TotalMatches").and_then(|t| t.trim().parse().ok()).unwrap_or(0);
+    let total = field("TotalMatches")
+        .and_then(|t| t.trim().parse().ok())
+        .unwrap_or(0);
     if didl.trim().is_empty() {
         return Ok((Vec::new(), total));
     }
@@ -187,9 +253,13 @@ pub fn parse_browse(xml: &str) -> Result<(Vec<Entry>, u32), String> {
 }
 
 pub fn parse_didl(didl: &str) -> Result<Vec<Entry>, String> {
-    let doc = roxmltree::Document::parse(didl).map_err(|e| format!("The media server's list isn't valid ({e})"))?;
+    let doc = roxmltree::Document::parse(didl)
+        .map_err(|e| format!("The media server's list isn't valid ({e})"))?;
     let child = |n: roxmltree::Node, name: &str| {
-        n.children().find(|c| c.tag_name().name() == name).and_then(|c| c.text()).map(|t| t.trim().to_owned())
+        n.children()
+            .find(|c| c.tag_name().name() == name)
+            .and_then(|c| c.text())
+            .map(|t| t.trim().to_owned())
     };
     let mut out = Vec::new();
     for n in doc.root_element().children().filter(|n| n.is_element()) {
@@ -206,10 +276,15 @@ pub fn parse_didl(didl: &str) -> Result<Vec<Entry>, String> {
                     continue;
                 }
                 // The first link mpv can fetch.
-                let Some(res) = n.children().filter(|c| c.tag_name().name() == "res").find(|r| {
-                    r.attribute("protocolInfo").is_none_or(|p| p.starts_with("http-get"))
-                        && r.text().is_some_and(|t| t.trim().starts_with("http"))
-                }) else {
+                let Some(res) = n
+                    .children()
+                    .filter(|c| c.tag_name().name() == "res")
+                    .find(|r| {
+                        r.attribute("protocolInfo")
+                            .is_none_or(|p| p.starts_with("http-get"))
+                            && r.text().is_some_and(|t| t.trim().starts_with("http"))
+                    })
+                else {
                     continue;
                 };
                 let mut d = Vec::new();
@@ -217,12 +292,22 @@ pub fn parse_didl(didl: &str) -> Result<Vec<Entry>, String> {
                     d.push(a);
                 }
                 if let Some(dur) = res.attribute("duration") {
-                    d.push(dur.split('.').next().unwrap_or(dur).trim_start_matches("0:").to_owned());
+                    d.push(
+                        dur.split('.')
+                            .next()
+                            .unwrap_or(dur)
+                            .trim_start_matches("0:")
+                            .to_owned(),
+                    );
                 }
                 if let Some(r) = res.attribute("resolution") {
                     d.push(r.to_owned());
                 }
-                out.push(Entry::Item { title, url: res.text().unwrap_or("").trim().to_owned(), detail: d.join(" · ") });
+                out.push(Entry::Item {
+                    title,
+                    url: res.text().unwrap_or("").trim().to_owned(),
+                    detail: d.join(" · "),
+                });
             }
             _ => {}
         }
@@ -234,9 +319,11 @@ pub fn parse_didl(didl: &str) -> Result<Vec<Entry>, String> {
 
 /// "smb://nas/music" style addresses gvfs can mount.
 pub fn is_share(uri: &str) -> bool {
-    ["smb://", "sftp://", "ssh://", "dav://", "davs://", "ftp://", "ftps://", "afp://", "nfs://"]
-        .iter()
-        .any(|s| uri.to_lowercase().starts_with(s))
+    [
+        "smb://", "sftp://", "ssh://", "dav://", "davs://", "ftp://", "ftps://", "afp://", "nfs://",
+    ]
+    .iter()
+    .any(|s| uri.to_lowercase().starts_with(s))
 }
 
 /// `gio`, without the GIO module folder a snap (VS Code's, say) sets for
@@ -244,7 +331,9 @@ pub fn is_share(uri: &str) -> bool {
 /// every share then fails with "Operation not supported".
 fn gio() -> Command {
     let mut c = Command::new("gio");
-    if std::env::var_os("SNAP").is_some() || std::env::var("GIO_MODULE_DIR").is_ok_and(|d| d.contains("/snap/")) {
+    if std::env::var_os("SNAP").is_some()
+        || std::env::var("GIO_MODULE_DIR").is_ok_and(|d| d.contains("/snap/"))
+    {
         c.env_remove("GIO_MODULE_DIR");
     }
     c
@@ -325,7 +414,12 @@ pub fn mount(uri: &str, user: &str, password: &str) -> Result<PathBuf, String> {
     match status {
         Some(s) if s.success() => {}
         Some(_) => {
-            let msg = err.lines().chain(out.lines()).map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+            let msg = err
+                .lines()
+                .chain(out.lines())
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("");
             let hint = if msg.contains("implement mount") || msg.contains("not supported") {
                 " (GNOME's network shares need the gvfs-backends package: sudo apt install gvfs-backends)"
             } else {
@@ -333,7 +427,11 @@ pub fn mount(uri: &str, user: &str, password: &str) -> Result<PathBuf, String> {
             };
             return Err(format!(
                 "Couldn't connect to {uri}: {}{hint}",
-                if msg.is_empty() { "check the address, user and password" } else { msg }
+                if msg.is_empty() {
+                    "check the address, user and password"
+                } else {
+                    msg
+                }
             ));
         }
         None => return Err(format!("Connecting to {uri} took too long")),
@@ -348,7 +446,10 @@ pub fn local_path(uri: &str) -> Option<PathBuf> {
         return None;
     }
     let text = String::from_utf8_lossy(&out.stdout);
-    text.lines().find_map(|l| l.strip_prefix("local path: ")).map(PathBuf::from).filter(|p| p.exists())
+    text.lines()
+        .find_map(|l| l.strip_prefix("local path: "))
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
 }
 
 /// Folders and media files in `dir`, folders first, natural order.
@@ -357,7 +458,9 @@ pub fn list_dir(dir: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>), String> {
     let (mut dirs, mut files) = (Vec::new(), Vec::new());
     for e in rd.flatten() {
         let p = e.path();
-        let hidden = p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'));
+        let hidden = p
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with('.'));
         if hidden {
             continue;
         }
@@ -367,7 +470,11 @@ pub fn list_dir(dir: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>), String> {
             files.push(p);
         }
     }
-    let key = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let key = |p: &PathBuf| {
+        p.file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
     dirs.sort_by(|a, b| crate::natural_cmp(&key(a), &key(b)));
     files.sort_by(|a, b| crate::natural_cmp(&key(a), &key(b)));
     Ok((dirs, files))
@@ -387,7 +494,9 @@ mod tests {
         let s = servers.first().expect("no media server answered");
         let top = browse(&s.control, "0").unwrap();
         println!("top: {top:?}");
-        let Entry::Folder { id, .. } = &top[0] else { panic!("no folder") };
+        let Entry::Folder { id, .. } = &top[0] else {
+            panic!("no folder")
+        };
         let inside = browse(&s.control, id).unwrap();
         println!("inside: {inside:?}");
         assert!(matches!(&inside[0], Entry::Item { url, .. } if url.starts_with("http")));
@@ -399,15 +508,27 @@ mod tests {
     fn mount_failure_is_reported() {
         let e = mount("smb://192.0.2.1/nothing", "", "").unwrap_err();
         println!("{e}");
-        assert!(e.starts_with("Couldn't connect") || e.contains("too long"), "{e}");
+        assert!(
+            e.starts_with("Couldn't connect") || e.contains("too long"),
+            "{e}"
+        );
     }
 
     #[test]
     fn ssdp_headers_and_urls() {
         let r = "HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=1800\r\nLocation: http://192.168.1.5:8200/rootDesc.xml\r\n\r\n";
-        assert_eq!(header(r, "location").as_deref(), Some("http://192.168.1.5:8200/rootDesc.xml"));
-        assert_eq!(join_url("http://h:8200/rootDesc.xml", "/ctl/ContentDir"), "http://h:8200/ctl/ContentDir");
-        assert_eq!(join_url("http://h:8200/dev/desc.xml", "ctl"), "http://h:8200/dev/ctl");
+        assert_eq!(
+            header(r, "location").as_deref(),
+            Some("http://192.168.1.5:8200/rootDesc.xml")
+        );
+        assert_eq!(
+            join_url("http://h:8200/rootDesc.xml", "/ctl/ContentDir"),
+            "http://h:8200/ctl/ContentDir"
+        );
+        assert_eq!(
+            join_url("http://h:8200/dev/desc.xml", "ctl"),
+            "http://h:8200/dev/ctl"
+        );
         assert_eq!(join_url("http://h/x.xml", "http://o/c"), "http://o/c");
     }
 
@@ -431,7 +552,10 @@ mod tests {
               <res protocolInfo="http-get:*:audio/mpeg:*" duration="0:03:25.000">http://192.168.1.5:8200/MediaItems/22.mp3</res></item>
             <item id="64$3"><dc:title>Photo</dc:title><upnp:class>object.item.imageItem.photo</upnp:class><res protocolInfo="http-get:*:image/jpeg:*">http://x/1.jpg</res></item>
             </DIDL-Lite>"#;
-        let escaped = didl.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let escaped = didl
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
         let soap = format!(
             r#"<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>
                <u:BrowseResponse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1"><Result>{escaped}</Result>
@@ -440,7 +564,14 @@ mod tests {
         let (entries, total) = parse_browse(&soap).unwrap();
         assert_eq!(total, 3);
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0], Entry::Folder { title: "Albums".into(), id: "64$1".into(), count: Some(12) });
+        assert_eq!(
+            entries[0],
+            Entry::Folder {
+                title: "Albums".into(),
+                id: "64$1".into(),
+                count: Some(12)
+            }
+        );
         match &entries[1] {
             Entry::Item { title, url, detail } => {
                 assert_eq!(title, "Song & Dance");
@@ -453,7 +584,11 @@ mod tests {
 
     #[test]
     fn share_addresses() {
-        assert!(is_share("smb://nas/music") && is_share("SFTP://me@host/x") && is_share("davs://cloud/dav"));
+        assert!(
+            is_share("smb://nas/music")
+                && is_share("SFTP://me@host/x")
+                && is_share("davs://cloud/dav")
+        );
         assert!(!is_share("https://x/y") && !is_share("/home"));
     }
 }

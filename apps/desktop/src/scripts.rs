@@ -42,7 +42,16 @@ const SHUTDOWN: Duration = Duration::from_secs(4);
 
 /// Names mpv's own clients have; a script of that name gets a number.
 const TAKEN: &[&str] = &[
-    "main", "osc", "stats", "console", "ytdl_hook", "auto_profiles", "select", "positioning", "commands", "context_menu",
+    "main",
+    "osc",
+    "stats",
+    "console",
+    "ytdl_hook",
+    "auto_profiles",
+    "select",
+    "positioning",
+    "commands",
+    "context_menu",
 ];
 
 /// A binding for anything that types a character.
@@ -50,12 +59,79 @@ const ANY: &str = "ANY_UNICODE";
 
 /// The player's own keys, which a script's ordinary bindings leave alone.
 const RESERVED: &[&str] = &[
-    "Space", "K", "J", "F", "F11", "Esc", "Enter", "Tab", "Shift+Tab", "M", "N", "P", "L", "E", "A", "C", "S", "I", "Z", "X", "V", "[", "]",
-    ".", ",", "Home", "PgUp", "PgDn", "Left", "Right", "Up", "Down", "Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down",
-    "Ctrl+Left", "Ctrl+Right", "Ctrl+Shift+Left", "Ctrl+Shift+Right", "Alt+Left", "Alt+Right", "Alt+Up", "Alt+Down",
-    "Alt+Backspace", "Alt++", "Alt+=", "Alt+-", "Alt+_", "Ctrl++", "Ctrl+=", "Ctrl+-", "Ctrl+_", "F1",
-    "Ctrl+O", "Ctrl+Shift+O", "Ctrl+U", "Ctrl+V", "Ctrl+D", "Ctrl+Shift+D", "Ctrl+T", "Ctrl+K", "Ctrl+J", "Ctrl+P", "Ctrl+I",
-    "Ctrl+M", "Ctrl+Shift+M", "Ctrl+L", "Ctrl+Shift+L", "Ctrl+S", "Ctrl+B", "Ctrl+Q", "Ctrl+F",
+    "Space",
+    "K",
+    "J",
+    "F",
+    "F11",
+    "Esc",
+    "Enter",
+    "Tab",
+    "Shift+Tab",
+    "M",
+    "N",
+    "P",
+    "L",
+    "E",
+    "A",
+    "C",
+    "S",
+    "I",
+    "Z",
+    "X",
+    "V",
+    "[",
+    "]",
+    ".",
+    ",",
+    "Home",
+    "PgUp",
+    "PgDn",
+    "Left",
+    "Right",
+    "Up",
+    "Down",
+    "Shift+Left",
+    "Shift+Right",
+    "Shift+Up",
+    "Shift+Down",
+    "Ctrl+Left",
+    "Ctrl+Right",
+    "Ctrl+Shift+Left",
+    "Ctrl+Shift+Right",
+    "Alt+Left",
+    "Alt+Right",
+    "Alt+Up",
+    "Alt+Down",
+    "Alt+Backspace",
+    "Alt++",
+    "Alt+=",
+    "Alt+-",
+    "Alt+_",
+    "Ctrl++",
+    "Ctrl+=",
+    "Ctrl+-",
+    "Ctrl+_",
+    "F1",
+    "Ctrl+O",
+    "Ctrl+Shift+O",
+    "Ctrl+U",
+    "Ctrl+V",
+    "Ctrl+D",
+    "Ctrl+Shift+D",
+    "Ctrl+T",
+    "Ctrl+K",
+    "Ctrl+J",
+    "Ctrl+P",
+    "Ctrl+I",
+    "Ctrl+M",
+    "Ctrl+Shift+M",
+    "Ctrl+L",
+    "Ctrl+Shift+L",
+    "Ctrl+S",
+    "Ctrl+B",
+    "Ctrl+Q",
+    "Ctrl+F",
 ];
 
 /// The player's key names (shortcuts.rs) and mpv's.
@@ -170,7 +246,10 @@ fn prepare_home(home: &Path, config: &Path) -> std::io::Result<()> {
     // Nothing the player makes; mpv would obey it.
     for name in ["mpv.conf", "config"] {
         if home.join(name).exists() {
-            return Err(std::io::Error::other(format!("{} must not be there", home.join(name).display())));
+            return Err(std::io::Error::other(format!(
+                "{} must not be there",
+                home.join(name).display()
+            )));
         }
     }
     Ok(())
@@ -178,7 +257,14 @@ fn prepare_home(home: &Path, config: &Path) -> std::io::Result<()> {
 
 /// mpv options for running scripts, set before it starts.
 pub fn options(s: &Settings) -> Vec<(&'static str, String)> {
-    if s.scripts { options_in(settings::data_dir().map(|d| d.join("mpv")), settings::config_dir()) } else { Vec::new() }
+    if s.scripts {
+        options_in(
+            settings::data_dir().map(|d| d.join("mpv")),
+            settings::config_dir(),
+        )
+    } else {
+        Vec::new()
+    }
 }
 
 #[cfg_attr(not(unix), allow(unused_variables, unused_mut))]
@@ -211,13 +297,23 @@ fn options_in(home: Option<PathBuf>, config: Option<PathBuf>) -> Vec<(&'static s
 
 /// The scripts in `dir`, by name.
 fn find(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut out: Vec<PathBuf> = entries
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
-            let hidden = p.file_name().is_none_or(|n| n.to_string_lossy().starts_with('.'));
+            let hidden = p
+                .file_name()
+                .is_none_or(|n| n.to_string_lossy().starts_with('.'));
             let lua = p.extension().is_some_and(|e| e.eq_ignore_ascii_case("lua"));
-            !hidden && p.to_str().is_some() && if p.is_dir() { p.join("main.lua").is_file() } else { lua && p.is_file() }
+            !hidden
+                && p.to_str().is_some()
+                && if p.is_dir() {
+                    p.join("main.lua").is_file()
+                } else {
+                    lua && p.is_file()
+                }
         })
         .collect();
     out.sort();
@@ -227,16 +323,26 @@ fn find(dir: &Path) -> Vec<PathBuf> {
 /// What mpv will call the script in `file`, when `others` run already.
 fn mpv_name(file: &str, others: &[String]) -> String {
     let stem = file.rsplit_once('.').map_or(file, |(s, _)| s);
-    let base: String = stem.chars().flat_map(|c| {
-        // mpv replaces byte by byte.
-        let n = if c.is_ascii_alphanumeric() { 1 } else { c.len_utf8() };
-        std::iter::repeat_n(if c.is_ascii_alphanumeric() { c } else { '_' }, n)
-    }).collect();
+    let base: String = stem
+        .chars()
+        .flat_map(|c| {
+            // mpv replaces byte by byte.
+            let n = if c.is_ascii_alphanumeric() {
+                1
+            } else {
+                c.len_utf8()
+            };
+            std::iter::repeat_n(if c.is_ascii_alphanumeric() { c } else { '_' }, n)
+        })
+        .collect();
     let taken = |n: &str| TAKEN.contains(&n) || others.iter().any(|o| o == n);
     if !taken(&base) {
         return base;
     }
-    (2..).map(|i| format!("{base}{i}")).find(|n| !taken(n)).unwrap_or(base)
+    (2..)
+        .map(|i| format!("{base}{i}"))
+        .find(|n| !taken(n))
+        .unwrap_or(base)
 }
 
 fn is_off(s: &Settings, file: &str) -> bool {
@@ -244,7 +350,11 @@ fn is_off(s: &Settings, file: &str) -> bool {
 }
 
 fn set_off(s: &mut Settings, file: &str, off: bool) {
-    let mut list: Vec<&str> = s.scripts_off.split('/').filter(|f| !f.is_empty() && *f != file).collect();
+    let mut list: Vec<&str> = s
+        .scripts_off
+        .split('/')
+        .filter(|f| !f.is_empty() && *f != file)
+        .collect();
     if off {
         list.push(file);
     }
@@ -252,7 +362,9 @@ fn set_off(s: &mut Settings, file: &str, off: bool) {
 }
 
 fn start(player: &Player, script: &mut Script) {
-    let Some(path) = script.path.to_str() else { return };
+    let Some(path) = script.path.to_str() else {
+        return;
+    };
     script.status = match player.command(&["load-script", path]) {
         Ok(()) => {
             log::info!("script {}", script.file);
@@ -272,14 +384,26 @@ fn rescan(player: &Player, s: &Settings) {
     SCRIPTS.with_borrow_mut(|list| {
         list.retain(|x| x.status == Status::Running || found.contains(&x.path));
         for path in found {
-            let file = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let file = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
             let running = list.iter().position(|x| x.path == path);
             if running.is_some_and(|i| list[i].status == Status::Running) {
                 continue;
             }
-            let others: Vec<String> =
-                list.iter().filter(|x| x.status == Status::Running).map(|x| x.name.clone()).collect();
-            let mut script = Script { path, name: mpv_name(&file, &others), file, status: Status::Off };
+            let others: Vec<String> = list
+                .iter()
+                .filter(|x| x.status == Status::Running)
+                .map(|x| x.name.clone())
+                .collect();
+            let mut script = Script {
+                path,
+                name: mpv_name(&file, &others),
+                file,
+                status: Status::Off,
+            };
             if ACTIVE.get() && !is_off(s, &script.file) {
                 start(player, &mut script);
             }
@@ -310,16 +434,29 @@ fn mpv_key(combo: &str) -> String {
         base = rest;
     }
     let mut chars = base.chars();
-    let letter = chars.next().filter(|c| c.is_alphabetic() && chars.next().is_none());
+    let letter = chars
+        .next()
+        .filter(|c| c.is_alphabetic() && chars.next().is_none());
     let base = if let Some(c) = letter {
         // The letter's case says whether Shift is held.
         let up = std::mem::take(&mut shift);
-        if up { c.to_uppercase().collect() } else { c.to_lowercase().collect() }
+        if up {
+            c.to_uppercase().collect()
+        } else {
+            c.to_lowercase().collect()
+        }
     } else {
-        KEYS.iter().find(|(ours, _)| *ours == base).map_or_else(|| base.to_owned(), |(_, k)| (*k).to_owned())
+        KEYS.iter()
+            .find(|(ours, _)| *ours == base)
+            .map_or_else(|| base.to_owned(), |(_, k)| (*k).to_owned())
     };
     let mut out = String::new();
-    for (on, name) in [(shift, "Shift+"), (ctrl, "Ctrl+"), (alt, "Alt+"), (meta, "Meta+")] {
+    for (on, name) in [
+        (shift, "Shift+"),
+        (ctrl, "Ctrl+"),
+        (alt, "Alt+"),
+        (meta, "Meta+"),
+    ] {
         if on {
             out += name;
         }
@@ -331,19 +468,26 @@ fn mpv_key(combo: &str) -> String {
 fn shown_key(key: &str) -> String {
     let mut base = key;
     let mut mods = Vec::new();
-    while let Some((m, rest)) = base.split_once('+').filter(|(m, r)| !r.is_empty() && ["Shift", "Ctrl", "Alt", "Meta"].contains(m)) {
+    while let Some((m, rest)) = base
+        .split_once('+')
+        .filter(|(m, r)| !r.is_empty() && ["Shift", "Ctrl", "Alt", "Meta"].contains(m))
+    {
         mods.push(m);
         base = rest;
     }
     let mut chars = base.chars();
-    let letter = chars.next().filter(|c| c.is_alphabetic() && chars.next().is_none());
+    let letter = chars
+        .next()
+        .filter(|c| c.is_alphabetic() && chars.next().is_none());
     let base = if let Some(c) = letter {
         if c.is_uppercase() {
             mods.push("Shift");
         }
         c.to_uppercase().collect()
     } else {
-        KEYS.iter().find(|(_, k)| *k == base).map_or_else(|| base.to_owned(), |(ours, _)| (*ours).to_owned())
+        KEYS.iter()
+            .find(|(_, k)| *k == base)
+            .map_or_else(|| base.to_owned(), |(ours, _)| (*ours).to_owned())
     };
     let mut out = String::new();
     for m in ["Ctrl", "Alt", "Shift", "Meta"] {
@@ -363,7 +507,12 @@ fn reserved(key: &str) -> bool {
 fn sequence(key: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut rest = key;
-    while let Some(i) = rest.char_indices().skip(1).find(|&(i, c)| c == '-' && !rest[..i].ends_with('+') && i + 1 < rest.len()).map(|(i, _)| i) {
+    while let Some(i) = rest
+        .char_indices()
+        .skip(1)
+        .find(|&(i, c)| c == '-' && !rest[..i].ends_with('+') && i + 1 < rest.len())
+        .map(|(i, _)| i)
+    {
         out.push(rest[..i].to_owned());
         rest = &rest[i + 1..];
     }
@@ -378,12 +527,22 @@ fn bindings_from(list: &Value) -> Vec<Binding> {
             let owner = b.str_field("owner").filter(|o| !o.is_empty())?;
             // "nonscalable script-binding hello/greet"
             let cmd = b.str_field("cmd")?;
-            let action = cmd.split_once("script-binding ").map(|(_, a)| a.trim().trim_matches('"').to_owned())?;
+            let action = cmd
+                .split_once("script-binding ")
+                .map(|(_, a)| a.trim().trim_matches('"').to_owned())?;
             // Sections of a script that are switched off (a closed menu).
-            if b.get("priority").and_then(Value::as_i64).is_some_and(|p| p < 0) {
+            if b.get("priority")
+                .and_then(Value::as_i64)
+                .is_some_and(|p| p < 0)
+            {
                 return None;
             }
-            Some(Binding { keys: sequence(&b.str_field("key")?), owner, action, forced: !b.bool_field("is_weak") })
+            Some(Binding {
+                keys: sequence(&b.str_field("key")?),
+                owner,
+                action,
+                forced: !b.bool_field("is_weak"),
+            })
         })
         .collect()
 }
@@ -430,7 +589,11 @@ fn decide(key: &str, last: &str, bindings: &[Binding]) -> Wanted {
         }
         ordinary |= hit && !reserved(key);
     }
-    if ordinary { Wanted::Ordinary } else { Wanted::No }
+    if ordinary {
+        Wanted::Ordinary
+    } else {
+        Wanted::No
+    }
 }
 
 /// Give a key press to the scripts. mpv repeats a held key by itself.
@@ -478,19 +641,31 @@ pub fn actions() -> Vec<(String, String, String)> {
         if menu || !of_user || out.iter().any(|o| o.0 == id) {
             continue;
         }
-        let key = if b.keys.len() == 1 && !b.forced && reserved(&b.keys[0]) { String::new() } else { shown(&b) };
+        let key = if b.keys.len() == 1 && !b.forced && reserved(&b.keys[0]) {
+            String::new()
+        } else {
+            shown(&b)
+        };
         out.push((id, title(&b.action), key));
     }
     out
 }
 
 fn shown(b: &Binding) -> String {
-    b.keys.iter().map(|k| shown_key(k)).collect::<Vec<_>>().join(", ")
+    b.keys
+        .iter()
+        .map(|k| shown_key(k))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// "hello/greet" → "Script hello: greet".
 pub fn title(action: &str) -> String {
-    match action.strip_prefix(ACTION).unwrap_or(action).split_once('/') {
+    match action
+        .strip_prefix(ACTION)
+        .unwrap_or(action)
+        .split_once('/')
+    {
         Some((script, what)) => format!("Script {script}: {what}"),
         None => format!("Script: {action}"),
     }
@@ -498,7 +673,8 @@ pub fn title(action: &str) -> String {
 
 /// Is this id ("script:hello/greet") one that could be run?
 pub fn is_action(id: &str) -> bool {
-    id.strip_prefix(ACTION).is_some_and(|a| !a.is_empty() && !a.contains(char::is_control))
+    id.strip_prefix(ACTION)
+        .is_some_and(|a| !a.is_empty() && !a.contains(char::is_control))
 }
 
 pub fn run(ui: &AppWindow, action: &str) {
@@ -506,7 +682,13 @@ pub fn run(ui: &AppWindow, action: &str) {
         // Fails when the script isn't running.
         if let Err(e) = p.command(&["script-binding", action]) {
             log::warn!("{e}");
-            ui.set_toast(format!("{}: that script isn't running (Settings → Scripts)", title(action)).into());
+            ui.set_toast(
+                format!(
+                    "{}: that script isn't running (Settings → Scripts)",
+                    title(action)
+                )
+                .into(),
+            );
         }
     });
 }
@@ -517,10 +699,14 @@ pub fn run(ui: &AppWindow, action: &str) {
 fn short_error(text: &str) -> String {
     let t = text.trim().trim_start_matches("Lua error:").trim();
     let t = t.lines().next().unwrap_or(t);
-    let Some((place, what)) = t.split_once(": ") else { return t.to_owned() };
+    let Some((place, what)) = t.split_once(": ") else {
+        return t.to_owned();
+    };
     let file = place.rsplit('/').next().unwrap_or(place);
     match file.rsplit_once(':') {
-        Some((f, line)) if line.chars().all(|c| c.is_ascii_digit()) => format!("{f}, line {line}: {what}"),
+        Some((f, line)) if line.chars().all(|c| c.is_ascii_digit()) => {
+            format!("{f}, line {line}: {what}")
+        }
         _ => t.to_owned(),
     }
 }
@@ -532,7 +718,9 @@ pub fn log_line(ui: &AppWindow, level: &str, prefix: &str, text: &str) {
         return;
     }
     let file = SCRIPTS.with_borrow_mut(|list| {
-        let s = list.iter_mut().find(|s| s.name == prefix && s.status == Status::Running)?;
+        let s = list
+            .iter_mut()
+            .find(|s| s.name == prefix && s.status == Status::Running)?;
         s.status = Status::Failed(short_error(text));
         Some(s.file.clone())
     });
@@ -560,7 +748,10 @@ pub fn opening(ui: &AppWindow, path: Option<&str>) {
 /// start on keeps mpv from even beginning to open it.
 pub fn queued(ui: &AppWindow) {
     let waiting = SLOW.with_borrow(slint::Timer::running);
-    if !STARTED.get() && !waiting && SCRIPTS.with_borrow(|s| s.iter().any(|x| x.status == Status::Running)) {
+    if !STARTED.get()
+        && !waiting
+        && SCRIPTS.with_borrow(|s| s.iter().any(|x| x.status == Status::Running))
+    {
         wait(ui);
     }
 }
@@ -605,12 +796,23 @@ fn detail(s: &Script, off: bool, bindings: &[Binding]) -> String {
                 .iter()
                 .filter(|b| b.owner == s.name && !b.forced)
                 .map(|b| {
-                    let what = b.action.split_once('/').map_or(b.action.as_str(), |(_, w)| w);
+                    let what = b
+                        .action
+                        .split_once('/')
+                        .map_or(b.action.as_str(), |(_, w)| w);
                     let free = b.keys.len() > 1 || !reserved(&b.keys[0]);
-                    format!("{} ({what}{})", shown(b), if free { "" } else { "; taken by the player" })
+                    format!(
+                        "{} ({what}{})",
+                        shown(b),
+                        if free { "" } else { "; taken by the player" }
+                    )
                 })
                 .collect();
-            if keys.is_empty() { "Running".into() } else { format!("Running. Keys: {}", keys.join(", ")) }
+            if keys.is_empty() {
+                "Running".into()
+            } else {
+                format!("Running. Keys: {}", keys.join(", "))
+            }
         }
     }
 }
@@ -640,11 +842,15 @@ fn show(ui: &AppWindow) {
 fn show_later(ui: &AppWindow) {
     let weak = ui.as_weak();
     LATER.with_borrow(|t| {
-        t.start(slint::TimerMode::SingleShot, Duration::from_millis(800), move || {
-            if let Some(ui) = weak.upgrade() {
-                show(&ui);
-            }
-        });
+        t.start(
+            slint::TimerMode::SingleShot,
+            Duration::from_millis(800),
+            move || {
+                if let Some(ui) = weak.upgrade() {
+                    show(&ui);
+                }
+            },
+        );
     });
 }
 
@@ -669,10 +875,18 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     let weak = ui.as_weak();
     let player = Rc::downgrade(player);
     ui.on_scripts_action(move |what, file| {
-        let (Some(ui), Some(player)) = (weak.upgrade(), player.upgrade()) else { return };
+        let (Some(ui), Some(player)) = (weak.upgrade(), player.upgrade()) else {
+            return;
+        };
         match what.as_str() {
             "folder" => match open_user_dir() {
-                Ok(dir) => ui.set_toast(format!("Scripts folder: {} (README.txt there shows how)", dir.display()).into()),
+                Ok(dir) => ui.set_toast(
+                    format!(
+                        "Scripts folder: {} (README.txt there shows how)",
+                        dir.display()
+                    )
+                    .into(),
+                ),
                 Err(e) => ui.set_toast(format!("Couldn't open the scripts folder: {e}").into()),
             },
             "refresh" => {
@@ -721,7 +935,12 @@ mod tests {
 
     fn binding(key: &str, action: &str, forced: bool) -> Binding {
         let owner = action.split('/').next().unwrap().to_owned();
-        Binding { keys: sequence(key), owner, action: action.into(), forced }
+        Binding {
+            keys: sequence(key),
+            owner,
+            action: action.into(),
+            forced,
+        }
     }
 
     #[test]
@@ -785,7 +1004,12 @@ mod tests {
     fn the_players_keys_are_reserved() {
         let src = include_str!("../ui/app.slint");
         for part in src.split("@keys(").skip(1) {
-            let k = part.split(')').next().unwrap().replace("Control", "Ctrl").replace(' ', "");
+            let k = part
+                .split(')')
+                .next()
+                .unwrap()
+                .replace("Control", "Ctrl")
+                .replace(' ', "");
             assert!(RESERVED.contains(&k.as_str()), "{k}");
         }
         for part in src.split("e.text == ").skip(1) {
@@ -796,10 +1020,22 @@ mod tests {
                 "Key.Escape" => "Esc",
                 "Key.Return" => "Enter",
                 "\"" => "Space",
-                k => k.trim_start_matches("Key.").trim_end_matches("Arrow").trim_matches('"'),
+                k => k
+                    .trim_start_matches("Key.")
+                    .trim_end_matches("Arrow")
+                    .trim_matches('"'),
             };
-            let ours = if ours.len() == 1 { ours.to_uppercase() } else { ours.to_owned() };
-            let there = RESERVED.iter().any(|r| *r == ours || ["Ctrl+", "Ctrl+Shift+", "Alt+"].iter().any(|m| *r == format!("{m}{ours}")));
+            let ours = if ours.len() == 1 {
+                ours.to_uppercase()
+            } else {
+                ours.to_owned()
+            };
+            let there = RESERVED.iter().any(|r| {
+                *r == ours
+                    || ["Ctrl+", "Ctrl+Shift+", "Alt+"]
+                        .iter()
+                        .any(|m| *r == format!("{m}{ours}"))
+            });
             assert!(there, "{k}");
         }
     }
@@ -817,10 +1053,15 @@ mod tests {
     #[test]
     fn errors_read_well() {
         assert_eq!(
-            short_error("Lua error: .../super-media-player/scripts/bad.lua:1: syntax error near 'is'"),
+            short_error(
+                "Lua error: .../super-media-player/scripts/bad.lua:1: syntax error near 'is'"
+            ),
             "bad.lua, line 1: syntax error near 'is'"
         );
-        assert_eq!(short_error("Could not read file.\n"), "Could not read file.");
+        assert_eq!(
+            short_error("Could not read file.\n"),
+            "Could not read file."
+        );
     }
 
     #[test]
@@ -828,7 +1069,9 @@ mod tests {
         let mut s = Settings::default();
         set_off(&mut s, "a, b.lua", true);
         set_off(&mut s, "c", true);
-        assert!(is_off(&s, "a, b.lua") && is_off(&s, "c") && !is_off(&s, "b.lua") && !is_off(&s, ""));
+        assert!(
+            is_off(&s, "a, b.lua") && is_off(&s, "c") && !is_off(&s, "b.lua") && !is_off(&s, "")
+        );
         set_off(&mut s, "a, b.lua", false);
         assert_eq!(s.scripts_off, "c");
     }
@@ -849,7 +1092,10 @@ mod tests {
         std::fs::create_dir_all(d.join("folder")).unwrap();
         std::fs::write(d.join("folder/main.lua"), "").unwrap();
         std::fs::create_dir_all(d.join("not.lua")).unwrap();
-        let names: Vec<String> = find(&d).iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = find(&d)
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, ["a.LUA", "b.lua", "folder"]);
         assert!(find(&d.join("missing")).is_empty());
         std::fs::remove_dir_all(&d).unwrap();
@@ -867,7 +1113,10 @@ mod tests {
         prepare_home(&home, &config).unwrap();
         let moved = d.join("moved");
         prepare_home(&home, &moved).unwrap();
-        assert_eq!(std::fs::read_link(home.join("scripts")).unwrap(), moved.join("scripts"));
+        assert_eq!(
+            std::fs::read_link(home.join("scripts")).unwrap(),
+            moved.join("scripts")
+        );
         assert!(!home.join("mpv.conf").exists());
         std::fs::write(home.join("mpv.conf"), "").unwrap();
         assert!(prepare_home(&home, &config).is_err());
@@ -893,7 +1142,11 @@ mod tests {
              mp.add_forced_key_binding('ENTER', 'ok', function() end)\n",
         )
         .unwrap();
-        std::fs::write(config.join("scripts/folder/main.lua"), "mp.set_property('user-data/folder', require('other'))").unwrap();
+        std::fs::write(
+            config.join("scripts/folder/main.lua"),
+            "mp.set_property('user-data/folder', require('other'))",
+        )
+        .unwrap();
         std::fs::write(config.join("scripts/folder/other.lua"), "return 'module'").unwrap();
         std::fs::write(config.join("scripts/bad.lua"), "this is not lua").unwrap();
         let mut cfg = PlayerConfig::headless();
@@ -909,7 +1162,9 @@ mod tests {
             return;
         };
         for f in find(&config.join("scripts")) {
-            player.command(&["load-script", f.to_str().unwrap()]).unwrap();
+            player
+                .command(&["load-script", f.to_str().unwrap()])
+                .unwrap();
         }
         let until = |what: &str, f: &dyn Fn() -> bool| {
             let t = Instant::now();
@@ -918,7 +1173,13 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(10));
             }
         };
-        let text = |p: &str| player.get_string(p).unwrap_or_default().trim_matches('"').to_owned();
+        let text = |p: &str| {
+            player
+                .get_string(p)
+                .unwrap_or_default()
+                .trim_matches('"')
+                .to_owned()
+        };
         let list = || bindings_from(&player.get_value("input-bindings").unwrap_or_default());
         until("option", &|| text("user-data/word") == "option");
         until("module", &|| text("user-data/folder") == "module");
@@ -928,15 +1189,23 @@ mod tests {
 
         let b = list();
         let go = b.iter().find(|b| b.action == "my_script/go").unwrap();
-        assert_eq!((go.owner.as_str(), go.forced), (mpv_name("my script.lua", &[]).as_str(), false));
-        assert!(b.iter().any(|b| b.action == "my_script/ok" && b.forced && b.keys == ["ENTER"]));
+        assert_eq!(
+            (go.owner.as_str(), go.forced),
+            (mpv_name("my script.lua", &[]).as_str(), false)
+        );
+        assert!(
+            b.iter()
+                .any(|b| b.action == "my_script/ok" && b.forced && b.keys == ["ENTER"])
+        );
         let key = mpv_key("Ctrl+Shift+Left");
         assert_eq!(go.keys, std::slice::from_ref(&key));
         player.command(&["keydown", &key]).unwrap();
         player.command(&["keyup", ""]).unwrap();
         until("key", &|| text("user-data/go") == "yes");
 
-        until("error", &|| rx.try_iter().any(|e| matches!(e, PlayerEvent::Log { level, prefix, .. } if level == "fatal" && prefix == "bad")));
+        until("error", &|| {
+            rx.try_iter().any(|e| matches!(e, PlayerEvent::Log { level, prefix, .. } if level == "fatal" && prefix == "bad"))
+        });
         drop(player);
         std::fs::remove_dir_all(&d).unwrap();
     }

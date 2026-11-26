@@ -34,7 +34,10 @@ fn entries(p: &Player) -> Vec<Entry> {
         .as_array()
         .iter()
         .filter_map(|e| {
-            Some(Entry { file: e.str_field("filename")?, title: e.str_field("title").filter(|t| !t.is_empty()) })
+            Some(Entry {
+                file: e.str_field("filename")?,
+                title: e.str_field("title").filter(|t| !t.is_empty()),
+            })
         })
         .collect()
 }
@@ -47,7 +50,10 @@ pub fn read(path: &Path) -> std::io::Result<Vec<String>> {
     let text = String::from_utf8_lossy(&bytes);
     let text = text.trim_start_matches('\u{feff}');
     let base = path.parent().unwrap_or(Path::new("/"));
-    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     Ok(match ext.as_str() {
         "xspf" => parse_xspf(text, base),
         "pls" => parse_pls(text, base),
@@ -67,7 +73,11 @@ fn resolve(item: &str, base: &Path) -> String {
     // Windows-made playlists: backslashes.
     let item = item.replace('\\', "/");
     let p = Path::new(&item);
-    if p.is_absolute() { item } else { base.join(p).to_string_lossy().into_owned() }
+    if p.is_absolute() {
+        item
+    } else {
+        base.join(p).to_string_lossy().into_owned()
+    }
 }
 
 pub fn parse_m3u(text: &str, base: &Path) -> Vec<String> {
@@ -96,7 +106,9 @@ pub fn parse_xspf(text: &str, base: &Path) -> Vec<String> {
     let mut rest = text;
     while let Some(i) = rest.find("<location>") {
         rest = &rest[i + "<location>".len()..];
-        let Some(end) = rest.find("</location>") else { break };
+        let Some(end) = rest.find("</location>") else {
+            break;
+        };
         out.push(resolve(&xml_unescape(&rest[..end]), base));
         rest = &rest[end..];
     }
@@ -104,11 +116,18 @@ pub fn parse_xspf(text: &str, base: &Path) -> Vec<String> {
 }
 
 fn xml_unescape(s: &str) -> String {
-    s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 // ---- writing ----
@@ -132,7 +151,9 @@ fn uri(file: &str) -> String {
     let mut out = String::from("file://");
     for b in file.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -145,7 +166,10 @@ pub fn write_xspf(entries: &[Entry]) -> String {
     );
     for e in entries {
         out.push_str("    <track>\n");
-        out.push_str(&format!("      <location>{}</location>\n", xml_escape(&uri(&e.file))));
+        out.push_str(&format!(
+            "      <location>{}</location>\n",
+            xml_escape(&uri(&e.file))
+        ));
         if let Some(t) = &e.title {
             out.push_str(&format!("      <title>{}</title>\n", xml_escape(t)));
         }
@@ -159,7 +183,9 @@ pub fn write_xspf(entries: &[Entry]) -> String {
 
 fn display_name(e: &Entry) -> String {
     e.title.clone().unwrap_or_else(|| {
-        Path::new(&e.file).file_name().map_or_else(|| e.file.clone(), |n| n.to_string_lossy().into_owned())
+        Path::new(&e.file)
+            .file_name()
+            .map_or_else(|| e.file.clone(), |n| n.to_string_lossy().into_owned())
     })
 }
 
@@ -168,11 +194,21 @@ pub fn order(entries: &[Entry], how: &str) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..entries.len()).collect();
     match how {
         "title" => idx.sort_by(|&a, &b| {
-            crate::natural_cmp(&display_name(&entries[a]).to_lowercase(), &display_name(&entries[b]).to_lowercase())
+            crate::natural_cmp(
+                &display_name(&entries[a]).to_lowercase(),
+                &display_name(&entries[b]).to_lowercase(),
+            )
         }),
         "file" => idx.sort_by(|&a, &b| {
-            let name = |e: &Entry| Path::new(&e.file).file_name().map(|n| n.to_string_lossy().to_lowercase());
-            crate::natural_cmp(&name(&entries[a]).unwrap_or_default(), &name(&entries[b]).unwrap_or_default())
+            let name = |e: &Entry| {
+                Path::new(&e.file)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+            };
+            crate::natural_cmp(
+                &name(&entries[a]).unwrap_or_default(),
+                &name(&entries[b]).unwrap_or_default(),
+            )
         }),
         "folder" => idx.sort_by(|&a, &b| crate::natural_cmp(&entries[a].file, &entries[b].file)),
         "reverse" => idx.reverse(),
@@ -199,7 +235,9 @@ pub fn moves(order: &[usize]) -> Vec<(usize, usize)> {
 /// Indices of entries already seen earlier in the list.
 pub fn duplicates(entries: &[Entry]) -> Vec<usize> {
     let mut seen = std::collections::HashSet::new();
-    (0..entries.len()).filter(|&i| !seen.insert(entries[i].file.clone())).collect()
+    (0..entries.len())
+        .filter(|&i| !seen.insert(entries[i].file.clone()))
+        .collect()
 }
 
 fn missing(entries: &[Entry]) -> Vec<usize> {
@@ -264,11 +302,19 @@ fn act(ui: &AppWindow, p: &Player, action: &str, i: i32) {
         }
         "dedupe" => {
             let k = remove(p, duplicates(&list));
-            toast(if k == 0 { "No duplicates".into() } else { format!("Removed {k} duplicate(s)") });
+            toast(if k == 0 {
+                "No duplicates".into()
+            } else {
+                format!("Removed {k} duplicate(s)")
+            });
         }
         "missing" => {
             let k = remove(p, missing(&list));
-            toast(if k == 0 { "Every file is there".into() } else { format!("Removed {k} missing file(s)") });
+            toast(if k == 0 {
+                "Every file is there".into()
+            } else {
+                format!("Removed {k} missing file(s)")
+            });
         }
         "save" => save(ui, &list),
         "open" => open(ui),
@@ -293,8 +339,14 @@ fn save(ui: &AppWindow, list: &[Entry]) {
     if path.extension().is_none() {
         path.set_extension("m3u8");
     }
-    let xspf = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("xspf"));
-    let text = if xspf { write_xspf(list) } else { write_m3u(list) };
+    let xspf = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("xspf"));
+    let text = if xspf {
+        write_xspf(list)
+    } else {
+        write_m3u(list)
+    };
     ui.set_toast(
         match std::fs::write(&path, text) {
             Ok(()) => format!("Saved {} items to {}", list.len(), path.display()),
@@ -342,21 +394,43 @@ mod tests {
     fn m3u_and_pls_and_xspf() {
         let base = Path::new("/music");
         let m3u = "#EXTM3U\n#EXTINF:123,Song\nalbum/01.flac\n/abs/x.mp3\nhttps://radio/x\nfile:///a%20b.ogg\n";
-        assert_eq!(parse_m3u(m3u, base), ["/music/album/01.flac", "/abs/x.mp3", "https://radio/x", "/a b.ogg"]);
+        assert_eq!(
+            parse_m3u(m3u, base),
+            [
+                "/music/album/01.flac",
+                "/abs/x.mp3",
+                "https://radio/x",
+                "/a b.ogg"
+            ]
+        );
         let pls = "[playlist]\nFile2=b.mp3\nFile1=a.mp3\nTitle1=A\nNumberOfEntries=2\n";
         assert_eq!(parse_pls(pls, base), ["/music/a.mp3", "/music/b.mp3"]);
         let list = vec![
-            Entry { file: "/m/a & b.mp3".into(), title: Some("A <1>".into()) },
-            Entry { file: "https://x/y".into(), title: None },
+            Entry {
+                file: "/m/a & b.mp3".into(),
+                title: Some("A <1>".into()),
+            },
+            Entry {
+                file: "https://x/y".into(),
+                title: None,
+            },
         ];
         let x = write_xspf(&list);
         assert_eq!(parse_xspf(&x, base), ["/m/a & b.mp3", "https://x/y"]);
-        assert_eq!(parse_m3u(&write_m3u(&list), base), ["/m/a & b.mp3", "https://x/y"]);
+        assert_eq!(
+            parse_m3u(&write_m3u(&list), base),
+            ["/m/a & b.mp3", "https://x/y"]
+        );
     }
 
     #[test]
     fn moves_reach_the_order() {
-        for order in [vec![2, 0, 1], vec![3, 2, 1, 0], vec![0, 1, 2], vec![1, 3, 0, 2]] {
+        for order in [
+            vec![2, 0, 1],
+            vec![3, 2, 1, 0],
+            vec![0, 1, 2],
+            vec![1, 3, 0, 2],
+        ] {
             let mut list: Vec<usize> = (0..order.len()).collect();
             for (from, to) in moves(&order) {
                 let v = list.remove(from);
@@ -368,7 +442,10 @@ mod tests {
 
     #[test]
     fn sorts_and_duplicates() {
-        let e = |f: &str| Entry { file: f.into(), title: None };
+        let e = |f: &str| Entry {
+            file: f.into(),
+            title: None,
+        };
         let list = vec![e("/b/track10.mp3"), e("/a/track2.mp3"), e("/b/track10.mp3")];
         assert_eq!(order(&list, "file"), [1, 0, 2]);
         assert_eq!(order(&list, "folder"), [1, 0, 2]);

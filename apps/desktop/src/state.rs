@@ -151,7 +151,9 @@ impl UiState {
                     let disc = url.starts_with("bd://") || url.starts_with("dvd://");
                     let unreadable = error.as_deref().is_some_and(|e| {
                         let e = e.to_lowercase();
-                        e.contains("unrecognized") || e.contains("format") || e.contains("loading failed")
+                        e.contains("unrecognized")
+                            || e.contains("format")
+                            || e.contains("loading failed")
                     });
                     if disc && unreadable && hint.is_none() {
                         if !self.disc_retried {
@@ -159,11 +161,14 @@ impl UiState {
                             log::warn!("{url}: couldn't read the disc; trying once more");
                             ui.set_toast("Couldn't read the disc yet; trying again…".into());
                             let weak = ui.as_weak();
-                            slint::Timer::single_shot(std::time::Duration::from_secs(2), move || {
-                                if let Some(ui) = weak.upgrade() {
-                                    crate::retry_disc(&ui, &url);
-                                }
-                            });
+                            slint::Timer::single_shot(
+                                std::time::Duration::from_secs(2),
+                                move || {
+                                    if let Some(ui) = weak.upgrade() {
+                                        crate::retry_disc(&ui, &url);
+                                    }
+                                },
+                            );
                             return;
                         }
                         self.disc_retried = false;
@@ -391,14 +396,12 @@ impl UiState {
 
     /// A DVD or Blu-ray is playing (its menus and chapters jump in time).
     fn playing_disc(&self) -> bool {
-        self.path
-            .as_deref()
-            .is_some_and(|p| {
-                p.starts_with("dvd://")
-                    || p.starts_with("dvdnav://")
-                    || p.starts_with("bd://")
-                    || crate::dvdmenu::is_menu_path(p)
-            })
+        self.path.as_deref().is_some_and(|p| {
+            p.starts_with("dvd://")
+                || p.starts_with("dvdnav://")
+                || p.starts_with("bd://")
+                || crate::dvdmenu::is_menu_path(p)
+        })
     }
 
     /// A non-empty tag of the current file's metadata.
@@ -612,7 +615,13 @@ fn apply_music_info(ui: &AppWindow, info: musicinfo::Info) {
     ui.set_media_track(info.track.map(|t| t.to_string()).unwrap_or_default().into());
     ui.set_about_text(info.about.into());
     ui.set_about_source(info.about_source.into());
-    ui.set_lyrics_text(info.lyrics.as_ref().map(|l| l.text()).unwrap_or_default().into());
+    ui.set_lyrics_text(
+        info.lyrics
+            .as_ref()
+            .map(|l| l.text())
+            .unwrap_or_default()
+            .into(),
+    );
     ui.set_lyrics_synced(info.lyrics.as_ref().is_some_and(|l| l.synced()));
     LYRICS.with_borrow_mut(|l| *l = info.lyrics);
     LYRIC_LINE.with(|l| l.set(None));
@@ -652,7 +661,10 @@ pub fn show_lyric_line(ui: &AppWindow, t: f64) {
             return;
         }
         let line = |j: Option<usize>| -> SharedString {
-            j.and_then(|j| lyrics.lines.get(j)).map(|(_, l)| l.as_str()).unwrap_or("").into()
+            j.and_then(|j| lyrics.lines.get(j))
+                .map(|(_, l)| l.as_str())
+                .unwrap_or("")
+                .into()
         };
         ui.set_lyric_prev(line(i.checked_sub(1)));
         ui.set_lyric_current(line(Some(i)));
@@ -672,8 +684,7 @@ fn is_noise(prefix: &str, text: &str) -> bool {
     // Blu-ray subtitle (PGS) streams carry no size until their first
     // picture; FFmpeg's probe complains, playback is fine.
     if prefix.starts_with("ffmpeg/demuxer")
-        && (text.contains("Could not find codec parameters for stream")
-            && text.contains("pgssub")
+        && (text.contains("Could not find codec parameters for stream") && text.contains("pgssub")
             || text.contains("Consider increasing the value for the 'analyzeduration'"))
     {
         return true;
@@ -850,15 +861,33 @@ mod tests {
     #[test]
     fn disc_timing_notes() {
         // From a DVD (2026-11-23).
-        assert!(is_disc_timing_note("ad", "Invalid audio PTS: 1.825367 -> -0.157733"));
-        assert!(is_disc_timing_note("cplayer", "Invalid video timestamp: 1.951933 -> 0.018900"));
-        assert!(is_disc_timing_note("disc", "PTS discontinuity: 68.284111->0.242256"));
-        assert!(is_disc_timing_note("cplayer", "Audio/Video desynchronisation detected! Possible reasons include too slow"));
+        assert!(is_disc_timing_note(
+            "ad",
+            "Invalid audio PTS: 1.825367 -> -0.157733"
+        ));
+        assert!(is_disc_timing_note(
+            "cplayer",
+            "Invalid video timestamp: 1.951933 -> 0.018900"
+        ));
+        assert!(is_disc_timing_note(
+            "disc",
+            "PTS discontinuity: 68.284111->0.242256"
+        ));
+        assert!(is_disc_timing_note(
+            "cplayer",
+            "Audio/Video desynchronisation detected! Possible reasons include too slow"
+        ));
         assert!(is_disc_timing_note("cplayer", ""));
-        assert!(is_disc_timing_note("dvdnav", "Cannot seek backward in linear streams!"));
+        assert!(is_disc_timing_note(
+            "dvdnav",
+            "Cannot seek backward in linear streams!"
+        ));
         assert!(is_disc_timing_note("ad", "Error decoding audio."));
         assert!(!is_disc_timing_note("vd", "Error decoding audio."));
-        assert!(!is_disc_timing_note("cplayer", "Audio device underrun detected."));
+        assert!(!is_disc_timing_note(
+            "cplayer",
+            "Audio device underrun detected."
+        ));
         assert!(!is_disc_timing_note("ffmpeg", "Invalid audio PTS"));
     }
 
@@ -872,7 +901,10 @@ mod tests {
             "ffmpeg/demuxer",
             "Consider increasing the value for the 'analyzeduration' (0) and 'probesize' (5000000) options"
         ));
-        assert!(is_noise("ffmpeg", "Parsed_amerge_23: No channel layout for input 1"));
+        assert!(is_noise(
+            "ffmpeg",
+            "Parsed_amerge_23: No channel layout for input 1"
+        ));
         // A video stream that can't be probed is a real problem.
         assert!(!is_noise(
             "ffmpeg/demuxer",

@@ -247,7 +247,11 @@ impl Player {
         ptrs.push(std::ptr::null());
         let mut node = std::mem::MaybeUninit::<mpv_node>::zeroed();
         let rc = unsafe {
-            (self.inner.api.mpv_command_ret)(self.inner.handle, ptrs.as_mut_ptr(), node.as_mut_ptr())
+            (self.inner.api.mpv_command_ret)(
+                self.inner.handle,
+                ptrs.as_mut_ptr(),
+                node.as_mut_ptr(),
+            )
         };
         self.inner.check(rc, || args.join(" "))?;
         let v = unsafe { node::from_node(node.assume_init_ref()) };

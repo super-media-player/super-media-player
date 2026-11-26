@@ -155,13 +155,25 @@ struct Prints {
 fn cache_file(path: &Path) -> Option<PathBuf> {
     use sha2::{Digest, Sha256};
     let meta = std::fs::metadata(path).ok()?;
-    let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    let mtime = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
     let mut h = Sha256::new();
     h.update(path.to_string_lossy().as_bytes());
     h.update(meta.len().to_le_bytes());
     h.update(mtime.to_le_bytes());
-    let name: String = h.finalize()[..12].iter().map(|b| format!("{b:02x}")).collect();
-    Some(crate::settings::cache_dir()?.join("intros").join(format!("{name}.fp")))
+    let name: String = h.finalize()[..12]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    Some(
+        crate::settings::cache_dir()?
+            .join("intros")
+            .join(format!("{name}.fp")),
+    )
 }
 
 impl Prints {
@@ -187,13 +199,22 @@ impl Prints {
             return None;
         }
         let items: Vec<u32> = (0..nh + nt).map(|i| u(24 + 4 * i)).collect::<Option<_>>()?;
-        Some(Self { head: items[..nh].to_vec(), tail: items[nh..].to_vec(), step, tail_start })
+        Some(Self {
+            head: items[..nh].to_vec(),
+            tail: items[nh..].to_vec(),
+            step,
+            tail_start,
+        })
     }
 }
 
 fn prints(path: &Path, duration: f64) -> Option<Prints> {
     let cache = cache_file(path);
-    if let Some(p) = cache.as_ref().and_then(|c| std::fs::read(c).ok()).and_then(|b| Prints::from_bytes(&b)) {
+    if let Some(p) = cache
+        .as_ref()
+        .and_then(|c| std::fs::read(c).ok())
+        .and_then(|b| Prints::from_bytes(&b))
+    {
         return Some(p);
     }
     let head_len = HEAD_SECS.min(duration * 0.4);
@@ -201,7 +222,12 @@ fn prints(path: &Path, duration: f64) -> Option<Prints> {
     let tail_start = (duration - tail_len).max(head_len);
     let (head, step) = fingerprint(&decode(path, 0.0, head_len)?)?;
     let (tail, _) = fingerprint(&decode(path, tail_start, tail_len)?)?;
-    let p = Prints { head, tail, step, tail_start };
+    let p = Prints {
+        head,
+        tail,
+        step,
+        tail_start,
+    };
     if let Some(c) = cache {
         let _ = std::fs::write(c, p.to_bytes());
     }
@@ -216,7 +242,12 @@ fn longest_match(a: &[u32], b: &[u32]) -> Option<(usize, usize, usize)> {
     longest_match_with(a, b, MAX_BIT_ERRORS, MAX_GAP)
 }
 
-fn longest_match_with(a: &[u32], b: &[u32], max_bits: u32, max_gap: usize) -> Option<(usize, usize, usize)> {
+fn longest_match_with(
+    a: &[u32],
+    b: &[u32],
+    max_bits: u32,
+    max_gap: usize,
+) -> Option<(usize, usize, usize)> {
     let mut best: Option<(usize, usize, usize)> = None;
     let (na, nb) = (a.len() as isize, b.len() as isize);
     // shift = index in a - index in b
@@ -263,7 +294,9 @@ fn compare(a: &Prints, b: &Prints) -> Marks {
     let step = a.step;
     let intro = longest_match(&a.head, &b.head).and_then(|(sa, _, l)| {
         let (start, len) = (sa as f64 * step, l as f64 * step);
-        (MIN_INTRO..=MAX_INTRO).contains(&len).then_some((start, start + len + END_PAD))
+        (MIN_INTRO..=MAX_INTRO)
+            .contains(&len)
+            .then_some((start, start + len + END_PAD))
     });
     let credits = longest_match(&a.tail, &b.tail).and_then(|(sa, _, l)| {
         (l as f64 * step >= MIN_CREDITS).then_some(a.tail_start + sa as f64 * step)
@@ -278,7 +311,12 @@ pub fn from_chapters(chapters: &Value, duration: f64) -> Marks {
     let list: Vec<(f64, String)> = chapters
         .as_array()
         .iter()
-        .filter_map(|c| Some((c.get("time")?.as_f64()?, c.str_field("title").unwrap_or_default().to_lowercase())))
+        .filter_map(|c| {
+            Some((
+                c.get("time")?.as_f64()?,
+                c.str_field("title").unwrap_or_default().to_lowercase(),
+            ))
+        })
         .collect();
     let is = |t: &str, words: &[&str]| {
         let words_in: Vec<&str> = t.split(|c: char| !c.is_alphanumeric()).collect();
@@ -287,7 +325,10 @@ pub fn from_chapters(chapters: &Value, duration: f64) -> Marks {
     let mut marks = Marks::default();
     for (i, (time, title)) in list.iter().enumerate() {
         let end = list.get(i + 1).map_or(duration, |n| n.0);
-        if marks.intro.is_none() && is(title, &["intro", "opening", "op", "recap"]) && end - time <= MAX_INTRO * 1.5 {
+        if marks.intro.is_none()
+            && is(title, &["intro", "opening", "op", "recap"])
+            && end - time <= MAX_INTRO * 1.5
+        {
             marks.intro = Some((*time, end));
         }
         if marks.credits.is_none()
@@ -302,21 +343,34 @@ pub fn from_chapters(chapters: &Value, duration: f64) -> Marks {
 
 // ---- episodes ----
 
-const VIDEO_EXTS: &[&str] = &["mkv", "mp4", "m4v", "avi", "mov", "webm", "wmv", "ts", "m2ts", "mpg", "ogv"];
+const VIDEO_EXTS: &[&str] = &[
+    "mkv", "mp4", "m4v", "avi", "mov", "webm", "wmv", "ts", "m2ts", "mpg", "ogv",
+];
 
 /// The other episodes in `path`'s folder: same extension, in natural order.
 pub fn siblings(path: &Path) -> Vec<PathBuf> {
-    let Some(ext) = path.extension().map(|e| e.to_ascii_lowercase()) else { return Vec::new() };
+    let Some(ext) = path.extension().map(|e| e.to_ascii_lowercase()) else {
+        return Vec::new();
+    };
     if !VIDEO_EXTS.iter().any(|v| ext == *v) {
         return Vec::new();
     }
-    let Some(dir) = path.parent() else { return Vec::new() };
-    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Some(dir) = path.parent() else {
+        return Vec::new();
+    };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut files: Vec<PathBuf> = rd
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().map(|e| e.to_ascii_lowercase()).as_ref() == Some(&ext))
-        .filter(|p| !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))
+        .filter(|p| {
+            p.is_file() && p.extension().map(|e| e.to_ascii_lowercase()).as_ref() == Some(&ext)
+        })
+        .filter(|p| {
+            !p.file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+        })
         .collect();
     files.sort_by(|a, b| crate::natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
     files
@@ -326,7 +380,10 @@ pub fn siblings(path: &Path) -> Vec<PathBuf> {
 /// only in their numbers.
 pub fn same_series(a: &Path, b: &Path) -> bool {
     let shape = |p: &Path| -> String {
-        let name = p.file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let name = p
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
         let mut out = String::new();
         for c in name.chars() {
             if c.is_ascii_digit() {
@@ -342,7 +399,11 @@ pub fn same_series(a: &Path, b: &Path) -> bool {
     let (sa, sb) = (shape(a), shape(b));
     // Episode titles in the names ("S01E02 The Return") differ too; the
     // part before the episode number must agree.
-    let prefix = sa.chars().zip(sb.chars()).take_while(|(x, y)| x == y).count();
+    let prefix = sa
+        .chars()
+        .zip(sb.chars())
+        .take_while(|(x, y)| x == y)
+        .count();
     sa.contains('#') && (sa == sb || prefix >= 6)
 }
 
@@ -370,8 +431,12 @@ pub fn detect(path: &Path, duration: f64) -> Option<Marks> {
         .filter(|o| same_series(path, o));
     let mine = prints(path, duration)?;
     for other in others {
-        let Some(d) = probe_duration(other) else { continue };
-        let Some(theirs) = prints(other, d) else { continue };
+        let Some(d) = probe_duration(other) else {
+            continue;
+        };
+        let Some(theirs) = prints(other, d) else {
+            continue;
+        };
         let marks = compare(&mine, &theirs);
         log::info!("intro detection {}: {marks:?}", path.display());
         return Some(marks);
@@ -383,12 +448,18 @@ pub fn detect(path: &Path, duration: f64) -> Option<Marks> {
 fn probe_duration(path: &Path) -> Option<f64> {
     let (tx, rx) = channel();
     let mut cfg = PlayerConfig::headless();
-    cfg.set("pause", "yes").set("vid", "no").set("aid", "no").set("sid", "no").set("load-scripts", "no");
+    cfg.set("pause", "yes")
+        .set("vid", "no")
+        .set("aid", "no")
+        .set("sid", "no")
+        .set("load-scripts", "no");
     let player = Player::new(&cfg, move |e| {
         let _ = tx.send(e);
     })
     .ok()?;
-    player.load(&path.to_string_lossy(), LoadMode::Replace).ok()?;
+    player
+        .load(&path.to_string_lossy(), LoadMode::Replace)
+        .ok()?;
     loop {
         match rx.recv_timeout(Duration::from_secs(10)).ok()? {
             PlayerEvent::FileLoaded => break,
@@ -418,31 +489,58 @@ mod tests {
         a.extend((0..300).map(|_| noise()));
         let mut b: Vec<u32> = (0..40).map(|_| noise()).collect();
         // A few bits flipped, and one item lost in the noise.
-        b.extend(intro.iter().enumerate().map(|(i, x)| if i == 50 { noise() } else { x ^ 0b101 }));
+        b.extend(
+            intro
+                .iter()
+                .enumerate()
+                .map(|(i, x)| if i == 50 { noise() } else { x ^ 0b101 }),
+        );
         b.extend((0..300).map(|_| noise()));
         let (sa, sb, len) = longest_match(&a, &b).unwrap();
         assert_eq!((sa, sb), (100, 40));
         assert_eq!(len, 200);
-        let pa = Prints { head: a.clone(), tail: vec![], step: 0.1238, tail_start: 0.0 };
-        let pb = Prints { head: b, tail: vec![], step: 0.1238, tail_start: 0.0 };
+        let pa = Prints {
+            head: a.clone(),
+            tail: vec![],
+            step: 0.1238,
+            tail_start: 0.0,
+        };
+        let pb = Prints {
+            head: b,
+            tail: vec![],
+            step: 0.1238,
+            tail_start: 0.0,
+        };
         let m = compare(&pa, &pb);
         let (s, e) = m.intro.unwrap();
-        assert!((s - 12.38).abs() < 0.01 && (e - s - 24.76 - END_PAD).abs() < 0.01, "{m:?}");
+        assert!(
+            (s - 12.38).abs() < 0.01 && (e - s - 24.76 - END_PAD).abs() < 0.01,
+            "{m:?}"
+        );
         assert_eq!(Prints::from_bytes(&pa.to_bytes()), Some(pa));
     }
 
     #[test]
     fn episode_names() {
         let p = |s: &str| PathBuf::from(s);
-        assert!(same_series(&p("/tv/Show S01E01.mkv"), &p("/tv/Show S01E02.mkv")));
-        assert!(same_series(&p("/tv/Show - 01 - Pilot.mkv"), &p("/tv/Show - 02 - The Return.mkv")));
+        assert!(same_series(
+            &p("/tv/Show S01E01.mkv"),
+            &p("/tv/Show S01E02.mkv")
+        ));
+        assert!(same_series(
+            &p("/tv/Show - 01 - Pilot.mkv"),
+            &p("/tv/Show - 02 - The Return.mkv")
+        ));
         assert!(!same_series(&p("/films/Alien.mkv"), &p("/films/Heat.mkv")));
     }
 
     #[test]
     fn chapter_names() {
         let ch = |t: f64, title: &str| {
-            Value::Map(vec![("time".into(), Value::Double(t)), ("title".into(), Value::Str(title.into()))])
+            Value::Map(vec![
+                ("time".into(), Value::Double(t)),
+                ("title".into(), Value::Str(title.into())),
+            ])
         };
         let list = Value::Array(vec![
             ch(0.0, "Prologue"),
@@ -455,7 +553,10 @@ mod tests {
         assert_eq!(m.intro, Some((90.0, 180.0)));
         assert_eq!(m.credits, Some(1300.0));
         // "Opening credits" near the start is not the end credits.
-        let m = from_chapters(&Value::Array(vec![ch(0.0, "Opening credits"), ch(100.0, "x")]), 1400.0);
+        let m = from_chapters(
+            &Value::Array(vec![ch(0.0, "Opening credits"), ch(100.0, "x")]),
+            1400.0,
+        );
         assert_eq!(m.credits, None);
     }
 
@@ -481,7 +582,12 @@ mod tests {
         let step = fa.1;
         for (bits, gap) in [(10, 4), (6, 28), (7, 20), (8, 12), (6, 16)] {
             let (x, y, l) = longest_match_with(&fa.0, &fb.0, bits, gap).unwrap();
-            eprintln!("bits {bits} gap {gap}: a={:.1} b={:.1} len={:.1}", x as f64 * step, y as f64 * step, l as f64 * step);
+            eprintln!(
+                "bits {bits} gap {gap}: a={:.1} b={:.1} len={:.1}",
+                x as f64 * step,
+                y as f64 * step,
+                l as f64 * step
+            );
         }
         let (sa, sb, len) = longest_match(&fa.0, &fb.0).unwrap();
         let t = |i: usize| i as f64 * step;

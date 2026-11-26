@@ -14,7 +14,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use player_core::Player;
-use slint::{ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, Timer, TimerMode, VecModel};
+use slint::{
+    ComponentHandle, Model, ModelNotify, ModelRc, ModelTracker, SharedString, Timer, TimerMode,
+    VecModel,
+};
 
 use crate::art::{self, Key};
 use crate::medialib::{self, Album, Albums, Db, Group, MAX_SONGS, Pick, Sort, Track};
@@ -78,7 +81,13 @@ impl Page {
     fn sorts(&self) -> &'static [Sort] {
         match self {
             Page::Albums => &[Sort::Name, Sort::Artist, Sort::Year, Sort::Newest],
-            Page::Songs => &[Sort::Name, Sort::Artist, Sort::Album, Sort::Newest, Sort::Duration],
+            Page::Songs => &[
+                Sort::Name,
+                Sort::Artist,
+                Sort::Album,
+                Sort::Newest,
+                Sort::Duration,
+            ],
             Page::Genre(..) => &[Sort::Artist, Sort::Name, Sort::Album, Sort::Newest],
             Page::Videos | Page::VideoFolder(_) | Page::Folder(_) => &[Sort::Name, Sort::Newest],
             _ => &[],
@@ -149,14 +158,21 @@ struct Cards {
 
 impl Cards {
     fn new(list: Vec<Card>) -> Self {
-        Self { list: RefCell::new(list), notify: ModelNotify::default() }
+        Self {
+            list: RefCell::new(list),
+            notify: ModelNotify::default(),
+        }
     }
 
     fn arrived(&self, key: &Key) {
         let rows: Vec<usize> = {
             let mut list = self.list.borrow_mut();
-            let rows: Vec<usize> =
-                list.iter().enumerate().filter(|(_, c)| c.art.as_ref() == Some(key)).map(|(i, _)| i).collect();
+            let rows: Vec<usize> = list
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.art.as_ref() == Some(key))
+                .map(|(i, _)| i)
+                .collect();
             // Making a video's picture also measured it.
             if let Key::Video(path) = key
                 && rows.iter().any(|i| list[*i].corner.is_empty())
@@ -273,13 +289,30 @@ fn columns(width: f32) -> (usize, usize) {
 
 /// Sections → lines. Also the cards and songs in the order lines refer to
 /// them, and each section's range of songs.
-fn lines(built: &Built, cols: (usize, usize)) -> (Vec<MediaLine>, Vec<Card>, Vec<Track>, Vec<std::ops::Range<usize>>) {
-    let (mut out, mut cards, mut songs, mut ranges) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+fn lines(
+    built: &Built,
+    cols: (usize, usize),
+) -> (
+    Vec<MediaLine>,
+    Vec<Card>,
+    Vec<Track>,
+    Vec<std::ops::Range<usize>>,
+) {
+    let (mut out, mut cards, mut songs, mut ranges) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
     for s in &built.sections {
         let start = songs.len();
         match s {
-            Section::Heading(t) => out.push(MediaLine { kind: 0, title: t.as_str().into(), ..Default::default() }),
-            Section::Note(t) => out.push(MediaLine { kind: 3, title: t.as_str().into(), ..Default::default() }),
+            Section::Heading(t) => out.push(MediaLine {
+                kind: 0,
+                title: t.as_str().into(),
+                ..Default::default()
+            }),
+            Section::Note(t) => out.push(MediaLine {
+                kind: 3,
+                title: t.as_str().into(),
+                ..Default::default()
+            }),
             Section::Cards(list) => {
                 let shape = list.first().map_or(0, |c| c.shape);
                 let n = if shape == 2 { cols.1 } else { cols.0 };
@@ -317,7 +350,11 @@ fn lines(built: &Built, cols: (usize, usize)) -> (Vec<MediaLine>, Vec<Card>, Vec
                         match Path::new(&t.dir).file_name() {
                             Some(f) if !album && t.album.is_empty() => {
                                 let f = f.to_string_lossy();
-                                d.iter().map(|s| s.to_string()).chain([f.into_owned()]).collect::<Vec<_>>().join(" · ")
+                                d.iter()
+                                    .map(|s| s.to_string())
+                                    .chain([f.into_owned()])
+                                    .collect::<Vec<_>>()
+                                    .join(" · ")
                             }
                             _ => d.join(" · "),
                         }
@@ -326,7 +363,11 @@ fn lines(built: &Built, cols: (usize, usize)) -> (Vec<MediaLine>, Vec<Card>, Vec
                         kind: 2,
                         title: t.title.as_str().into(),
                         detail: detail.into(),
-                        right: if t.duration > 0.0 { fmt_clock(t.duration).into() } else { SharedString::new() },
+                        right: if t.duration > 0.0 {
+                            fmt_clock(t.duration).into()
+                        } else {
+                            SharedString::new()
+                        },
                         number: number.into(),
                         path: t.path.as_str().into(),
                         first: (songs.len() + i) as i32,
@@ -358,7 +399,12 @@ fn total_time(list: &[Track]) -> String {
 }
 
 fn join(parts: &[String]) -> String {
-    parts.iter().filter(|p| !p.is_empty()).cloned().collect::<Vec<_>>().join(" · ")
+    parts
+        .iter()
+        .filter(|p| !p.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 fn plain(title: &str, subtitle: String, target: Target) -> Card {
@@ -377,34 +423,75 @@ fn plain(title: &str, subtitle: String, target: Target) -> Card {
 }
 
 fn album_card(a: &Album, with_artist: bool) -> Card {
-    let year = if a.year > 0 { a.year.to_string() } else { String::new() };
-    let sub = if with_artist { join(&[a.artist.clone(), year]) } else { join(&[year, plural(a.songs as usize, "song", "songs")]) };
-    Card { art: Some(Key::Cover(a.path.clone())), ..plain(&a.name, sub, Target::Page(Page::Album(a.key.clone()))) }
+    let year = if a.year > 0 {
+        a.year.to_string()
+    } else {
+        String::new()
+    };
+    let sub = if with_artist {
+        join(&[a.artist.clone(), year])
+    } else {
+        join(&[year, plural(a.songs as usize, "song", "songs")])
+    };
+    Card {
+        art: Some(Key::Cover(a.path.clone())),
+        ..plain(&a.name, sub, Target::Page(Page::Album(a.key.clone())))
+    }
 }
 
 fn artist_card(g: &Group, online: bool) -> Card {
-    let albums = if g.albums > 0 { plural(g.albums as usize, "album", "albums") } else { String::new() };
+    let albums = if g.albums > 0 {
+        plural(g.albums as usize, "album", "albums")
+    } else {
+        String::new()
+    };
     Card {
         icon: 1,
         shape: 1,
-        art: Some(Key::Artist { name: g.name.clone(), path: g.path.clone(), online }),
-        ..plain(&g.name, join(&[albums, plural(g.items as usize, "song", "songs")]), Target::Page(Page::Artist(g.key.clone())))
+        art: Some(Key::Artist {
+            name: g.name.clone(),
+            path: g.path.clone(),
+            online,
+        }),
+        ..plain(
+            &g.name,
+            join(&[albums, plural(g.items as usize, "song", "songs")]),
+            Target::Page(Page::Artist(g.key.clone())),
+        )
     }
 }
 
 fn file_key(path: &str, video: bool) -> Key {
-    if video { Key::Video(path.to_owned()) } else { Key::Cover(path.to_owned()) }
+    if video {
+        Key::Video(path.to_owned())
+    } else {
+        Key::Cover(path.to_owned())
+    }
 }
 
 fn folder_card(g: &Group, page: Page, shape: i32) -> Card {
     let (songs, videos) = ((g.items - g.videos) as usize, g.videos as usize);
     let count = join(&[
-        if songs > 0 { plural(songs, "song", "songs") } else { String::new() },
-        if videos > 0 { plural(videos, "video", "videos") } else { String::new() },
+        if songs > 0 {
+            plural(songs, "song", "songs")
+        } else {
+            String::new()
+        },
+        if videos > 0 {
+            plural(videos, "video", "videos")
+        } else {
+            String::new()
+        },
     ]);
-    let name = Path::new(&g.key).file_name().map_or(g.key.clone(), |n| n.to_string_lossy().into_owned());
+    let name = Path::new(&g.key)
+        .file_name()
+        .map_or(g.key.clone(), |n| n.to_string_lossy().into_owned());
     // Where it is, when that says more than the name.
-    let place = g.name.rsplit_once(" / ").map(|(p, _)| p.to_owned()).unwrap_or_default();
+    let place = g
+        .name
+        .rsplit_once(" / ")
+        .map(|(p, _)| p.to_owned())
+        .unwrap_or_default();
     Card {
         icon: 3,
         shape,
@@ -415,8 +502,16 @@ fn folder_card(g: &Group, page: Page, shape: i32) -> Card {
 }
 
 fn video_card(t: &Track) -> Card {
-    let sub = Path::new(&t.dir).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let mut c = Card { icon: 2, shape: 2, art: Some(Key::Video(t.path.clone())), ..plain(&t.title, sub, Target::File(t.path.clone())) };
+    let sub = Path::new(&t.dir)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut c = Card {
+        icon: 2,
+        shape: 2,
+        art: Some(Key::Video(t.path.clone())),
+        ..plain(&t.title, sub, Target::File(t.path.clone()))
+    };
     set_duration(&mut c, t.duration);
     c
 }
@@ -437,7 +532,10 @@ fn continue_cards(db: &Db, left: &[(f64, String)]) -> Vec<Card> {
             Some((title, artist)) if !artist.is_empty() => format!("{artist} - {title}"),
             Some((title, _)) => title,
             None if link => crate::library::name_from_url(path),
-            None => Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+            None => Path::new(path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
         };
         let mut c = Card {
             icon: if audio { 0 } else { 2 },
@@ -446,7 +544,11 @@ fn continue_cards(db: &Db, left: &[(f64, String)]) -> Vec<Card> {
             progress: 0.0,
             removable: true,
             left_at: Some(*t),
-            ..plain(&title, format!("Stopped at {}", fmt_clock(*t)), Target::File(path.clone()))
+            ..plain(
+                &title,
+                format!("Stopped at {}", fmt_clock(*t)),
+                Target::File(path.clone()),
+            )
         };
         if let Some(d) = db.duration(path).filter(|_| !link) {
             set_duration(&mut c, d);
@@ -462,7 +564,8 @@ fn video_sections(db: &Db, sort: Sort) -> medialib::Result<(usize, Vec<Section>)
     let roots = db.folders()?;
     let mut folders: Vec<Card> = Vec::new();
     let mut single: Vec<Card> = Vec::new();
-    let mut per_dir: std::collections::HashMap<&str, Vec<&Track>> = std::collections::HashMap::new();
+    let mut per_dir: std::collections::HashMap<&str, Vec<&Track>> =
+        std::collections::HashMap::new();
     for t in &all {
         per_dir.entry(&t.dir).or_default().push(t);
     }
@@ -494,8 +597,17 @@ fn video_sections(db: &Db, sort: Sort) -> medialib::Result<(usize, Vec<Section>)
     Ok((all.len(), out))
 }
 
-fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool) -> medialib::Result<Built> {
-    let mut b = Built { folders: db.folders()?, ..Default::default() };
+fn build(
+    db: &Db,
+    page: &Page,
+    sort: Sort,
+    left: &[(f64, String)],
+    online: bool,
+) -> medialib::Result<Built> {
+    let mut b = Built {
+        folders: db.folders()?,
+        ..Default::default()
+    };
     let roots = b.folders.clone();
     let heading = |s: &mut Vec<Section>, t: &str| s.push(Section::Heading(t.into()));
     match page {
@@ -503,7 +615,10 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
             b.title = "Home".into();
             let (songs, videos) = db.counts()?;
             if songs + videos > 0 {
-                b.subtitle = join(&[plural(songs as usize, "song", "songs"), plural(videos as usize, "video", "videos")]);
+                b.subtitle = join(&[
+                    plural(songs as usize, "song", "songs"),
+                    plural(videos as usize, "video", "videos"),
+                ]);
             }
             let cont = continue_cards(db, left);
             if !cont.is_empty() {
@@ -513,12 +628,15 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
             let new = db.tracks(&Pick::Newest(true, NEWEST), Sort::Newest)?;
             if !new.is_empty() {
                 heading(&mut b.sections, "New videos");
-                b.sections.push(Section::Cards(new.iter().map(video_card).collect()));
+                b.sections
+                    .push(Section::Cards(new.iter().map(video_card).collect()));
             }
             let new = db.albums(&Albums::Newest(NEWEST), Sort::Newest)?;
             if !new.is_empty() {
                 heading(&mut b.sections, "New albums");
-                b.sections.push(Section::Cards(new.iter().map(|a| album_card(a, true)).collect()));
+                b.sections.push(Section::Cards(
+                    new.iter().map(|a| album_card(a, true)).collect(),
+                ));
             }
             let new = db.tracks(&Pick::Newest(false, NEWEST), Sort::Newest)?;
             if !new.is_empty() {
@@ -526,7 +644,9 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
                 b.sections.push(Section::Songs(new));
             }
             if b.sections.is_empty() && !roots.is_empty() {
-                b.sections.push(Section::Note("Nothing found in the library's folders yet.".into()));
+                b.sections.push(Section::Note(
+                    "Nothing found in the library's folders yet.".into(),
+                ));
             }
         }
         Page::Albums => {
@@ -536,28 +656,39 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
             if all.is_empty() {
                 b.sections.push(Section::Note("No song here names its album in its tags. Songs without tags are under Songs and Folders.".into()));
             }
-            b.sections.push(Section::Cards(all.iter().map(|a| album_card(a, true)).collect()));
+            b.sections.push(Section::Cards(
+                all.iter().map(|a| album_card(a, true)).collect(),
+            ));
         }
         Page::Artists => {
             let all = db.artists(None)?;
             b.title = "Artists".into();
             b.subtitle = plural(all.len(), "artist", "artists");
             if all.is_empty() {
-                b.sections.push(Section::Note("No artists found in the songs' tags or file names.".into()));
+                b.sections.push(Section::Note(
+                    "No artists found in the songs' tags or file names.".into(),
+                ));
             }
-            b.sections.push(Section::Cards(all.iter().map(|g| artist_card(g, online)).collect()));
+            b.sections.push(Section::Cards(
+                all.iter().map(|g| artist_card(g, online)).collect(),
+            ));
         }
         Page::Genres => {
             let all = db.genres()?;
             b.title = "Genres".into();
             b.subtitle = plural(all.len(), "genre", "genres");
             if all.is_empty() {
-                b.sections.push(Section::Note("No genres found in the songs' tags.".into()));
+                b.sections
+                    .push(Section::Note("No genres found in the songs' tags.".into()));
             }
             let cards = all.iter().map(|g| Card {
                 icon: 4,
                 art: Some(Key::Cover(g.path.clone())),
-                ..plain(&g.name, plural(g.items as usize, "song", "songs"), Target::Page(Page::Genre(g.key.clone(), g.name.clone())))
+                ..plain(
+                    &g.name,
+                    plural(g.items as usize, "song", "songs"),
+                    Target::Page(Page::Genre(g.key.clone(), g.name.clone())),
+                )
             });
             b.sections.push(Section::Cards(cards.collect()));
         }
@@ -576,25 +707,39 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
             b.subtitle = plural(n, "video", "videos");
             b.sections = sections;
             if n == 0 {
-                b.sections.push(Section::Note("No videos found in the library's folders.".into()));
+                b.sections.push(Section::Note(
+                    "No videos found in the library's folders.".into(),
+                ));
             }
         }
         Page::Folders => {
             let all = db.dirs()?;
             b.title = "Folders".into();
             b.subtitle = plural(all.len(), "folder", "folders");
-            b.sections.push(Section::Cards(all.iter().map(|g| folder_card(g, Page::Folder(g.key.clone()), 0)).collect()));
+            b.sections.push(Section::Cards(
+                all.iter()
+                    .map(|g| folder_card(g, Page::Folder(g.key.clone()), 0))
+                    .collect(),
+            ));
         }
         Page::Manage => {
             b.title = "Library folders".into();
         }
         Page::Album(key) => {
             let songs = db.tracks(&Pick::Album(key.clone()), sort)?;
-            let album = db.albums(&Albums::All, Sort::Name)?.into_iter().find(|a| a.key == *key).unwrap_or_default();
+            let album = db
+                .albums(&Albums::All, Sort::Name)?
+                .into_iter()
+                .find(|a| a.key == *key)
+                .unwrap_or_default();
             b.title = album.name.clone();
             b.subtitle = join(&[
                 album.artist.clone(),
-                if album.year > 0 { album.year.to_string() } else { String::new() },
+                if album.year > 0 {
+                    album.year.to_string()
+                } else {
+                    String::new()
+                },
                 plural(songs.len(), "song", "songs"),
                 total_time(&songs),
             ]);
@@ -604,17 +749,27 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
         Page::Artist(key) => {
             let songs = db.tracks(&Pick::Artist(key.clone()), Sort::Name)?;
             let albums = db.albums(&Albums::Artist(key.clone()), Sort::Year)?;
-            let g = db.artists(None)?.into_iter().find(|g| g.key == *key).unwrap_or_default();
+            let g = db
+                .artists(None)?
+                .into_iter()
+                .find(|g| g.key == *key)
+                .unwrap_or_default();
             b.title = g.name.clone();
             b.subtitle = join(&[
-                if albums.is_empty() { String::new() } else { plural(albums.len(), "album", "albums") },
+                if albums.is_empty() {
+                    String::new()
+                } else {
+                    plural(albums.len(), "album", "albums")
+                },
                 plural(songs.len(), "song", "songs"),
                 total_time(&songs),
             ]);
             b.head = Some(artist_card(&g, online));
             if !albums.is_empty() {
                 heading(&mut b.sections, "Albums");
-                b.sections.push(Section::Cards(albums.iter().map(|a| album_card(a, false)).collect()));
+                b.sections.push(Section::Cards(
+                    albums.iter().map(|a| album_card(a, false)).collect(),
+                ));
                 heading(&mut b.sections, "Songs");
             }
             b.sections.push(Section::Songs(songs));
@@ -626,7 +781,9 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
             b.subtitle = join(&[plural(songs.len(), "song", "songs"), total_time(&songs)]);
             if !albums.is_empty() {
                 heading(&mut b.sections, "Albums");
-                b.sections.push(Section::Cards(albums.iter().map(|a| album_card(a, true)).collect()));
+                b.sections.push(Section::Cards(
+                    albums.iter().map(|a| album_card(a, true)).collect(),
+                ));
                 heading(&mut b.sections, "Songs");
             }
             b.sections.push(Section::Songs(songs));
@@ -637,17 +794,35 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
                 all.retain(|t| t.video);
             }
             let (videos, songs): (Vec<Track>, Vec<Track>) = all.into_iter().partition(|t| t.video);
-            b.title = Path::new(dir).file_name().map_or(dir.clone(), |n| n.to_string_lossy().into_owned());
+            b.title = Path::new(dir)
+                .file_name()
+                .map_or(dir.clone(), |n| n.to_string_lossy().into_owned());
             b.subtitle = join(&[
                 medialib::dir_name(dir, &roots),
-                if songs.is_empty() { String::new() } else { plural(songs.len(), "song", "songs") },
-                if videos.is_empty() { String::new() } else { plural(videos.len(), "video", "videos") },
+                if songs.is_empty() {
+                    String::new()
+                } else {
+                    plural(songs.len(), "song", "songs")
+                },
+                if videos.is_empty() {
+                    String::new()
+                } else {
+                    plural(videos.len(), "video", "videos")
+                },
                 total_time(&songs),
             ]);
             // Songs are what Play queues in a mixed folder; else its videos.
             b.can_play = !videos.is_empty();
             if !videos.is_empty() {
-                b.sections.push(Section::Cards(videos.iter().map(|t| Card { subtitle: String::new(), ..video_card(t) }).collect()));
+                b.sections.push(Section::Cards(
+                    videos
+                        .iter()
+                        .map(|t| Card {
+                            subtitle: String::new(),
+                            ..video_card(t)
+                        })
+                        .collect(),
+                ));
             }
             if !songs.is_empty() {
                 b.sections.push(Section::Songs(songs));
@@ -660,18 +835,36 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
             let videos = db.tracks(&Pick::Search(text.clone(), true), Sort::Name)?;
             let songs = db.tracks(&Pick::Search(text.clone(), false), Sort::Name)?;
             let n = artists.len() + albums.len() + videos.len() + songs.len();
-            b.subtitle = if n == 0 { "Nothing found".into() } else { plural(n, "match", "matches") };
+            b.subtitle = if n == 0 {
+                "Nothing found".into()
+            } else {
+                plural(n, "match", "matches")
+            };
             if !artists.is_empty() {
                 heading(&mut b.sections, "Artists");
-                b.sections.push(Section::Cards(artists.iter().take(24).map(|g| artist_card(g, online)).collect()));
+                b.sections.push(Section::Cards(
+                    artists
+                        .iter()
+                        .take(24)
+                        .map(|g| artist_card(g, online))
+                        .collect(),
+                ));
             }
             if !albums.is_empty() {
                 heading(&mut b.sections, "Albums");
-                b.sections.push(Section::Cards(albums.iter().take(60).map(|a| album_card(a, true)).collect()));
+                b.sections.push(Section::Cards(
+                    albums
+                        .iter()
+                        .take(60)
+                        .map(|a| album_card(a, true))
+                        .collect(),
+                ));
             }
             if !videos.is_empty() {
                 heading(&mut b.sections, "Videos");
-                b.sections.push(Section::Cards(videos.iter().take(120).map(video_card).collect()));
+                b.sections.push(Section::Cards(
+                    videos.iter().take(120).map(video_card).collect(),
+                ));
             }
             if !songs.is_empty() {
                 heading(&mut b.sections, "Songs");
@@ -683,7 +876,10 @@ fn build(db: &Db, page: &Page, sort: Sort, left: &[(f64, String)], online: bool)
     if roots.is_empty() && *page != Page::Home {
         b.sections.clear();
     }
-    b.can_play |= *page != Page::Home && b.sections.iter().any(|s| matches!(s, Section::Songs(l) if !l.is_empty()));
+    b.can_play |= *page != Page::Home
+        && b.sections
+            .iter()
+            .any(|s| matches!(s, Section::Songs(l) if !l.is_empty()));
     Ok(b)
 }
 
@@ -712,9 +908,14 @@ fn playable(db: &Db, page: &Page, sort: Sort) -> medialib::Result<Vec<String>> {
 
 fn sort_of(page: &Page) -> Sort {
     let default = page.sorts().first().copied().unwrap_or(Sort::Name);
-    VIEW.with_borrow(|v| v.sorts.iter().find(|(t, _)| *t == page.tab()).map(|(_, s)| *s))
-        .filter(|s| page.sorts().contains(s))
-        .unwrap_or(default)
+    VIEW.with_borrow(|v| {
+        v.sorts
+            .iter()
+            .find(|(t, _)| *t == page.tab())
+            .map(|(_, s)| *s)
+    })
+    .filter(|s| page.sorts().contains(s))
+    .unwrap_or(default)
 }
 
 /// Make the page on a worker thread and show it; `scroll` is where to.
@@ -723,7 +924,11 @@ fn load(ui: &AppWindow, scroll: Option<f32>) {
     REQUEST.set(request);
     let (page, online) = VIEW.with_borrow(|v| (v.page.clone(), v.online));
     let sort = sort_of(&page);
-    let left = if page == Page::Home { resume::list() } else { Vec::new() };
+    let left = if page == Page::Home {
+        resume::list()
+    } else {
+        Vec::new()
+    };
     ui.set_media_page(page.tab());
     ui.set_media_can_back(VIEW.with_borrow(|v| !v.back.is_empty()));
     ui.set_media_loading(true);
@@ -752,8 +957,12 @@ fn show(ui: &AppWindow, built: Built, page: &Page, sort: Sort, scroll: Option<f3
     ui.set_media_subheading(built.subtitle.as_str().into());
     ui.set_media_can_play(built.can_play);
     ui.set_media_empty(built.folders.is_empty());
-    ui.set_media_folders(strings(built.folders.iter().map(|f| f.as_str().into()).collect()));
-    ui.set_media_sorts(strings(page.sorts().iter().map(|s| sort_name(*s).into()).collect()));
+    ui.set_media_folders(strings(
+        built.folders.iter().map(|f| f.as_str().into()).collect(),
+    ));
+    ui.set_media_sorts(strings(
+        page.sorts().iter().map(|s| sort_name(*s).into()).collect(),
+    ));
     ui.set_media_sort(page.sorts().iter().position(|s| *s == sort).unwrap_or(0) as i32);
     ui.set_media_has_head(built.head.is_some());
     if let Some(h) = &built.head {
@@ -804,7 +1013,9 @@ fn play(ui: &AppWindow, player: &Player, files: Vec<String>, start: usize) {
     // Files that are gone don't shift the one to start with.
     let start = files[..start].iter().filter(|f| there(f)).count();
     let files: Vec<String> = files.into_iter().filter(there).collect();
-    let video = files.get(start).is_some_and(|f| !medialib::is_audio(Path::new(f)));
+    let video = files
+        .get(start)
+        .is_some_and(|f| !medialib::is_audio(Path::new(f)));
     let n = files.len();
     crate::open_inputs(ui, files.into_iter().map(input).collect(), false);
     // "93 items added to the playlist" isn't news after "Play".
@@ -822,12 +1033,19 @@ fn play(ui: &AppWindow, player: &Player, files: Vec<String>, start: usize) {
 
 /// Play these files from the first one that is there.
 fn play_first(ui: &AppWindow, player: &Player, files: Vec<String>) {
-    let start = files.iter().position(|f| Path::new(f).exists()).unwrap_or(0);
+    let start = files
+        .iter()
+        .position(|f| Path::new(f).exists())
+        .unwrap_or(0);
     play(ui, player, files, start);
 }
 
 fn input(path: String) -> Input {
-    if path.contains("://") { Input::Url(path) } else { Input::Path(PathBuf::from(path)) }
+    if path.contains("://") {
+        Input::Url(path)
+    } else {
+        Input::Path(PathBuf::from(path))
+    }
 }
 
 fn shuffled(mut list: Vec<String>) -> Vec<String> {
@@ -872,39 +1090,45 @@ fn scan(ui: &AppWindow) {
     ui.set_media_scanning(true);
     ui.set_media_status("Looking for changes…".into());
     let weak = ui.as_weak();
-    let spawned = std::thread::Builder::new().name("library-scan".into()).spawn(move || {
-        art::low_priority();
-        let mut last = Instant::now();
-        let result = Db::open().and_then(|mut db| {
-            db.scan(&mut |done, of| {
-                if of > 0 && last.elapsed() > Duration::from_millis(300) {
-                    last = Instant::now();
-                    let _ = weak.upgrade_in_event_loop(move |ui| {
-                        ui.set_media_status(format!("Reading {} of {of}…", done.min(of)).into());
-                    });
-                }
-                true
-            })
-        });
-        SCANNING.store(false, Ordering::Release);
-        let _ = weak.upgrade_in_event_loop(move |ui| {
-            ui.set_media_scanning(false);
-            match result {
-                Ok(s) => {
-                    log::info!("library scan: {s:?}");
-                    ui.set_media_status(match s.missing.as_slice() {
-                        [] => SharedString::new(),
-                        [one] => format!("{one} isn't there now (its drive may be unplugged)").into(),
-                        more => format!("{} folders aren't there now", more.len()).into(),
-                    });
-                    if ui.get_media_open() && (s.read > 0 || s.removed > 0) {
-                        load(&ui, None);
+    let spawned = std::thread::Builder::new()
+        .name("library-scan".into())
+        .spawn(move || {
+            art::low_priority();
+            let mut last = Instant::now();
+            let result = Db::open().and_then(|mut db| {
+                db.scan(&mut |done, of| {
+                    if of > 0 && last.elapsed() > Duration::from_millis(300) {
+                        last = Instant::now();
+                        let _ = weak.upgrade_in_event_loop(move |ui| {
+                            ui.set_media_status(
+                                format!("Reading {} of {of}…", done.min(of)).into(),
+                            );
+                        });
                     }
+                    true
+                })
+            });
+            SCANNING.store(false, Ordering::Release);
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                ui.set_media_scanning(false);
+                match result {
+                    Ok(s) => {
+                        log::info!("library scan: {s:?}");
+                        ui.set_media_status(match s.missing.as_slice() {
+                            [] => SharedString::new(),
+                            [one] => {
+                                format!("{one} isn't there now (its drive may be unplugged)").into()
+                            }
+                            more => format!("{} folders aren't there now", more.len()).into(),
+                        });
+                        if ui.get_media_open() && (s.read > 0 || s.removed > 0) {
+                            load(&ui, None);
+                        }
+                    }
+                    Err(e) => ui.set_media_status(e.into()),
                 }
-                Err(e) => ui.set_media_status(e.into()),
-            }
+            });
         });
-    });
     if let Err(e) = spawned {
         SCANNING.store(false, Ordering::Release);
         ui.set_media_scanning(false);
@@ -924,9 +1148,13 @@ fn add_folders(ui: &AppWindow, dirs: &[PathBuf]) {
 
 /// The user's Music and Videos folders, those that exist.
 fn default_folders() -> Vec<PathBuf> {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from);
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
     let Some(home) = home else { return Vec::new() };
-    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
     let text = std::fs::read_to_string(config.join("user-dirs.dirs")).unwrap_or_default();
     [("XDG_MUSIC_DIR", "Music"), ("XDG_VIDEOS_DIR", "Videos")]
         .into_iter()
@@ -938,7 +1166,9 @@ fn default_folders() -> Vec<PathBuf> {
 
 /// `XDG_MUSIC_DIR="$HOME/Music"` in user-dirs.dirs.
 fn user_dir(text: &str, key: &str, home: &Path) -> Option<PathBuf> {
-    let value = text.lines().find_map(|l| l.trim().strip_prefix(key)?.strip_prefix('='))?;
+    let value = text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix(key)?.strip_prefix('='))?;
     let value = value.trim().trim_matches('"');
     let dir = match value.strip_prefix("$HOME") {
         Some(rest) => home.join(rest.trim_start_matches('/')),
@@ -975,7 +1205,11 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
             v.online = settings.borrow().artist_image_online;
             v.last_scan.is_none_or(|t| t.elapsed() > RESCAN_AFTER)
         });
-        if due && Db::open().and_then(|db| db.folders()).is_ok_and(|f| !f.is_empty()) {
+        if due
+            && Db::open()
+                .and_then(|db| db.folders())
+                .is_ok_and(|f| !f.is_empty())
+        {
             scan(&ui);
         }
     });
@@ -1011,7 +1245,13 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         }) else {
             return;
         };
-        let text = VIEW.with_borrow(|v| if let Page::Search(t) = &v.page { t.clone() } else { String::new() });
+        let text = VIEW.with_borrow(|v| {
+            if let Page::Search(t) = &v.page {
+                t.clone()
+            } else {
+                String::new()
+            }
+        });
         ui.set_media_query(text.into());
         load(&ui, Some(scroll));
     });
@@ -1019,23 +1259,27 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         let weak = ui.as_weak();
         // Wait for a pause in the typing.
         SEARCH_TIMER.with(|t| {
-            t.start(TimerMode::SingleShot, Duration::from_millis(140), move || {
-                let Some(ui) = weak.upgrade() else { return };
-                if !ui.get_media_open() {
-                    return;
-                }
-                let searching = VIEW.with_borrow(|v| matches!(v.page, Page::Search(_)));
-                let page = Page::Search(text.to_string());
-                match (text.trim().is_empty(), searching) {
-                    (true, true) => ui.invoke_media_back(),
-                    (true, false) => {}
-                    (false, true) => {
-                        VIEW.with_borrow_mut(|v| v.page = page);
-                        load(&ui, Some(0.0));
+            t.start(
+                TimerMode::SingleShot,
+                Duration::from_millis(140),
+                move || {
+                    let Some(ui) = weak.upgrade() else { return };
+                    if !ui.get_media_open() {
+                        return;
                     }
-                    (false, false) => open(&ui, page),
-                }
-            });
+                    let searching = VIEW.with_borrow(|v| matches!(v.page, Page::Search(_)));
+                    let page = Page::Search(text.to_string());
+                    match (text.trim().is_empty(), searching) {
+                        (true, true) => ui.invoke_media_back(),
+                        (true, false) => {}
+                        (false, true) => {
+                            VIEW.with_borrow_mut(|v| v.page = page);
+                            load(&ui, Some(0.0));
+                        }
+                        (false, false) => open(&ui, page),
+                    }
+                },
+            );
         });
     });
     on!(on_media_sort_by, |ui, i| {
@@ -1066,7 +1310,8 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         }
     });
 
-    let card_at = |i: i32| VIEW.with_borrow(|v| v.cards.list.borrow().get(i.max(0) as usize).cloned());
+    let card_at =
+        |i: i32| VIEW.with_borrow(|v| v.cards.list.borrow().get(i.max(0) as usize).cloned());
     let p = player.clone();
     on!(on_media_open_card, |ui, i| {
         match card_at(i).map(|c| c.target) {
@@ -1094,8 +1339,19 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         let i = i.max(0) as usize;
         // The song's own list from that song on.
         let (files, start) = VIEW.with_borrow(|v| {
-            let r = v.ranges.iter().find(|r| r.contains(&i)).cloned().unwrap_or(0..0);
-            (v.songs[r.clone()].iter().map(|t| t.path.clone()).collect::<Vec<_>>(), i.saturating_sub(r.start))
+            let r = v
+                .ranges
+                .iter()
+                .find(|r| r.contains(&i))
+                .cloned()
+                .unwrap_or(0..0);
+            (
+                v.songs[r.clone()]
+                    .iter()
+                    .map(|t| t.path.clone())
+                    .collect::<Vec<_>>(),
+                i.saturating_sub(r.start),
+            )
         });
         play(&ui, &p, files, start);
     });
@@ -1111,7 +1367,10 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     });
 
     on!(on_media_add_folder, |ui| {
-        if let Some(dir) = rfd::FileDialog::new().set_title("Add a folder to the library").pick_folder() {
+        if let Some(dir) = rfd::FileDialog::new()
+            .set_title("Add a folder to the library")
+            .pick_folder()
+        {
             add_folders(&ui, &[dir]);
         }
     });
@@ -1128,7 +1387,9 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
             ui.set_toast("Please wait for the scan to finish".into());
             return;
         }
-        let Some(dir) = ui.get_media_folders().row_data(i.max(0) as usize) else { return };
+        let Some(dir) = ui.get_media_folders().row_data(i.max(0) as usize) else {
+            return;
+        };
         if let Err(e) = Db::open().and_then(|mut db| db.remove_folder(&dir)) {
             ui.set_media_status(e.into());
         }
@@ -1144,7 +1405,14 @@ mod tests {
     use super::*;
 
     fn track(path: &str, track: u32) -> Track {
-        Track { path: path.into(), title: path.into(), track, dir: "/m/Folder".into(), duration: 65.0, ..Default::default() }
+        Track {
+            path: path.into(),
+            title: path.into(),
+            track,
+            dir: "/m/Folder".into(),
+            duration: 65.0,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -1157,7 +1425,10 @@ mod tests {
                 Section::Heading("Albums".into()),
                 Section::Cards((0..5).map(|i| card(&i.to_string())).collect()),
                 Section::Songs(vec![track("/a", 0), track("/b", 0)]),
-                Section::Cards(vec![Card { shape: 2, ..card("w") }]),
+                Section::Cards(vec![Card {
+                    shape: 2,
+                    ..card("w")
+                }]),
                 Section::Songs(vec![track("/c", 0)]),
             ],
             ..Default::default()
@@ -1165,10 +1436,19 @@ mod tests {
         let (lines, cards, songs, ranges) = lines(&built, (4, 3));
         let kinds: Vec<i32> = lines.iter().map(|l| l.kind).collect();
         assert_eq!(kinds, [0, 1, 1, 2, 2, 1, 2]);
-        assert_eq!((lines[2].first, lines[2].count, lines[2].columns), (4, 1, 4));
-        assert_eq!((lines[5].first, lines[5].columns, lines[5].shape), (5, 3, 2));
+        assert_eq!(
+            (lines[2].first, lines[2].count, lines[2].columns),
+            (4, 1, 4)
+        );
+        assert_eq!(
+            (lines[5].first, lines[5].columns, lines[5].shape),
+            (5, 3, 2)
+        );
         assert_eq!(lines[6].first, 2);
-        assert_eq!((lines[3].detail.as_str(), lines[3].right.as_str()), ("Folder", "1:05"));
+        assert_eq!(
+            (lines[3].detail.as_str(), lines[3].right.as_str()),
+            ("Folder", "1:05")
+        );
         assert_eq!((cards.len(), songs.len()), (6, 3));
         assert_eq!(ranges, [0..2, 2..3]);
     }
@@ -1192,7 +1472,10 @@ mod tests {
     fn user_dirs() {
         let t = "# x\nXDG_MUSIC_DIR=\"$HOME/Muzica\"\nXDG_VIDEOS_DIR=\"/mnt/v\"\n";
         let h = Path::new("/home/a");
-        assert_eq!(user_dir(t, "XDG_MUSIC_DIR", h), Some("/home/a/Muzica".into()));
+        assert_eq!(
+            user_dir(t, "XDG_MUSIC_DIR", h),
+            Some("/home/a/Muzica".into())
+        );
         assert_eq!(user_dir(t, "XDG_VIDEOS_DIR", h), Some("/mnt/v".into()));
         assert_eq!(user_dir(t, "XDG_X", h), None);
     }

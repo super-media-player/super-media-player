@@ -30,7 +30,10 @@ struct Pace {
     skip: bool,
 }
 
-const NORMAL: Pace = Pace { speed: 1.0, skip: false };
+const NORMAL: Pace = Pace {
+    speed: 1.0,
+    skip: false,
+};
 
 impl Pace {
     fn normal(self) -> bool {
@@ -56,14 +59,21 @@ fn file() -> Option<PathBuf> {
 }
 
 fn load() -> Vec<(Pace, String)> {
-    file().and_then(|f| std::fs::read_to_string(f).ok()).map(|t| parse(&t)).unwrap_or_default()
+    file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .map(|t| parse(&t))
+        .unwrap_or_default()
 }
 
 fn parse(text: &str) -> Vec<(Pace, String)> {
     text.lines()
         .filter_map(|l| {
             let mut it = l.splitn(3, '\t');
-            let speed = it.next()?.parse::<f64>().ok().filter(|s| (0.25..=4.0).contains(s))?;
+            let speed = it
+                .next()?
+                .parse::<f64>()
+                .ok()
+                .filter(|s| (0.25..=4.0).contains(s))?;
             let skip = it.next()? == "1";
             Some((Pace { speed, skip }, it.next()?.to_owned()))
         })
@@ -73,7 +83,10 @@ fn parse(text: &str) -> Vec<(Pace, String)> {
 }
 
 fn to_text(entries: &[(Pace, String)]) -> String {
-    entries.iter().map(|(p, k)| format!("{}\t{}\t{k}\n", p.speed, u8::from(p.skip))).collect()
+    entries
+        .iter()
+        .map(|(p, k)| format!("{}\t{}\t{k}\n", p.speed, u8::from(p.skip)))
+        .collect()
 }
 
 /// Where a file is from: a podcast's show, a folder, a site, a kind of disc.
@@ -84,19 +97,33 @@ fn place(path: &str, shows: &HashMap<String, String>) -> String {
     match path.split_once("://") {
         Some(("file", p)) => place(p, shows),
         Some((scheme, rest)) if scheme.starts_with("http") => {
-            format!("site:{}", rest.split(['/', '?', '#']).next().unwrap_or(rest))
+            format!(
+                "site:{}",
+                rest.split(['/', '?', '#']).next().unwrap_or(rest)
+            )
         }
         // Shares, as folders. A disc's titles and menus belong together.
         Some(("dvd" | "dvdnav" | "smpdvd", _)) => "disc:dvd".into(),
         Some((scheme @ ("bd" | "cdda" | "edl"), _)) => format!("disc:{scheme}"),
-        Some((scheme, rest)) => format!("{scheme}:{}", rest.rsplit_once('/').map_or("", |(d, _)| d)),
-        None => format!("folder:{}", Path::new(path).parent().map(Path::to_string_lossy).unwrap_or_default()),
+        Some((scheme, rest)) => {
+            format!("{scheme}:{}", rest.rsplit_once('/').map_or("", |(d, _)| d))
+        }
+        None => format!(
+            "folder:{}",
+            Path::new(path)
+                .parent()
+                .map(Path::to_string_lossy)
+                .unwrap_or_default()
+        ),
     }
 }
 
 /// Discs have no name of their own to remember.
 fn can_remember(path: &str, place: &str) -> bool {
-    !path.is_empty() && path.len() <= MAX_KEY && !path.contains(['\t', '\n', '\r']) && !place.starts_with("disc:")
+    !path.is_empty()
+        && path.len() <= MAX_KEY
+        && !path.contains(['\t', '\n', '\r'])
+        && !place.starts_with("disc:")
 }
 
 impl Store {
@@ -116,7 +143,9 @@ impl Store {
 
     /// The user chose `pace` for what plays. True when the list changed.
     fn choose(&mut self, pace: Pace) -> bool {
-        let Some((path, place)) = self.current.clone() else { return false };
+        let Some((path, place)) = self.current.clone() else {
+            return false;
+        };
         if !can_remember(&path, &place) {
             return false;
         }
@@ -138,7 +167,9 @@ impl Store {
             let _ = std::fs::create_dir_all(dir);
         }
         let tmp = path.with_extension("tsv.tmp");
-        if let Err(e) = std::fs::write(&tmp, to_text(&self.entries)).and_then(|()| std::fs::rename(&tmp, &path)) {
+        if let Err(e) =
+            std::fs::write(&tmp, to_text(&self.entries)).and_then(|()| std::fs::rename(&tmp, &path))
+        {
             log::warn!("could not save playing speeds: {e}");
         }
     }
@@ -152,7 +183,10 @@ pub fn episode_of(url: &str, feed: &str) {
 }
 
 fn now(ui: &AppWindow) -> Pace {
-    Pace { speed: (f64::from(ui.get_speed()) * 100.0).round() / 100.0, skip: ui.get_skip_silence() }
+    Pace {
+        speed: (f64::from(ui.get_speed()) * 100.0).round() / 100.0,
+        skip: ui.get_skip_silence(),
+    }
 }
 
 fn describe(p: Pace) -> String {
@@ -165,11 +199,17 @@ fn describe(p: Pace) -> String {
 
 /// A file starts: give it its pace.
 pub fn opened(ui: &AppWindow, player: &Player) {
-    let Some(path) = player.get_string("path").filter(|p| !p.is_empty()) else { return };
+    let Some(path) = player.get_string("path").filter(|p| !p.is_empty()) else {
+        return;
+    };
     let now = now(ui);
     let want = STORE.with_borrow_mut(|s| s.open(&path, now));
     // Advanced navigation and casting have their own idea of speed.
-    let Some(want) = want.filter(|_| ui.get_s_remember_pace() && !ui.get_s_nav_enabled() && !cast::active()) else { return };
+    let Some(want) =
+        want.filter(|_| ui.get_s_remember_pace() && !ui.get_s_nav_enabled() && !cast::active())
+    else {
+        return;
+    };
     if (want.speed - now.speed).abs() > 0.001 {
         let _ = player.set_speed(want.speed);
     }
@@ -193,7 +233,13 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
             return;
         }
         match p.set_speed(f64::from(speed)) {
-            Ok(()) => choose(&ui, Pace { speed: (f64::from(speed) * 100.0).round() / 100.0, ..now(&ui) }),
+            Ok(()) => choose(
+                &ui,
+                Pace {
+                    speed: (f64::from(speed) * 100.0).round() / 100.0,
+                    ..now(&ui)
+                },
+            ),
             Err(e) => crate::report(&ui, Err(e)),
         }
     });
@@ -221,16 +267,25 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
 mod tests {
     use super::*;
 
-    const FAST: Pace = Pace { speed: 1.5, skip: true };
+    const FAST: Pace = Pace {
+        speed: 1.5,
+        skip: true,
+    };
 
     #[test]
     fn places() {
-        let shows = HashMap::from([("https://cdn.x/ep1.mp3".to_owned(), "https://feed.x/rss".to_owned())]);
+        let shows = HashMap::from([(
+            "https://cdn.x/ep1.mp3".to_owned(),
+            "https://feed.x/rss".to_owned(),
+        )]);
         let p = |s| place(s, &shows);
         assert_eq!(p("/v/course/01.mp4"), "folder:/v/course");
         assert_eq!(p("file:///v/course/01.mp4"), "folder:/v/course");
         assert_eq!(p("https://cdn.x/ep1.mp3"), "show:https://feed.x/rss");
-        assert_eq!(p("https://www.youtube.com/watch?v=1"), "site:www.youtube.com");
+        assert_eq!(
+            p("https://www.youtube.com/watch?v=1"),
+            "site:www.youtube.com"
+        );
         assert_eq!(p("smpdvd://menu"), p("dvd://1"));
         assert_ne!(p("bd://1"), p("dvd://1"));
         assert!(!can_remember("dvd://1", "disc:dvd"));

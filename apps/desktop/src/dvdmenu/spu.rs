@@ -14,7 +14,10 @@ impl Colors {
     /// highest pixel value first.
     fn from_word(w: u32) -> Self {
         let n = |shift: u32| (w >> shift & 15) as u8;
-        Self { color: [n(16), n(20), n(24), n(28)], alpha: [n(0), n(4), n(8), n(12)] }
+        Self {
+            color: [n(16), n(20), n(24), n(28)],
+            alpha: [n(0), n(4), n(8), n(12)],
+        }
     }
 }
 
@@ -29,7 +32,10 @@ pub struct Rect {
 
 impl Rect {
     pub fn contains(&self, x: i32, y: i32) -> bool {
-        x >= i32::from(self.x0) && x <= i32::from(self.x1) && y >= i32::from(self.y0) && y <= i32::from(self.y1)
+        x >= i32::from(self.x0)
+            && x <= i32::from(self.x1)
+            && y >= i32::from(self.y0)
+            && y <= i32::from(self.y1)
     }
 }
 
@@ -86,7 +92,11 @@ pub fn parse_nav(b: &[u8]) -> Option<NavPack> {
         1 => Highlight::Buttons(parse_buttons(&b[HLI..])),
         _ => Highlight::Same,
     };
-    Some(NavPack { start: be32(b, PCI + 12), end: be32(b, PCI + 16), highlight })
+    Some(NavPack {
+        start: be32(b, PCI + 12),
+        end: be32(b, PCI + 16),
+        highlight,
+    })
 }
 
 fn parse_buttons(h: &[u8]) -> Vec<Button> {
@@ -97,7 +107,8 @@ fn parse_buttons(h: &[u8]) -> Vec<Button> {
     let kinds = [h[14] & 7, h[15] >> 4 & 7, h[15] & 7];
     let group = (0..groups).find(|g| kinds[*g] & 6 == 0).unwrap_or(0);
     let count = usize::from(h[17] & 63).min(per_group);
-    let colors = |set: usize, which: usize| Colors::from_word(be32(h, 22 + (set - 1) * 8 + which * 4));
+    let colors =
+        |set: usize, which: usize| Colors::from_word(be32(h, 22 + (set - 1) * 8 + which * 4));
     (0..count)
         .map(|i| {
             let b = &h[46 + (group * per_group + i) * 18..][..18];
@@ -108,9 +119,17 @@ fn parse_buttons(h: &[u8]) -> Vec<Button> {
                 (hi, lo)
             };
             let ((x0, x1), (y0, y1)) = (pair(0), pair(3));
-            let (selected, pressed) =
-                if set == 0 { Default::default() } else { (colors(set, 0), colors(set, 1)) };
-            Button { rect: Rect { x0, y0, x1, y1 }, selected, pressed, auto: b[3] >> 6 != 0 }
+            let (selected, pressed) = if set == 0 {
+                Default::default()
+            } else {
+                (colors(set, 0), colors(set, 1))
+            };
+            Button {
+                rect: Rect { x0, y0, x1, y1 },
+                selected,
+                pressed,
+                auto: b[3] >> 6 != 0,
+            }
         })
         .collect()
 }
@@ -154,7 +173,11 @@ pub fn decode(d: &[u8], pts: i64) -> Option<Subpicture> {
                 0x03 | 0x04 => {
                     let (a, b) = (*d.get(at)?, *d.get(at + 1)?);
                     let v = [b & 15, b >> 4, a & 15, a >> 4];
-                    if cmd == 0x03 { colors.color = v } else { colors.alpha = v }
+                    if cmd == 0x03 {
+                        colors.color = v
+                    } else {
+                        colors.alpha = v
+                    }
                     at += 2;
                 }
                 0x05 => {
@@ -190,21 +213,36 @@ pub fn decode(d: &[u8], pts: i64) -> Option<Subpicture> {
     let (width, height) = (x1 - x0 + 1, y1 - y0 + 1);
     let mut pixels = vec![0u8; width * height];
     for (field, offset) in fields.into_iter().enumerate() {
-        let mut bits = Nibbles { data: d, pos: offset * 2 };
+        let mut bits = Nibbles {
+            data: d,
+            pos: offset * 2,
+        };
         for row in (field..height).step_by(2) {
             let line = &mut pixels[row * width..][..width];
             let mut x = 0;
             while x < width {
                 let (run, value) = bits.run()?;
                 // A run of 0 fills the line.
-                let end = if run == 0 { width } else { (x + run).min(width) };
+                let end = if run == 0 {
+                    width
+                } else {
+                    (x + run).min(width)
+                };
                 line[x..end].fill(value);
                 x = end;
             }
             bits.align();
         }
     }
-    Some(Subpicture { pts: pts + delay, x: x0 as u16, y: y0 as u16, width, height, pixels, colors })
+    Some(Subpicture {
+        pts: pts + delay,
+        x: x0 as u16,
+        y: y0 as u16,
+        width,
+        height,
+        pixels,
+        colors,
+    })
 }
 
 struct Nibbles<'a> {
@@ -216,7 +254,11 @@ struct Nibbles<'a> {
 impl Nibbles<'_> {
     fn next(&mut self) -> Option<usize> {
         let b = *self.data.get(self.pos / 2)?;
-        let n = if self.pos.is_multiple_of(2) { b >> 4 } else { b & 15 };
+        let n = if self.pos.is_multiple_of(2) {
+            b >> 4
+        } else {
+            b & 15
+        };
         self.pos += 1;
         Some(usize::from(n))
     }
@@ -253,7 +295,11 @@ pub fn rgb(ycc: u32) -> [u8; 3] {
     let cr = (f64::from(ycc >> 8 & 255) - 128.0) * 255.0 / 224.0;
     let cb = (f64::from(ycc & 255) - 128.0) * 255.0 / 224.0;
     let c = |v: f64| v.round().clamp(0.0, 255.0) as u8;
-    [c(y + 1.402 * cr), c(y - 0.344_136 * cb - 0.714_136 * cr), c(y + 1.772 * cb)]
+    [
+        c(y + 1.402 * cr),
+        c(y - 0.344_136 * cb - 0.714_136 * cr),
+        c(y + 1.772 * cb),
+    ]
 }
 
 /// Where the video sits on the screen, and its own size.
@@ -278,8 +324,16 @@ impl Place {
 
 /// Draw the subpicture, scaled to the screen: in its own colours, and inside
 /// `button` in the button's. `None`: nothing visible.
-pub fn draw(sp: &Subpicture, button: Option<(&Rect, &Colors)>, clut: &[u32; 16], place: &Place) -> Option<Overlay> {
-    let (sx, sy) = (place.width / f64::from(place.video.0), place.height / f64::from(place.video.1));
+pub fn draw(
+    sp: &Subpicture,
+    button: Option<(&Rect, &Colors)>,
+    clut: &[u32; 16],
+    place: &Place,
+) -> Option<Overlay> {
+    let (sx, sy) = (
+        place.width / f64::from(place.video.0),
+        place.height / f64::from(place.video.1),
+    );
     if !(sx > 0.0 && sy > 0.0 && sx < 64.0 && sy < 64.0) {
         return None;
     }
@@ -287,7 +341,12 @@ pub fn draw(sp: &Subpicture, button: Option<(&Rect, &Colors)>, clut: &[u32; 16],
         std::array::from_fn(|i| {
             let [r, g, b] = rgb(clut[usize::from(c.color[i])]);
             let a = f32::from(c.alpha[i]) / 15.0;
-            [f32::from(b) * a, f32::from(g) * a, f32::from(r) * a, a * 255.0]
+            [
+                f32::from(b) * a,
+                f32::from(g) * a,
+                f32::from(r) * a,
+                a * 255.0,
+            ]
         })
     };
     let own = paint(&sp.colors);
@@ -311,7 +370,11 @@ pub fn draw(sp: &Subpicture, button: Option<(&Rect, &Colors)>, clut: &[u32; 16],
         x1: sp.x + sp.width as u16 - 1,
         y1: sp.y + sp.height as u16 - 1,
     };
-    let area = if sp.colors.alpha.iter().any(|a| *a > 0) { full } else { *button?.0 };
+    let area = if sp.colors.alpha.iter().any(|a| *a > 0) {
+        full
+    } else {
+        *button?.0
+    };
     let x0 = (f64::from(area.x0) * sx).floor() as i32;
     let y0 = (f64::from(area.y0) * sy).floor() as i32;
     let width = ((f64::from(area.x1) + 1.0) * sx).ceil() as i32 - x0;
@@ -401,9 +464,23 @@ mod tests {
         let s = decode(&small(), 0).unwrap();
         let mut clut = [0x0010_8080; 16];
         clut[5] = 0x00EB_8080;
-        let place = Place { left: 100.0, top: 50.0, width: 720.0, height: 480.0, video: (720, 480) };
-        let lit = Colors { color: [5; 4], alpha: [15; 4] };
-        let r = Rect { x0: 10, y0: 20, x1: 10, y1: 21 };
+        let place = Place {
+            left: 100.0,
+            top: 50.0,
+            width: 720.0,
+            height: 480.0,
+            video: (720, 480),
+        };
+        let lit = Colors {
+            color: [5; 4],
+            alpha: [15; 4],
+        };
+        let r = Rect {
+            x0: 10,
+            y0: 20,
+            x1: 10,
+            y1: 21,
+        };
         let o = draw(&s, Some((&r, &lit)), &clut, &place).unwrap();
         assert_eq!((o.x, o.y, o.width, o.height), (110, 70, 4, 2));
         assert_eq!(&o.bgra[..8], &[255, 255, 255, 255, 0, 0, 0, 255]);
@@ -413,7 +490,13 @@ mod tests {
         let o = draw(&s, Some((&r, &lit)), &clut, &place).unwrap();
         assert_eq!((o.width, o.height), (1, 2));
         assert!(draw(&s, None, &clut, &place).is_none());
-        let big = Place { left: 0.0, top: 0.0, width: 1440.0, height: 960.0, video: (720, 480) };
+        let big = Place {
+            left: 0.0,
+            top: 0.0,
+            width: 1440.0,
+            height: 960.0,
+            video: (720, 480),
+        };
         assert_eq!(big.to_video(21.0, 41.0), (10, 20));
         assert!(draw(&s, Some((&r, &lit)), &clut, &big).unwrap().width == 2);
     }
@@ -441,10 +524,26 @@ mod tests {
         b[at + 18 + 3] = 0x40;
         let nav = parse_nav(&b).unwrap();
         assert_eq!((nav.start, nav.end), (90_000, 135_000));
-        let Highlight::Buttons(list) = nav.highlight else { panic!("no buttons") };
+        let Highlight::Buttons(list) = nav.highlight else {
+            panic!("no buttons")
+        };
         assert_eq!(list.len(), 2);
-        assert_eq!(list[0].rect, Rect { x0: 100, y0: 50, x1: 200, y1: 80 });
-        assert_eq!(list[0].selected, Colors { color: [0, 1, 2, 3], alpha: [15, 0, 0, 15] });
+        assert_eq!(
+            list[0].rect,
+            Rect {
+                x0: 100,
+                y0: 50,
+                x1: 200,
+                y1: 80
+            }
+        );
+        assert_eq!(
+            list[0].selected,
+            Colors {
+                color: [0, 1, 2, 3],
+                alpha: [15, 0, 0, 15]
+            }
+        );
         assert!(!list[0].auto && list[1].auto);
         assert!(list[0].rect.contains(200, 80) && !list[0].rect.contains(201, 80));
         b[h + 1] = 2;

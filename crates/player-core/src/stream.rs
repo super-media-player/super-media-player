@@ -48,7 +48,9 @@ unsafe extern "C" fn open_trampoline(
     let open = unsafe { &*(user_data as *const Box<OpenFn>) };
     let uri = unsafe { CStr::from_ptr(uri) }.to_string_lossy();
     let source = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| open(&uri)));
-    let Ok(Some(source)) = source else { return MPV_ERROR_LOADING_FAILED };
+    let Ok(Some(source)) = source else {
+        return MPV_ERROR_LOADING_FAILED;
+    };
     let cookie: Box<Box<dyn StreamSource>> = Box::new(source);
     let info = unsafe { &mut *info };
     info.cookie = Box::into_raw(cookie).cast();
@@ -60,7 +62,8 @@ unsafe extern "C" fn open_trampoline(
 unsafe extern "C" fn read_trampoline(cookie: *mut c_void, buf: *mut c_char, nbytes: u64) -> i64 {
     let source = unsafe { &mut *(cookie as *mut Box<dyn StreamSource>) };
     let buf = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), nbytes as usize) };
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| source.read(buf))).map_or(-1, |n| n as i64)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| source.read(buf)))
+        .map_or(-1, |n| n as i64)
 }
 
 unsafe extern "C" fn close_trampoline(cookie: *mut c_void) {

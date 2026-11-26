@@ -104,7 +104,9 @@ pub(crate) unsafe fn from_node(node: &mpv_node) -> Value {
                 if ba.is_null() || (*ba).data.is_null() {
                     return Value::Bytes(Vec::new());
                 }
-                Value::Bytes(std::slice::from_raw_parts((*ba).data as *const u8, (*ba).size).to_vec())
+                Value::Bytes(
+                    std::slice::from_raw_parts((*ba).data as *const u8, (*ba).size).to_vec(),
+                )
             }
             MPV_FORMAT_NODE_ARRAY | MPV_FORMAT_NODE_MAP => {
                 let list = node.u.list;

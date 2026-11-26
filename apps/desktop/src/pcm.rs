@@ -64,7 +64,9 @@ pub fn render(d: &Decode, cancel: &AtomicBool, progress: impl Fn(f64)) -> Result
         let _ = tx.send(e);
     })
     .map_err(|e| e.to_string())?;
-    player.load(d.source, LoadMode::Replace).map_err(|e| e.to_string())?;
+    player
+        .load(d.source, LoadMode::Replace)
+        .map_err(|e| e.to_string())?;
     let result = loop {
         if cancel.load(Ordering::Relaxed) {
             let _ = player.stop();
@@ -72,7 +74,10 @@ pub fn render(d: &Decode, cancel: &AtomicBool, progress: impl Fn(f64)) -> Result
         }
         match rx.recv_timeout(Duration::from_millis(250)) {
             Ok(PlayerEvent::Property(Property::TimePos(Some(t)))) => progress(t),
-            Ok(PlayerEvent::EndFile { reason: EndReason::Eof, .. }) => break Ok(()),
+            Ok(PlayerEvent::EndFile {
+                reason: EndReason::Eof,
+                ..
+            }) => break Ok(()),
             Ok(PlayerEvent::EndFile { error, .. }) => {
                 break Err(error.unwrap_or_else(|| "the file could not be read".into()));
             }
@@ -93,7 +98,11 @@ pub fn render(d: &Decode, cancel: &AtomicBool, progress: impl Fn(f64)) -> Result
 pub fn samples(source: &Path, rate: u32, start: f64, length: f64) -> Option<Vec<i16>> {
     let dir = crate::settings::cache_dir()?.join("pcm");
     std::fs::create_dir_all(&dir).ok()?;
-    let out = dir.join(format!("{}-{:?}.raw", std::process::id(), std::thread::current().id()));
+    let out = dir.join(format!(
+        "{}-{:?}.raw",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let d = Decode {
         source: &source.to_string_lossy(),
         out: &out,
@@ -106,5 +115,12 @@ pub fn samples(source: &Path, rate: u32, start: f64, length: f64) -> Option<Vec<
     render(&d, &AtomicBool::new(false), |_| {}).ok()?;
     let bytes = std::fs::read(&out).ok();
     let _ = std::fs::remove_file(&out);
-    Some(bytes?.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect())
+    Some(
+        bytes?
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| i16::from_le_bytes(*b))
+            .collect(),
+    )
 }
