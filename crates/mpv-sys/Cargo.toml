@@ -3,6 +3,7 @@ name = "mpv-sys"
 description = "Runtime-loaded FFI bindings to the libmpv client and render API"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

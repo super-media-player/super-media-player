@@ -2969,7 +2969,7 @@ dependencies = [
 
 [[package]]
 name = "mpv-sys"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "libloading",
 ]
@@ -3736,7 +3736,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "player-core"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "log",
  "mpv-sys",
@@ -4753,7 +4753,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "super-media-player"
-version = "0.61.0"
+version = "0.62.0"
 dependencies = [
  "env_logger",
  "flacenc",
