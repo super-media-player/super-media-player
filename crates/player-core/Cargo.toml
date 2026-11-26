@@ -3,6 +3,7 @@ name = "player-core"
 description = "Safe playback engine API built on libmpv"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
