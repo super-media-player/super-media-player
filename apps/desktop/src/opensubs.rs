@@ -43,7 +43,9 @@ fn file() -> Option<PathBuf> {
 }
 
 pub fn load() -> Account {
-    let text = file().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    let text = file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .unwrap_or_default();
     let mut a = Account::default();
     for line in text.lines() {
         if let Some((k, v)) = line.split_once('=') {
@@ -67,7 +69,12 @@ pub fn save(a: &Account) -> std::io::Result<()> {
     let clean = |s: &str| s.replace(['\n', '\r'], "");
     std::fs::write(
         &f,
-        format!("api_key = {}\nuser = {}\npassword = {}\n", clean(&a.key), clean(&a.user), clean(&a.password)),
+        format!(
+            "api_key = {}\nuser = {}\npassword = {}\n",
+            clean(&a.key),
+            clean(&a.user),
+            clean(&a.password)
+        ),
     )?;
     #[cfg(unix)]
     {
@@ -101,19 +108,26 @@ pub fn hash(path: &Path) -> std::io::Result<String> {
 /// A cleaner search text from a file name: "The.Show.S01E02.1080p.WEB" →
 /// "The Show S01E02".
 pub fn query_from_name(name: &str) -> String {
-    let stem = Path::new(name).file_stem().map_or(name.to_owned(), |s| s.to_string_lossy().into_owned());
+    let stem = Path::new(name)
+        .file_stem()
+        .map_or(name.to_owned(), |s| s.to_string_lossy().into_owned());
     let mut words = Vec::new();
     for w in stem.split(['.', '_', ' ', '-']).filter(|w| !w.is_empty()) {
         let lw = w.to_lowercase();
-        let junk = ["1080p", "720p", "2160p", "480p", "x264", "x265", "h264", "h265", "hevc", "web", "webrip", "web-dl",
-            "bluray", "brrip", "hdtv", "dvdrip", "aac", "dts", "hdr", "remux", "proper", "repack"];
+        let junk = [
+            "1080p", "720p", "2160p", "480p", "x264", "x265", "h264", "h265", "hevc", "web",
+            "webrip", "web-dl", "bluray", "brrip", "hdtv", "dvdrip", "aac", "dts", "hdr", "remux",
+            "proper", "repack",
+        ];
         if junk.contains(&lw.as_str()) || lw.starts_with('[') {
             break;
         }
         words.push(w.to_owned());
         // Stop after a year or an episode code.
         if (w.len() == 4 && w.chars().all(|c| c.is_ascii_digit()) && words.len() > 1)
-            || (lw.starts_with('s') && lw.contains('e') && lw[1..].chars().next().is_some_and(|c| c.is_ascii_digit()))
+            || (lw.starts_with('s')
+                && lw.contains('e')
+                && lw[1..].chars().next().is_some_and(|c| c.is_ascii_digit()))
         {
             break;
         }
@@ -132,16 +146,29 @@ fn agent(timeout: u64) -> ureq::Agent {
 fn read_json(r: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result<Value, String> {
     let mut resp = r.map_err(|e| format!("OpenSubtitles couldn't be reached ({e})"))?;
     let status = resp.status().as_u16();
-    let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+    let body = resp
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
     let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
     if status >= 400 {
-        let msg = v["message"].as_str().or(v["errors"][0].as_str()).unwrap_or("").to_owned();
+        let msg = v["message"]
+            .as_str()
+            .or(v["errors"][0].as_str())
+            .unwrap_or("")
+            .to_owned();
         return Err(match status {
             401 | 403 => format!(
                 "OpenSubtitles didn't accept the API key or login{}. Check them in Settings → Subtitles.",
-                if msg.is_empty() { String::new() } else { format!(" (\"{msg}\")") }
+                if msg.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (\"{msg}\")")
+                }
             ),
-            406 | 429 if msg.is_empty() => "OpenSubtitles' download limit for today is reached".into(),
+            406 | 429 if msg.is_empty() => {
+                "OpenSubtitles' download limit for today is reached".into()
+            }
             _ if msg.is_empty() => format!("OpenSubtitles answered {status}"),
             _ => msg,
         });
@@ -150,7 +177,12 @@ fn read_json(r: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result
 }
 
 /// Search by hash and / or text, in `languages` ("en,ro").
-pub fn search(a: &Account, hash: Option<&str>, query: &str, languages: &str) -> Result<Vec<Hit>, String> {
+pub fn search(
+    a: &Account,
+    hash: Option<&str>,
+    query: &str,
+    languages: &str,
+) -> Result<Vec<Hit>, String> {
     if a.key.is_empty() {
         return Err("Add your OpenSubtitles API key in Settings → Subtitles first".into());
     }
@@ -194,7 +226,11 @@ fn hit(d: &Value) -> Option<Hit> {
     Some(Hit {
         file_id,
         language: a["language"].as_str().unwrap_or("?").to_owned(),
-        release: a["release"].as_str().or(a["files"][0]["file_name"].as_str()).unwrap_or("").to_owned(),
+        release: a["release"]
+            .as_str()
+            .or(a["files"][0]["file_name"].as_str())
+            .unwrap_or("")
+            .to_owned(),
         downloads: a["download_count"].as_i64().unwrap_or(0),
         exact: a["moviehash_match"].as_bool().unwrap_or(false),
         hearing_impaired: a["hearing_impaired"].as_bool().unwrap_or(false),
@@ -231,7 +267,9 @@ pub fn download(a: &Account, file_id: i64, dest: &Path) -> Result<Option<i64>, S
         req = req.header("Authorization", &format!("Bearer {t}"));
     }
     let v = read_json(req.send(body.as_bytes()))?;
-    let link = v["link"].as_str().ok_or("OpenSubtitles sent no download link")?;
+    let link = v["link"]
+        .as_str()
+        .ok_or("OpenSubtitles sent no download link")?;
     let mut resp = agent(60)
         .get(link)
         .header("User-Agent", AGENT)
@@ -250,7 +288,9 @@ pub fn download(a: &Account, file_id: i64, dest: &Path) -> Result<Option<i64>, S
 /// Where to save: next to the video ("Film.en.srt"), or in the cache when
 /// that folder can't be written to (a disc, a read-only share).
 pub fn destination(video: &Path, lang: &str) -> PathBuf {
-    let stem = video.file_stem().map_or("subtitles".into(), |s| s.to_string_lossy().into_owned());
+    let stem = video
+        .file_stem()
+        .map_or("subtitles".into(), |s| s.to_string_lossy().into_owned());
     let name = format!("{stem}.{lang}.srt");
     let beside = video.with_file_name(&name);
     let probe = video.with_file_name(".smp-write-test");
@@ -259,7 +299,9 @@ pub fn destination(video: &Path, lang: &str) -> PathBuf {
     if writable {
         return beside;
     }
-    let dir = settings::cache_dir().unwrap_or_else(std::env::temp_dir).join("subtitles");
+    let dir = settings::cache_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("subtitles");
     let _ = std::fs::create_dir_all(&dir);
     dir.join(name)
 }
@@ -280,14 +322,39 @@ thread_local! {
 
 fn language_name(code: &str) -> String {
     let names = [
-        ("en", "English"), ("ro", "Romanian"), ("ru", "Russian"), ("es", "Spanish"), ("fr", "French"),
-        ("de", "German"), ("it", "Italian"), ("pt-pt", "Portuguese"), ("pt-br", "Portuguese (Brazil)"),
-        ("nl", "Dutch"), ("pl", "Polish"), ("uk", "Ukrainian"), ("tr", "Turkish"), ("el", "Greek"),
-        ("hu", "Hungarian"), ("cs", "Czech"), ("sv", "Swedish"), ("fi", "Finnish"), ("da", "Danish"),
-        ("no", "Norwegian"), ("ar", "Arabic"), ("he", "Hebrew"), ("zh-cn", "Chinese"), ("ja", "Japanese"),
-        ("ko", "Korean"), ("bg", "Bulgarian"), ("sr", "Serbian"), ("hr", "Croatian"),
+        ("en", "English"),
+        ("ro", "Romanian"),
+        ("ru", "Russian"),
+        ("es", "Spanish"),
+        ("fr", "French"),
+        ("de", "German"),
+        ("it", "Italian"),
+        ("pt-pt", "Portuguese"),
+        ("pt-br", "Portuguese (Brazil)"),
+        ("nl", "Dutch"),
+        ("pl", "Polish"),
+        ("uk", "Ukrainian"),
+        ("tr", "Turkish"),
+        ("el", "Greek"),
+        ("hu", "Hungarian"),
+        ("cs", "Czech"),
+        ("sv", "Swedish"),
+        ("fi", "Finnish"),
+        ("da", "Danish"),
+        ("no", "Norwegian"),
+        ("ar", "Arabic"),
+        ("he", "Hebrew"),
+        ("zh-cn", "Chinese"),
+        ("ja", "Japanese"),
+        ("ko", "Korean"),
+        ("bg", "Bulgarian"),
+        ("sr", "Serbian"),
+        ("hr", "Croatian"),
     ];
-    names.iter().find(|(c, _)| c.eq_ignore_ascii_case(code)).map_or(code.to_owned(), |(_, n)| (*n).to_owned())
+    names
+        .iter()
+        .find(|(c, _)| c.eq_ignore_ascii_case(code))
+        .map_or(code.to_owned(), |(_, n)| (*n).to_owned())
 }
 
 fn status_text(a: &Account) -> String {
@@ -298,7 +365,11 @@ fn status_text(a: &Account) -> String {
     }
 }
 
-pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<crate::settings::Settings>>) {
+pub fn install(
+    ui: &AppWindow,
+    player: &Rc<Player>,
+    settings: Rc<RefCell<crate::settings::Settings>>,
+) {
     ui.set_opensubs_status(status_text(&load()).into());
     let weak = ui.as_weak();
     ui.on_save_opensubs(move |key, user, password| {
@@ -327,14 +398,19 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<crate::
     ui.on_show_sub_search(move || {
         let Some(ui) = weak.upgrade() else { return };
         let path = p.get_string("path").unwrap_or_default();
-        let name = Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         ui.set_subsearch_query(query_from_name(&name).into());
         ui.set_subsearch_languages(s2.borrow().sub_languages.clone().into());
         ui.set_subsearch_open(true);
         if !path.contains("://") && !path.is_empty() && !load().key.is_empty() {
             ui.invoke_subsearch_search(ui.get_subsearch_query(), ui.get_subsearch_languages());
         } else if load().key.is_empty() {
-            ui.set_subsearch_status("Add your OpenSubtitles API key in Settings → Subtitles first.".into());
+            ui.set_subsearch_status(
+                "Add your OpenSubtitles API key in Settings → Subtitles first.".into(),
+            );
         }
     });
 
@@ -404,10 +480,14 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<crate::
     let (p, weak) = (player.clone(), ui.as_weak());
     ui.on_subsearch_download(move |i| {
         let Some(ui) = weak.upgrade() else { return };
-        let Some(h) = HITS.with_borrow(|v| v.get(i as usize).cloned()) else { return };
+        let Some(h) = HITS.with_borrow(|v| v.get(i as usize).cloned()) else {
+            return;
+        };
         let path = p.get_string("path").unwrap_or_default();
         let dest = if path.contains("://") || path.is_empty() {
-            let dir = crate::settings::cache_dir().unwrap_or_else(std::env::temp_dir).join("subtitles");
+            let dir = crate::settings::cache_dir()
+                .unwrap_or_else(std::env::temp_dir)
+                .join("subtitles");
             let _ = std::fs::create_dir_all(&dir);
             dir.join(format!("{}.{}.srt", h.file_id, h.language))
         } else {
@@ -430,8 +510,13 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<crate::
                         }
                         ui.set_toast(
                             match left {
-                                Some(n) => format!("Subtitles loaded ({}). {n} downloads left today.", language_name(&h.language)),
-                                None => format!("Subtitles loaded ({})", language_name(&h.language)),
+                                Some(n) => format!(
+                                    "Subtitles loaded ({}). {n} downloads left today.",
+                                    language_name(&h.language)
+                                ),
+                                None => {
+                                    format!("Subtitles loaded ({})", language_name(&h.language))
+                                }
                             }
                             .into(),
                         );
@@ -465,8 +550,14 @@ mod tests {
 
     #[test]
     fn queries_from_names() {
-        assert_eq!(query_from_name("The.Show.S01E02.1080p.WEB-DL.mkv"), "The Show S01E02");
-        assert_eq!(query_from_name("Some_Film_2019_720p_x264.mp4"), "Some Film 2019");
+        assert_eq!(
+            query_from_name("The.Show.S01E02.1080p.WEB-DL.mkv"),
+            "The Show S01E02"
+        );
+        assert_eq!(
+            query_from_name("Some_Film_2019_720p_x264.mp4"),
+            "Some Film 2019"
+        );
         assert_eq!(query_from_name("Movie Name.mkv"), "Movie Name");
     }
 

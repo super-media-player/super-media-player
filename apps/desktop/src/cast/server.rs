@@ -131,7 +131,12 @@ impl Server {
             })
             .map_err(|e| e.to_string())?;
         log::info!("cast server on port {port}");
-        Ok(Self { shared, port, ip, listener: Some(thread) })
+        Ok(Self {
+            shared,
+            port,
+            ip,
+            listener: Some(thread),
+        })
     }
 
     /// Serve `item` as `name`; returns its link.
@@ -139,7 +144,11 @@ impl Server {
         if let Ok(mut m) = self.shared.items.lock() {
             m.insert(name.to_owned(), item);
         }
-        format!("http://{}/{}/{name}", SocketAddr::new(self.ip, self.port), self.shared.token)
+        format!(
+            "http://{}/{}/{name}",
+            SocketAddr::new(self.ip, self.port),
+            self.shared.token
+        )
     }
 
     /// Stop serving everything; transfers under way end.
@@ -182,7 +191,9 @@ fn read_request(stream: &TcpStream) -> std::io::Result<Request> {
         if reader.read_line(&mut line)? <= 2 {
             return Ok(r);
         }
-        let Some((k, v)) = line.split_once(':') else { continue };
+        let Some((k, v)) = line.split_once(':') else {
+            continue;
+        };
         match k.trim().to_ascii_lowercase().as_str() {
             "range" => r.range = Some(v.trim().to_owned()),
             "getcaptioninfo.sec" => r.wants_captions = true,
@@ -194,16 +205,28 @@ fn read_request(stream: &TcpStream) -> std::io::Result<Request> {
 /// The bytes asked for by a Range header: first and last. `Err`: none that
 /// exist. Several ranges at once count as no range.
 fn parse_range(h: &str, size: u64) -> Result<Option<(u64, u64)>, ()> {
-    let Some(spec) = h.strip_prefix("bytes=") else { return Ok(None) };
-    let Some((a, b)) = spec.trim().split_once('-').filter(|_| !spec.contains(',')) else { return Ok(None) };
+    let Some(spec) = h.strip_prefix("bytes=") else {
+        return Ok(None);
+    };
+    let Some((a, b)) = spec.trim().split_once('-').filter(|_| !spec.contains(',')) else {
+        return Ok(None);
+    };
     let (a, b) = (a.trim(), b.trim());
     if a.is_empty() {
         // The last n bytes.
         let n: u64 = b.parse().map_err(|_| ())?;
-        return if n == 0 || size == 0 { Err(()) } else { Ok(Some((size.saturating_sub(n), size - 1))) };
+        return if n == 0 || size == 0 {
+            Err(())
+        } else {
+            Ok(Some((size.saturating_sub(n), size - 1)))
+        };
     }
     let first: u64 = a.parse().map_err(|_| ())?;
-    let last = if b.is_empty() { u64::MAX } else { b.parse().map_err(|_| ())? };
+    let last = if b.is_empty() {
+        u64::MAX
+    } else {
+        b.parse().map_err(|_| ())?
+    };
     if first >= size || last < first {
         return Err(());
     }
@@ -217,11 +240,25 @@ fn serve(stream: TcpStream, sh: &Shared) -> std::io::Result<()> {
     stream.set_write_timeout(Some(Duration::from_millis(500)))?;
     let req = read_request(&stream)?;
     let path = req.target.split('?').next().unwrap_or("");
-    let name = path.strip_prefix('/').and_then(|p| p.strip_prefix(sh.token.as_str())).and_then(|p| p.strip_prefix('/'));
+    let name = path
+        .strip_prefix('/')
+        .and_then(|p| p.strip_prefix(sh.token.as_str()))
+        .and_then(|p| p.strip_prefix('/'));
     let item = name.and_then(|n| sh.items.lock().ok()?.get(n).cloned());
-    let mut out = Out { stream, cancel: Arc::default(), chunked: false };
-    let Some(item) = item else { return out.head("404 Not Found", "text/plain", Some(0), "") };
-    log::debug!("cast server: {} {} {:?}", req.method, name.unwrap_or(""), req.range);
+    let mut out = Out {
+        stream,
+        cancel: Arc::default(),
+        chunked: false,
+    };
+    let Some(item) = item else {
+        return out.head("404 Not Found", "text/plain", Some(0), "");
+    };
+    log::debug!(
+        "cast server: {} {} {:?}",
+        req.method,
+        name.unwrap_or(""),
+        req.range
+    );
     sh.hits.fetch_add(1, Ordering::Relaxed);
     out.cancel = item.cancel.clone();
     let head_only = req.method == "HEAD";
@@ -285,7 +322,11 @@ fn serve(stream: TcpStream, sh: &Shared) -> std::io::Result<()> {
         Content::Remote(url) => relay(&mut out, url, &item, &req, head_only, &extra),
         Content::Live(job) => {
             // It has no bytes to jump to: only its start.
-            let later = req.range.as_deref().and_then(|r| r.strip_prefix("bytes=")).is_some_and(|r| !r.starts_with("0-"));
+            let later = req
+                .range
+                .as_deref()
+                .and_then(|r| r.strip_prefix("bytes="))
+                .is_some_and(|r| !r.starts_with("0-"));
             if later {
                 return out.head("416 Range Not Satisfiable", "text/plain", Some(0), &extra);
             }
@@ -316,7 +357,12 @@ fn live(out: &mut Out, job: &Job, item: &Item, chunks: bool, extra: &str) -> std
         out.head("200 OK", &item.mime, None, extra)?;
         return out.copy(&mut enc);
     }
-    out.head("200 OK", &item.mime, None, &format!("{extra}Transfer-Encoding: chunked\r\n"))?;
+    out.head(
+        "200 OK",
+        &item.mime,
+        None,
+        &format!("{extra}Transfer-Encoding: chunked\r\n"),
+    )?;
     out.chunked = true;
     out.copy(&mut enc)?;
     out.chunked = false;
@@ -326,9 +372,19 @@ fn live(out: &mut Out, job: &Job, item: &Item, chunks: bool, extra: &str) -> std
 
 /// Pass another server's file on (radio, podcasts, a NAS), with the parts
 /// asked for.
-fn relay(out: &mut Out, url: &str, item: &Item, req: &Request, head_only: bool, extra: &str) -> std::io::Result<()> {
+fn relay(
+    out: &mut Out,
+    url: &str,
+    item: &Item,
+    req: &Request,
+    head_only: bool,
+    extra: &str,
+) -> std::io::Result<()> {
     let mut call = ureq::get(url)
-        .header("User-Agent", concat!("SuperMediaPlayer/", env!("CARGO_PKG_VERSION")))
+        .header(
+            "User-Agent",
+            concat!("SuperMediaPlayer/", env!("CARGO_PKG_VERSION")),
+        )
         .header("Accept-Encoding", "identity");
     if let Some(r) = &req.range {
         call = call.header("Range", r);
@@ -352,7 +408,12 @@ fn relay(out: &mut Out, url: &str, item: &Item, req: &Request, head_only: bool, 
         log::warn!("cast: {url}: {code}");
         return out.head("502 Bad Gateway", "text/plain", Some(0), "");
     }
-    let header = |n: &str| resp.headers().get(n).and_then(|v| v.to_str().ok()).map(str::to_owned);
+    let header = |n: &str| {
+        resp.headers()
+            .get(n)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned)
+    };
     // A header with a line break can't get here: the HTTP library refuses it.
     let len = header("content-length").and_then(|l| l.parse().ok());
     let mut extra = extra.to_owned();
@@ -362,7 +423,16 @@ fn relay(out: &mut Out, url: &str, item: &Item, req: &Request, head_only: bool, 
     if code == 206 || header("accept-ranges").is_some_and(|a| a == "bytes") {
         extra += "Accept-Ranges: bytes\r\n";
     }
-    out.head(if code == 206 { "206 Partial Content" } else { "200 OK" }, &item.mime, len, &extra)?;
+    out.head(
+        if code == 206 {
+            "206 Partial Content"
+        } else {
+            "200 OK"
+        },
+        &item.mime,
+        len,
+        &extra,
+    )?;
     if head_only {
         return Ok(());
     }
@@ -376,8 +446,16 @@ struct Out {
 }
 
 impl Out {
-    fn head(&mut self, status: &str, mime: &str, len: Option<u64>, extra: &str) -> std::io::Result<()> {
-        let len = len.map(|l| format!("Content-Length: {l}\r\n")).unwrap_or_default();
+    fn head(
+        &mut self,
+        status: &str,
+        mime: &str,
+        len: Option<u64>,
+        extra: &str,
+    ) -> std::io::Result<()> {
+        let len = len
+            .map(|l| format!("Content-Length: {l}\r\n"))
+            .unwrap_or_default();
         // Chromecasts play cross-origin: they need the CORS headers.
         let h = format!(
             "HTTP/1.1 {status}\r\nContent-Type: {mime}\r\n{len}{extra}Access-Control-Allow-Origin: *\r\n\
@@ -426,7 +504,10 @@ impl Out {
 }
 
 fn waiting(e: &std::io::Error) -> bool {
-    matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted)
+    matches!(
+        e.kind(),
+        ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+    )
 }
 
 #[cfg(test)]
@@ -456,7 +537,10 @@ mod tests {
         let mut all = Vec::new();
         s.read_to_end(&mut all).unwrap();
         let cut = all.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
-        (String::from_utf8_lossy(&all[..cut]).into_owned(), all[cut + 4..].to_vec())
+        (
+            String::from_utf8_lossy(&all[..cut]).into_owned(),
+            all[cut + 4..].to_vec(),
+        )
     }
 
     #[test]
@@ -471,20 +555,39 @@ mod tests {
         let url = server.add("1/a.mp4", item);
         let (h, b) = get(&url, "");
         assert!(h.starts_with("HTTP/1.1 200"), "{h}");
-        assert!(h.contains("contentFeatures.dlna.org: DLNA.ORG_OP=01") && h.contains("Content-Type: video/mp4"));
+        assert!(
+            h.contains("contentFeatures.dlna.org: DLNA.ORG_OP=01")
+                && h.contains("Content-Type: video/mp4")
+        );
         assert_eq!(b.len(), 256);
         let (h, b) = get(&url, "Range: bytes=250-\r\n");
-        assert!(h.starts_with("HTTP/1.1 206") && h.contains("Content-Range: bytes 250-255/256"), "{h}");
+        assert!(
+            h.starts_with("HTTP/1.1 206") && h.contains("Content-Range: bytes 250-255/256"),
+            "{h}"
+        );
         assert_eq!(b, [250, 251, 252, 253, 254, 255]);
-        assert!(get(&url, "Range: bytes=256-\r\n").0.starts_with("HTTP/1.1 416"));
+        assert!(
+            get(&url, "Range: bytes=256-\r\n")
+                .0
+                .starts_with("HTTP/1.1 416")
+        );
         // Passed on from another server (here: ours), parts included.
-        let relay = server.add("2/b.mp4", Item::new(Content::Remote(url.clone()), "audio/mpeg"));
+        let relay = server.add(
+            "2/b.mp4",
+            Item::new(Content::Remote(url.clone()), "audio/mpeg"),
+        );
         let (h, b) = get(&relay, "Range: bytes=1-3\r\n");
-        assert!(h.starts_with("HTTP/1.1 206") && h.contains("Content-Type: audio/mpeg"), "{h}");
+        assert!(
+            h.starts_with("HTTP/1.1 206") && h.contains("Content-Type: audio/mpeg"),
+            "{h}"
+        );
         assert_eq!(b, [1, 2, 3]);
         // Filled in late.
         let lazy = Lazy::default();
-        let text = server.add("1/s.vtt", Item::new(Content::Text(lazy.clone()), "text/vtt"));
+        let text = server.add(
+            "1/s.vtt",
+            Item::new(Content::Text(lazy.clone()), "text/vtt"),
+        );
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(300));
             let _ = lazy.set(b"WEBVTT".to_vec());
@@ -494,7 +597,11 @@ mod tests {
         assert_eq!(b, b"WEBVTT");
         // Nothing without the secret, outside the list, or after it ends.
         let host = url.split('/').nth(2).unwrap().to_owned();
-        for bad in [format!("http://{host}/1/a.mp4"), format!("http://{host}/"), url.replace("a.mp4", "../../etc/passwd")] {
+        for bad in [
+            format!("http://{host}/1/a.mp4"),
+            format!("http://{host}/"),
+            url.replace("a.mp4", "../../etc/passwd"),
+        ] {
             assert!(get(&bad, "").0.starts_with("HTTP/1.1 404"), "{bad}");
         }
         server.clear();

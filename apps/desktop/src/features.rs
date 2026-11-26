@@ -14,8 +14,8 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::settings::Settings;
 use crate::{
-    AppWindow, SeekMark, SignalStage, TranscriptLine, clip, enhance, intro, palette, party, remote, signal, silence, sponsor, subsync,
-    thumbs, transcribe,
+    AppWindow, SeekMark, SignalStage, TranscriptLine, clip, enhance, intro, palette, party, remote,
+    signal, silence, sponsor, subsync, thumbs, transcribe,
 };
 
 thread_local! {
@@ -96,7 +96,11 @@ fn install_signal_path(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell
         let stages: Vec<SignalStage> = r
             .stages
             .into_iter()
-            .map(|s| SignalStage { title: s.title.into(), detail: s.detail.into(), level: s.level })
+            .map(|s| SignalStage {
+                title: s.title.into(),
+                detail: s.detail.into(),
+                level: s.level,
+            })
             .collect();
         ui.set_signal_stages(ModelRc::new(VecModel::from(stages)));
         ui.set_signal_verdict(r.verdict.into());
@@ -164,7 +168,16 @@ fn install_clips(ui: &AppWindow, player: &Rc<Player>) {
         let title = ui.get_media_title().to_string();
         let out = clip::output_path(&clip::videos_dir(), &title, start, format);
         let id = |name: &str| p.get_string(name).and_then(|v| v.parse::<i64>().ok());
-        let job = clip::Job { source, start, end, format, aid: id("aid"), vid: id("vid"), out, extra: Vec::new() };
+        let job = clip::Job {
+            source,
+            start,
+            end,
+            format,
+            aid: id("aid"),
+            vid: id("vid"),
+            out,
+            extra: Vec::new(),
+        };
         let cancel = clip::cancel_flag();
         CLIP_CANCEL.with_borrow_mut(|c| *c = Some(cancel.clone()));
         ui.set_clip_working(true);
@@ -259,7 +272,10 @@ fn install_intros(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Sett
         let video = ui.get_has_video();
         INTRO.with_borrow_mut(|s| {
             if s.path != path {
-                *s = IntroState { path: path.clone(), ..Default::default() };
+                *s = IntroState {
+                    path: path.clone(),
+                    ..Default::default()
+                };
             }
         });
         let sponsor = sponsors(&ui, &p, &st.borrow(), path.as_deref(), duration);
@@ -312,19 +328,28 @@ fn install_intros(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Sett
             let i = p.get_double("playlist-pos").unwrap_or(0.0);
             i + 1.0 < count
         };
-        let in_intro = marks.and_then(|m| m.intro).filter(|(a, b)| pos >= a - 0.5 && pos < b - 1.0);
-        let in_credits = marks.and_then(|m| m.credits).filter(|c| pos >= *c && has_next);
+        let in_intro = marks
+            .and_then(|m| m.intro)
+            .filter(|(a, b)| pos >= a - 0.5 && pos < b - 1.0);
+        let in_credits = marks
+            .and_then(|m| m.credits)
+            .filter(|c| pos >= *c && has_next);
         if sponsor.is_some() {
             show_skip(&ui, sponsor.as_deref(), -1.0);
         } else if let Some((_, end)) = in_intro {
-            let skip_now = mode == "auto" && INTRO.with_borrow_mut(|s| !std::mem::replace(&mut s.auto_skipped, true));
+            let skip_now = mode == "auto"
+                && INTRO.with_borrow_mut(|s| !std::mem::replace(&mut s.auto_skipped, true));
             if skip_now {
                 let _ = p.seek(player_core::Seek::Absolute(end));
                 ui.set_toast("Intro skipped".into());
             }
             show_skip(&ui, Some("Skip intro"), -1.0);
         } else if let Some(c) = in_credits {
-            let left = if mode == "auto" { NEXT_COUNTDOWN - (pos - c) } else { -1.0 };
+            let left = if mode == "auto" {
+                NEXT_COUNTDOWN - (pos - c)
+            } else {
+                -1.0
+            };
             if mode == "auto" && left <= 0.0 {
                 let _ = p.next();
             }
@@ -346,7 +371,10 @@ fn install_intros(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Sett
         let sponsor = SPONSOR.with_borrow(|s| sponsor::at(&s.skips, pos).map(|i| s.skips[i]));
         if let Some(s) = sponsor {
             skip_to_end_of(&p, s);
-        } else if let Some((_, end)) = marks.and_then(|m| m.intro).filter(|(a, b)| pos >= a - 0.5 && pos < *b) {
+        } else if let Some((_, end)) = marks
+            .and_then(|m| m.intro)
+            .filter(|(a, b)| pos >= a - 0.5 && pos < *b)
+        {
             let _ = p.seek(player_core::Seek::Absolute(end));
         } else if marks.and_then(|m| m.credits).is_some_and(|c| pos >= c) {
             let _ = p.next();
@@ -359,7 +387,11 @@ fn show_skip(ui: &AppWindow, text: Option<&str>, countdown: f64) {
     if ui.get_skip_text() != text {
         ui.set_skip_text(text.into());
     }
-    let c = if countdown >= 0.0 { countdown as f32 } else { -1.0 };
+    let c = if countdown >= 0.0 {
+        countdown as f32
+    } else {
+        -1.0
+    };
     if (ui.get_skip_countdown() - c).abs() > 0.05 {
         ui.set_skip_countdown(c);
     }
@@ -369,14 +401,26 @@ fn show_skip(ui: &AppWindow, text: Option<&str>, countdown: f64) {
 
 /// Look for sponsors in the video playing, skip them when that is wanted.
 /// Returns the Skip button's text while one plays.
-fn sponsors(ui: &AppWindow, p: &Player, settings: &Settings, path: Option<&str>, duration: f64) -> Option<String> {
+fn sponsors(
+    ui: &AppWindow,
+    p: &Player,
+    settings: &Settings,
+    path: Option<&str>,
+    duration: f64,
+) -> Option<String> {
     let mode = settings.sponsor_skip.as_str();
     let pos = crate::cast::position(p).unwrap_or(0.0);
     SPONSOR.with_borrow_mut(|s| {
         if s.path.as_deref() != path {
-            *s = SponsorState { path: path.map(str::to_owned), last_pos: pos, ..Default::default() };
+            *s = SponsorState {
+                path: path.map(str::to_owned),
+                last_pos: pos,
+                ..Default::default()
+            };
         }
-        if mode != "off" && duration > 0.0 && !std::mem::replace(&mut s.asked, true)
+        if mode != "off"
+            && duration > 0.0
+            && !std::mem::replace(&mut s.asked, true)
             && let Some(path) = path
             && let Some(id) = youtube_id(p, path)
         {
@@ -399,14 +443,26 @@ fn sponsors(ui: &AppWindow, p: &Player, settings: &Settings, path: Option<&str>,
         }
 
         // What to skip, and its marks on the seek bar.
-        let level = if mode == "off" { "" } else { settings.sponsor_kinds.as_str() };
+        let level = if mode == "off" {
+            ""
+        } else {
+            settings.sponsor_kinds.as_str()
+        };
         if s.made_for.0 != level || (s.made_for.1 - duration).abs() > 0.01 {
             s.made_for = (level.to_owned(), duration);
-            s.skips = if level.is_empty() { Vec::new() } else { sponsor::skips(&s.segments, level, duration) };
+            s.skips = if level.is_empty() {
+                Vec::new()
+            } else {
+                sponsor::skips(&s.segments, level, duration)
+            };
             let marks: Vec<SeekMark> = s
                 .skips
                 .iter()
-                .map(|k| SeekMark { start: k.start as f32, end: k.end as f32, main: k.kind.in_level("promotion") })
+                .map(|k| SeekMark {
+                    start: k.start as f32,
+                    end: k.end as f32,
+                    main: k.kind.in_level("promotion"),
+                })
                 .collect();
             ui.set_sponsor_marks(ModelRc::new(VecModel::from(marks)));
         }
@@ -419,14 +475,24 @@ fn sponsors(ui: &AppWindow, p: &Player, settings: &Settings, path: Option<&str>,
             && !s.done.contains(&now.start)
             && !settings.nav_enabled
             && !ui.get_paused()
-            && (sponsor::flowed(last, pos, p.get_double("speed").unwrap_or(1.0)) || (pos > last && silence::jumps(p)))
+            && (sponsor::flowed(last, pos, p.get_double("speed").unwrap_or(1.0))
+                || (pos > last && silence::jumps(p)))
         {
             s.done.push(now.start);
             s.last_pos = now.end;
             skip_to_end_of(p, now);
             let name = now.kind.name();
             let secs = (now.end - pos).round() as i64;
-            ui.set_toast(format!("{}{} skipped ({}:{:02})", name[..1].to_uppercase(), &name[1..], secs / 60, secs % 60).into());
+            ui.set_toast(
+                format!(
+                    "{}{} skipped ({}:{:02})",
+                    name[..1].to_uppercase(),
+                    &name[1..],
+                    secs / 60,
+                    secs % 60
+                )
+                .into(),
+            );
             return None;
         }
         Some(format!("Skip {}", now.kind.name()))
@@ -479,15 +545,22 @@ fn subtitle_file(p: &Player) -> Result<std::path::PathBuf, String> {
     if p.get_string("sid").is_none_or(|s| s == "no") {
         return Err("Turn subtitles on first: these are the ones that will be lined up.".into());
     }
-    let file = p.get_string("current-tracks/sub/external-filename").filter(|f| !f.is_empty());
+    let file = p
+        .get_string("current-tracks/sub/external-filename")
+        .filter(|f| !f.is_empty());
     let Some(file) = file.map(std::path::PathBuf::from) else {
         return Err("These subtitles are built into the film. Only subtitle files can be lined up; Z and X move these by hand.".into());
     };
-    if subsync::can_sync(&file) { Ok(file) } else { Err("Only SRT, WebVTT and ASS subtitle files can be lined up.".into()) }
+    if subsync::can_sync(&file) {
+        Ok(file)
+    } else {
+        Err("Only SRT, WebVTT and ASS subtitle files can be lined up.".into())
+    }
 }
 
 fn sync_job(p: &Player, subtitles: std::path::PathBuf) -> Result<subsync::Job, String> {
-    let video = local_path(p).ok_or("This works for files on this computer, not for streams and discs.")?;
+    let video =
+        local_path(p).ok_or("This works for files on this computer, not for streams and discs.")?;
     Ok(subsync::Job {
         video,
         aid: p.get_string("aid").and_then(|v| v.parse().ok()),
@@ -498,25 +571,54 @@ fn sync_job(p: &Player, subtitles: std::path::PathBuf) -> Result<subsync::Job, S
 
 /// Show `new` instead of the subtitles on screen. Returns what to undo.
 fn show_synced(p: &Player, job: &subsync::Job, new: Vec<u8>) -> Result<Synced, String> {
-    let dir = crate::settings::cache_dir().ok_or("no cache folder")?.join("subtitles");
+    let dir = crate::settings::cache_dir()
+        .ok_or("no cache folder")?
+        .join("subtitles");
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let ext = job.subtitles.extension().unwrap_or_default().to_string_lossy();
+    let ext = job
+        .subtitles
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy();
     let copy = dir.join(format!("lined-up-{}.{ext}", std::process::id()));
     std::fs::write(&copy, &new).map_err(|e| format!("{}: {e}", copy.display()))?;
     let sid = p.get_string("sid").unwrap_or_else(|| "no".into());
     let delay = p.get_double("sub-delay").unwrap_or(0.0);
-    let name = job.subtitles.file_stem().unwrap_or_default().to_string_lossy();
+    let name = job
+        .subtitles
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy();
     let lang = p.get_string("current-tracks/sub/lang").unwrap_or_default();
-    p.command(&["sub-add", &copy.to_string_lossy(), "select", &format!("{name} (lined up)"), &lang]).map_err(|e| e.to_string())?;
+    p.command(&[
+        "sub-add",
+        &copy.to_string_lossy(),
+        "select",
+        &format!("{name} (lined up)"),
+        &lang,
+    ])
+    .map_err(|e| e.to_string())?;
     let _ = p.set_double("sub-delay", 0.0);
     let added = p.get_string("sid").unwrap_or_default();
-    Ok(Synced { video: job.video.clone(), file: job.subtitles.clone(), new, sid, delay, added })
+    Ok(Synced {
+        video: job.video.clone(),
+        file: job.subtitles.clone(),
+        new,
+        sid,
+        delay,
+        added,
+    })
 }
 
 fn install_subsync(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Settings>>) {
     // Copies shown in earlier sessions (mpv keeps what it has read).
-    if let Some(dir) = crate::settings::cache_dir().and_then(|d| std::fs::read_dir(d.join("subtitles")).ok()) {
-        for e in dir.flatten().filter(|e| e.file_name().to_string_lossy().starts_with("lined-up-")) {
+    if let Some(dir) =
+        crate::settings::cache_dir().and_then(|d| std::fs::read_dir(d.join("subtitles")).ok())
+    {
+        for e in dir
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with("lined-up-"))
+        {
             let _ = std::fs::remove_file(e.path());
         }
     }
@@ -527,7 +629,12 @@ fn install_subsync(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Set
             return;
         }
         // The panel opened again on the same film: what was done still stands.
-        if ui.get_subsync_done() && SYNCED.with_borrow(|s| s.as_ref().is_some_and(|s| p.get_string("sid").as_deref() == Some(&s.added))) {
+        if ui.get_subsync_done()
+            && SYNCED.with_borrow(|s| {
+                s.as_ref()
+                    .is_some_and(|s| p.get_string("sid").as_deref() == Some(&s.added))
+            })
+        {
             return;
         }
         ui.set_subsync_done(false);
@@ -594,11 +701,18 @@ fn install_subsync(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Set
     ui.on_sub_sync_keep(move || {
         let Some(ui) = weak.upgrade() else { return };
         let Some(s) = SYNCED.take() else { return };
-        let name = s.file.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let name = s
+            .file
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         match subsync::replace(&s.file, &s.new, true) {
             Ok(()) => {
                 ui.set_subsync_done(false);
-                ui.set_subsync_status(format!("Saved in {name}. The original is next to it, as {name}.orig.").into());
+                ui.set_subsync_status(
+                    format!("Saved in {name}. The original is next to it, as {name}.orig.").into(),
+                );
             }
             Err(e) => {
                 ui.set_subsync_status(format!("Couldn't save {name}: {e}").into());
@@ -624,7 +738,10 @@ fn install_subsync(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Set
     let (p, weak) = (player.clone(), ui.as_weak());
     every(ui, Duration::from_millis(1000), move || {
         let Some(ui) = weak.upgrade() else { return };
-        let stale = SYNCED.with_borrow(|s| s.as_ref().is_some_and(|s| local_path(&p).as_deref() != Some(&s.video)));
+        let stale = SYNCED.with_borrow(|s| {
+            s.as_ref()
+                .is_some_and(|s| local_path(&p).as_deref() != Some(&s.video))
+        });
         if stale {
             SYNCED.set(None);
             ui.set_subsync_done(false);
@@ -736,7 +853,12 @@ fn install_transcripts(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell
         if ui.get_transcript_working() {
             return;
         }
-        let disc = path.as_deref().is_some_and(|s| s.starts_with("dvd") || crate::dvdmenu::is_menu_path(s) || s.starts_with("bd://") || s.starts_with("cdda"));
+        let disc = path.as_deref().is_some_and(|s| {
+            s.starts_with("dvd")
+                || crate::dvdmenu::is_menu_path(s)
+                || s.starts_with("bd://")
+                || s.starts_with("cdda")
+        });
         let (can, status) = match (&path, transcribe::whisper_cli()) {
             (None, _) => (false, "Open a file first.".to_owned()),
             (Some(_), _) if disc => (false, "Discs can't be transcribed directly: rip the title first.".to_owned()),
@@ -774,7 +896,9 @@ fn install_transcripts(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell
     let (p, weak) = (player.clone(), ui.as_weak());
     ui.on_transcribe(move |translate| {
         let Some(ui) = weak.upgrade() else { return };
-        let Some(source) = p.get_string("path").filter(|s| !s.is_empty()) else { return };
+        let Some(source) = p.get_string("path").filter(|s| !s.is_empty()) else {
+            return;
+        };
         let job = transcribe::Job {
             source,
             aid: p.get_string("aid").and_then(|v| v.parse().ok()),
@@ -810,15 +934,31 @@ fn install_transcripts(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell
                         crate::with_player(|p| {
                             // Only onto the file it was made for.
                             if p.get_string("path").as_deref() == Some(source.as_str()) {
-                                let title = if job.translate { "Speech (English)" } else { "Speech" };
-                                let _ = p.command(&["sub-add", &srt.to_string_lossy(), "select", title]);
+                                let title = if job.translate {
+                                    "Speech (English)"
+                                } else {
+                                    "Speech"
+                                };
+                                let _ = p.command(&[
+                                    "sub-add",
+                                    &srt.to_string_lossy(),
+                                    "select",
+                                    title,
+                                ]);
                             }
                         });
                         load_transcript(&ui, Some(&srt));
-                        ui.set_transcript_status("Done: the subtitles are on. Search them below.".into());
+                        ui.set_transcript_status(
+                            "Done: the subtitles are on. Search them below.".into(),
+                        );
                     }
                     Err(e) => ui.set_transcript_status(
-                        if e == "Cancelled" { e } else { format!("Couldn't make subtitles: {e}") }.into(),
+                        if e == "Cancelled" {
+                            e
+                        } else {
+                            format!("Couldn't make subtitles: {e}")
+                        }
+                        .into(),
                     ),
                 }
             });
@@ -929,7 +1069,10 @@ fn party_file(p: &Player) -> String {
 
 fn party_people(ui: &AppWindow, pt: &party::Party, names: Vec<String>) {
     let list = if pt.hosting {
-        let mut all = vec![format!("{} (host, you)", party::clean_name(&ui.get_party_name()))];
+        let mut all = vec![format!(
+            "{} (host, you)",
+            party::clean_name(&ui.get_party_name())
+        )];
         all.extend(pt.guests());
         pt.send_people(&all);
         all
@@ -942,7 +1085,9 @@ fn party_people(ui: &AppWindow, pt: &party::Party, names: Vec<String>) {
 
 fn install_party(ui: &AppWindow, player: &Rc<Player>) {
     if ui.get_party_name().is_empty() {
-        let user = std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default();
+        let user = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_default();
         ui.set_party_name(party::clean_name(&user).into());
     }
     let weak = ui.as_weak();
@@ -954,7 +1099,12 @@ fn install_party(ui: &AppWindow, player: &Rc<Player>) {
                 ui.set_party_mode(1);
                 ui.set_party_status("Waiting for the others to join.".into());
                 party_people(&ui, &pt, Vec::new());
-                PARTY.with_borrow_mut(|s| *s = PartyState { party: Some(pt), ..Default::default() });
+                PARTY.with_borrow_mut(|s| {
+                    *s = PartyState {
+                        party: Some(pt),
+                        ..Default::default()
+                    }
+                });
             }
             Err(e) => ui.set_party_status(format!("Couldn't host: {e}").into()),
         }
@@ -967,7 +1117,12 @@ fn install_party(ui: &AppWindow, player: &Rc<Player>) {
             Ok(pt) => {
                 ui.set_party_mode(2);
                 ui.set_party_status("Joined: open the same file as the host.".into());
-                PARTY.with_borrow_mut(|s| *s = PartyState { party: Some(pt), ..Default::default() });
+                PARTY.with_borrow_mut(|s| {
+                    *s = PartyState {
+                        party: Some(pt),
+                        ..Default::default()
+                    }
+                });
             }
             Err(e) => ui.set_party_status(format!("Couldn't join: {e}").into()),
         }
@@ -999,26 +1154,47 @@ fn install_party(ui: &AppWindow, player: &Rc<Player>) {
                     party::Event::Control(c) => {
                         // A guest asks: do it here; the broadcast below tells everyone.
                         match c {
-                            party::Control::Pause => { let _ = p.set_pause(true); }
-                            party::Control::Play => { let _ = p.set_pause(false); }
-                            party::Control::Seek(t) => { let _ = p.seek(player_core::Seek::Absolute(t)); }
+                            party::Control::Pause => {
+                                let _ = p.set_pause(true);
+                            }
+                            party::Control::Play => {
+                                let _ = p.set_pause(false);
+                            }
+                            party::Control::Seek(t) => {
+                                let _ = p.seek(player_core::Seek::Absolute(t));
+                            }
                         }
                         hush = true;
                         st.last_broadcast = None;
                     }
                     party::Event::State(host) => {
                         if !file.is_empty() && host.file != file {
-                            ui.set_party_status(format!("The host is playing “{}”: open the same file to follow.", host.file).into());
+                            ui.set_party_status(
+                                format!(
+                                    "The host is playing “{}”: open the same file to follow.",
+                                    host.file
+                                )
+                                .into(),
+                            );
                             continue;
                         }
                         if file.is_empty() {
-                            ui.set_party_status(format!("The host is playing “{}”: open it to follow.", host.file).into());
+                            ui.set_party_status(
+                                format!("The host is playing “{}”: open it to follow.", host.file)
+                                    .into(),
+                            );
                             continue;
                         }
                         ui.set_party_status("In step with the host.".into());
                         let (pause, seek) = party::follow(&host, paused, pos, 0.15);
-                        if let Some(pz) = pause { let _ = p.set_pause(pz); hush = true; }
-                        if let Some(t) = seek { let _ = p.seek(player_core::Seek::Absolute(t)); hush = true; }
+                        if let Some(pz) = pause {
+                            let _ = p.set_pause(pz);
+                            hush = true;
+                        }
+                        if let Some(t) = seek {
+                            let _ = p.seek(player_core::Seek::Absolute(t));
+                            hush = true;
+                        }
                     }
                     party::Event::People(names) => party_people(&ui, pt, names),
                     party::Event::Closed(why) => ended = Some(why),
@@ -1033,9 +1209,18 @@ fn install_party(ui: &AppWindow, player: &Rc<Player>) {
             let speed = p.get_double("speed").unwrap_or(1.0);
             let action = match st.last {
                 Some((lp, lpos, at)) if !quiet => {
-                    let expected = lpos + if lp { 0.0 } else { now.duration_since(at).as_secs_f64() * speed };
+                    let expected = lpos
+                        + if lp {
+                            0.0
+                        } else {
+                            now.duration_since(at).as_secs_f64() * speed
+                        };
                     if lp != paused {
-                        Some(if paused { party::Control::Pause } else { party::Control::Play })
+                        Some(if paused {
+                            party::Control::Pause
+                        } else {
+                            party::Control::Play
+                        })
                     } else if (pos - expected).abs() > 2.0 {
                         Some(party::Control::Seek(pos))
                     } else {
@@ -1046,9 +1231,15 @@ fn install_party(ui: &AppWindow, player: &Rc<Player>) {
             };
             st.last = Some((paused, pos, now));
             if pt.hosting {
-                let due = st.last_broadcast.is_none_or(|t| now.duration_since(t) >= Duration::from_secs(1));
+                let due = st
+                    .last_broadcast
+                    .is_none_or(|t| now.duration_since(t) >= Duration::from_secs(1));
                 if (due || action.is_some()) && !file.is_empty() {
-                    pt.broadcast(&party::Shared { paused, position: pos, file });
+                    pt.broadcast(&party::Shared {
+                        paused,
+                        position: pos,
+                        file,
+                    });
                     st.last_broadcast = Some(now);
                 }
             } else if let Some(a) = action {
@@ -1068,13 +1259,23 @@ fn install_party(ui: &AppWindow, player: &Rc<Player>) {
 fn refresh_rate(ui: &AppWindow) -> Option<f64> {
     use slint::winit_030::WinitWindowAccessor;
     ui.window()
-        .with_winit_window(|w| w.current_monitor().and_then(|m| m.refresh_rate_millihertz()))
+        .with_winit_window(|w| {
+            w.current_monitor()
+                .and_then(|m| m.refresh_rate_millihertz())
+        })
         .flatten()
         .map(|mhz| f64::from(mhz) / 1000.0)
 }
 
 /// Menu and toast names of `settings::TONE_MAPS`, in order.
-const TONE_MAP_NAMES: &[&str] = &["Automatic", "Balanced (BT.2390)", "Smooth (spline)", "Filmic (Hable)", "Bright (Mobius)", "Clip (no tone-mapping)"];
+const TONE_MAP_NAMES: &[&str] = &[
+    "Automatic",
+    "Balanced (BT.2390)",
+    "Smooth (spline)",
+    "Filmic (Hable)",
+    "Bright (Mobius)",
+    "Clip (no tone-mapping)",
+];
 
 fn install_enhance(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Settings>>) {
     // Dev aid (with --snapshot): start with the before / after split on.
@@ -1095,7 +1296,10 @@ fn install_enhance(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Set
         let Some(ui) = weak.upgrade() else { return };
         ui.set_s_tone_map(i);
         ui.invoke_settings_changed();
-        let name = TONE_MAP_NAMES.get(i as usize).copied().unwrap_or("Automatic");
+        let name = TONE_MAP_NAMES
+            .get(i as usize)
+            .copied()
+            .unwrap_or("Automatic");
         ui.set_toast(format!("HDR tone-mapping: {name}").into());
     });
     // Apply what the settings and the split ask for; the split only once
@@ -1113,14 +1317,19 @@ fn install_enhance(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Set
         }
         let (mode, smooth, tone) = {
             let s = settings.borrow();
-            (s.video_enhance.clone(), s.smooth_motion, (s.hdr_tone_map.clone(), s.hdr_peak_detect))
+            (
+                s.video_enhance.clone(),
+                s.smooth_motion,
+                (s.hdr_tone_map.clone(), s.hdr_peak_detect),
+            )
         };
         if applied_tone.borrow().as_ref() != Some(&tone) {
             enhance::set_tone_mapping(&p, &tone.0, tone.1);
             applied_tone.replace(Some(tone));
         }
         let split = (ui.get_compare_on() && ui.get_has_video() && mode != "off").then(|| {
-            (enhance::window_to_video(&p, f64::from(ui.get_compare_split())) * 1000.0).round() as u32
+            (enhance::window_to_video(&p, f64::from(ui.get_compare_split())) * 1000.0).round()
+                as u32
         });
         // Wait for the split to rest for ~3 ticks.
         let (last, n) = moving.get();
@@ -1133,7 +1342,9 @@ fn install_enhance(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Set
         if prev.as_ref() == Some(&want) {
             return;
         }
-        if prev.as_ref().is_none_or(|(m, s, _)| *m != mode || *s != split)
+        if prev
+            .as_ref()
+            .is_none_or(|(m, s, _)| *m != mode || *s != split)
             && let Err(e) = enhance::apply(&p, &mode, split.map(|s| f64::from(s) / 1000.0))
         {
             ui.set_toast(format!("Video enhancement: {e}").into());

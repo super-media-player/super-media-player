@@ -12,11 +12,36 @@ use crate::{AppWindow, PaletteItem};
 /// Id, title, keywords (not shown, but matched), shortcut.
 const ACTIONS: &[(&str, &str, &str, &str)] = &[
     ("open-files", "Open files", "add load browse", "Ctrl+O"),
-    ("open-folder", "Open folder", "directory album", "Ctrl+Shift+O"),
-    ("open-url", "Open location (URL or path)", "link stream youtube paste", "Ctrl+U"),
-    ("open-disc", "Play disc in drive", "dvd blu-ray bluray cd", "Ctrl+D"),
-    ("disc-menu", "Disc menu", "dvd menu root title", "Ctrl+Shift+D"),
-    ("dvd-film", "Play the DVD's main film (no menu)", "dvd skip menu", ""),
+    (
+        "open-folder",
+        "Open folder",
+        "directory album",
+        "Ctrl+Shift+O",
+    ),
+    (
+        "open-url",
+        "Open location (URL or path)",
+        "link stream youtube paste",
+        "Ctrl+U",
+    ),
+    (
+        "open-disc",
+        "Play disc in drive",
+        "dvd blu-ray bluray cd",
+        "Ctrl+D",
+    ),
+    (
+        "disc-menu",
+        "Disc menu",
+        "dvd menu root title",
+        "Ctrl+Shift+D",
+    ),
+    (
+        "dvd-film",
+        "Play the DVD's main film (no menu)",
+        "dvd skip menu",
+        "",
+    ),
     ("rip-disc", "Rip & play disc with MakeMKV", "copy", ""),
     ("add-subtitle", "Load subtitle file", "srt ass", ""),
     ("play", "Play / pause", "resume stop", "Space"),
@@ -24,7 +49,12 @@ const ACTIONS: &[(&str, &str, &str, &str)] = &[
     ("next", "Next", "skip track", "N"),
     ("prev", "Previous", "back track", "P"),
     ("start-over", "Start over", "beginning restart", "Home"),
-    ("skip", "Skip intro / credits / sponsor", "opening ending next episode sponsorblock youtube", ""),
+    (
+        "skip",
+        "Skip intro / credits / sponsor",
+        "opening ending next episode sponsorblock youtube",
+        "",
+    ),
     ("ab-loop", "A-B repeat", "loop section", "A"),
     ("shuffle", "Shuffle", "random", ""),
     ("repeat-off", "Repeat: off", "loop", ""),
@@ -34,36 +64,126 @@ const ACTIONS: &[(&str, &str, &str, &str)] = &[
     ("speed-1", "Speed 1× (normal)", "", ""),
     ("speed-1.5", "Speed 1.5×", "fast", ""),
     ("speed-2", "Speed 2×", "fast", ""),
-    ("skip-silence", "Skip silence on / off", "pauses podcast lecture audiobook trim smart speed", ""),
+    (
+        "skip-silence",
+        "Skip silence on / off",
+        "pauses podcast lecture audiobook trim smart speed",
+        "",
+    ),
     ("mute", "Mute / unmute", "sound volume", "M"),
-    ("night", "Night mode", "compress loud quiet volume level", ""),
-    ("dialogue", "Dialogue boost", "voice speech clear centre center", ""),
-    ("karaoke", "Karaoke (remove vocals, big lyrics)", "sing vocal remove", ""),
-    ("signal", "Signal path", "bit-perfect audiophile sample rate dac", ""),
+    (
+        "night",
+        "Night mode",
+        "compress loud quiet volume level",
+        "",
+    ),
+    (
+        "dialogue",
+        "Dialogue boost",
+        "voice speech clear centre center",
+        "",
+    ),
+    (
+        "karaoke",
+        "Karaoke (remove vocals, big lyrics)",
+        "sing vocal remove",
+        "",
+    ),
+    (
+        "signal",
+        "Signal path",
+        "bit-perfect audiophile sample rate dac",
+        "",
+    ),
     ("equalizer", "Equalizer", "eq bass treble", "E"),
     ("tracks", "Audio and subtitle tracks", "language", ""),
     ("subs-off", "Subtitles off", "", ""),
-    ("transcript", "Subtitles from speech, and search", "whisper transcribe generate find said", ""),
+    (
+        "transcript",
+        "Subtitles from speech, and search",
+        "whisper transcribe generate find said",
+        "",
+    ),
     ("enhance-0", "Video enhancement: off", "shader", ""),
-    ("enhance-1", "Video enhancement: sharpen (CAS)", "shader", ""),
-    ("enhance-2", "Video enhancement: upscale (AMD FSR)", "shader super resolution", ""),
-    ("enhance-3", "Video enhancement: anime (Anime4K)", "shader upscale", ""),
+    (
+        "enhance-1",
+        "Video enhancement: sharpen (CAS)",
+        "shader",
+        "",
+    ),
+    (
+        "enhance-2",
+        "Video enhancement: upscale (AMD FSR)",
+        "shader super resolution",
+        "",
+    ),
+    (
+        "enhance-3",
+        "Video enhancement: anime (Anime4K)",
+        "shader upscale",
+        "",
+    ),
     ("compare", "Compare before / after", "split enhancement", ""),
-    ("tonemap-0", "HDR tone-mapping: automatic", "hdr dolby vision hdr10 brightness", ""),
-    ("tonemap-1", "HDR tone-mapping: balanced (BT.2390)", "hdr hdr10 brightness", ""),
-    ("tonemap-2", "HDR tone-mapping: smooth (spline)", "hdr hdr10 brightness", ""),
-    ("tonemap-3", "HDR tone-mapping: filmic (Hable)", "hdr hdr10 brightness", ""),
-    ("tonemap-4", "HDR tone-mapping: bright (Mobius)", "hdr hdr10 brightness", ""),
-    ("tonemap-5", "HDR tone-mapping: clip", "hdr hdr10 brightness", ""),
-    ("smooth", "Smooth motion", "interpolation frame blend judder", ""),
+    (
+        "tonemap-0",
+        "HDR tone-mapping: automatic",
+        "hdr dolby vision hdr10 brightness",
+        "",
+    ),
+    (
+        "tonemap-1",
+        "HDR tone-mapping: balanced (BT.2390)",
+        "hdr hdr10 brightness",
+        "",
+    ),
+    (
+        "tonemap-2",
+        "HDR tone-mapping: smooth (spline)",
+        "hdr hdr10 brightness",
+        "",
+    ),
+    (
+        "tonemap-3",
+        "HDR tone-mapping: filmic (Hable)",
+        "hdr hdr10 brightness",
+        "",
+    ),
+    (
+        "tonemap-4",
+        "HDR tone-mapping: bright (Mobius)",
+        "hdr hdr10 brightness",
+        "",
+    ),
+    (
+        "tonemap-5",
+        "HDR tone-mapping: clip",
+        "hdr hdr10 brightness",
+        "",
+    ),
+    (
+        "smooth",
+        "Smooth motion",
+        "interpolation frame blend judder",
+        "",
+    ),
     ("clip", "Save a clip", "export cut gif share", ""),
     ("screenshot", "Take screenshot", "picture", "S"),
     ("frame-next", "Next frame", "step", "."),
     ("frame-prev", "Previous frame", "step", ","),
-    ("navigation", "Advanced navigation", "jog shuttle scrub step frame edit jkl", "Ctrl+J"),
+    (
+        "navigation",
+        "Advanced navigation",
+        "jog shuttle scrub step frame edit jkl",
+        "Ctrl+J",
+    ),
     ("fullscreen", "Fullscreen", "", "F"),
     ("playlist", "Show / hide playlist", "queue", "L"),
-    ("music-info", "About this song", "lyrics artist album cover", "I"),
+    (
+        "music-info",
+        "About this song",
+        "lyrics artist album cover",
+        "I",
+    ),
     ("view-player", "View: media player", "skin", ""),
     ("view-compact", "View: compact", "skin small", ""),
     ("view-classic", "View: classic deck", "skin winamp", ""),
@@ -76,26 +196,91 @@ const ACTIONS: &[(&str, &str, &str, &str)] = &[
     ("vis-4", "Music visual: stereo scope", "visualizer", ""),
     ("vis-5", "Music visual: spectrum (CQT)", "visualizer", ""),
     ("vis-6", "Music visual: spectrogram", "visualizer", ""),
-    ("vis-7", "Music visual: MilkDrop (projectM)", "visualizer winamp presets", ""),
+    (
+        "vis-7",
+        "Music visual: MilkDrop (projectM)",
+        "visualizer winamp presets",
+        "",
+    ),
     ("vis-8", "Music visual: none", "visualizer", ""),
-    ("milkdrop-next", "Next MilkDrop preset", "visualizer projectm change", ""),
-    ("cast", "Cast to a TV or speaker", "chromecast dlna screen send stream", ""),
+    (
+        "milkdrop-next",
+        "Next MilkDrop preset",
+        "visualizer projectm change",
+        "",
+    ),
+    (
+        "cast",
+        "Cast to a TV or speaker",
+        "chromecast dlna screen send stream",
+        "",
+    ),
     ("cast-stop", "Stop casting", "chromecast dlna", ""),
     ("remote", "Phone remote", "mobile control qr", ""),
     ("party", "Watch together", "sync friends party", ""),
     ("jump", "Jump to time", "go to seek position", "Ctrl+T"),
-    ("media", "Media library", "albums artists songs videos music collection continue watching search", "Ctrl+Shift+M"),
-    ("media-albums", "Media library: albums", "covers records", ""),
-    ("media-artists", "Media library: artists", "bands singers", ""),
-    ("media-videos", "Media library: videos", "films movies series", ""),
-    ("library", "Show saved links", "library favourites favorites bookmarks urls streams radio stations", "Ctrl+Shift+L"),
+    (
+        "media",
+        "Media library",
+        "albums artists songs videos music collection continue watching search",
+        "Ctrl+Shift+M",
+    ),
+    (
+        "media-albums",
+        "Media library: albums",
+        "covers records",
+        "",
+    ),
+    (
+        "media-artists",
+        "Media library: artists",
+        "bands singers",
+        "",
+    ),
+    (
+        "media-videos",
+        "Media library: videos",
+        "films movies series",
+        "",
+    ),
+    (
+        "library",
+        "Show saved links",
+        "library favourites favorites bookmarks urls streams radio stations",
+        "Ctrl+Shift+L",
+    ),
     ("radio", "Internet radio", "stations fm directory live", ""),
     ("podcasts", "Podcasts", "episodes shows subscribe rss", ""),
-    ("network", "Network (DLNA, SMB, SFTP)", "nas share server samba webdav upnp", ""),
-    ("save-link", "Save what's playing to the Library", "favourite favorite star url", ""),
-    ("find-subs", "Find subtitles online", "opensubtitles download srt search", ""),
-    ("record", "Record this stream / stop recording", "save capture radio dump", ""),
-    ("convert", "Save a clip or convert the file", "export mp4 mp3 flac opus whole", ""),
+    (
+        "network",
+        "Network (DLNA, SMB, SFTP)",
+        "nas share server samba webdav upnp",
+        "",
+    ),
+    (
+        "save-link",
+        "Save what's playing to the Library",
+        "favourite favorite star url",
+        "",
+    ),
+    (
+        "find-subs",
+        "Find subtitles online",
+        "opensubtitles download srt search",
+        "",
+    ),
+    (
+        "record",
+        "Record this stream / stop recording",
+        "save capture radio dump",
+        "",
+    ),
+    (
+        "convert",
+        "Save a clip or convert the file",
+        "export mp4 mp3 flac opus whole",
+        "",
+    ),
     ("seek+5", "Forward 5 seconds", "skip", ""),
     ("seek-5", "Back 5 seconds", "rewind", ""),
     ("seek+30", "Forward 30 seconds", "skip", ""),
@@ -106,30 +291,100 @@ const ACTIONS: &[(&str, &str, &str, &str)] = &[
     ("seek-600", "Back 10 minutes", "rewind", ""),
     ("volume-up", "Volume up", "louder", ""),
     ("volume-down", "Volume down", "quieter", ""),
-    ("audio-delay+", "Sound later (+100 ms)", "sync audio delay", ""),
-    ("audio-delay-", "Sound earlier (-100 ms)", "sync audio delay", ""),
-    ("sub-delay+", "Subtitles later (+100 ms)", "sync subtitle delay", ""),
-    ("sub-delay-", "Subtitles earlier (-100 ms)", "sync subtitle delay", ""),
+    (
+        "audio-delay+",
+        "Sound later (+100 ms)",
+        "sync audio delay",
+        "",
+    ),
+    (
+        "audio-delay-",
+        "Sound earlier (-100 ms)",
+        "sync audio delay",
+        "",
+    ),
+    (
+        "sub-delay+",
+        "Subtitles later (+100 ms)",
+        "sync subtitle delay",
+        "",
+    ),
+    (
+        "sub-delay-",
+        "Subtitles earlier (-100 ms)",
+        "sync subtitle delay",
+        "",
+    ),
     ("zoom-in", "Zoom in", "picture bigger", ""),
     ("zoom-out", "Zoom out", "picture smaller", ""),
-    ("shortcuts-edit", "Change keyboard shortcuts", "keys bind mouse wheel", ""),
-    ("bookmark-add", "Add a bookmark here", "mark remember position", "Ctrl+B"),
-    ("playlist-save", "Save playlist", "m3u xspf export", "Ctrl+S"),
+    (
+        "shortcuts-edit",
+        "Change keyboard shortcuts",
+        "keys bind mouse wheel",
+        "",
+    ),
+    (
+        "bookmark-add",
+        "Add a bookmark here",
+        "mark remember position",
+        "Ctrl+B",
+    ),
+    (
+        "playlist-save",
+        "Save playlist",
+        "m3u xspf export",
+        "Ctrl+S",
+    ),
     ("playlist-open", "Open playlist", "m3u xspf pls import", ""),
     ("playlist-sort", "Sort playlist by title", "order", ""),
-    ("playlist-dedupe", "Remove duplicates from the playlist", "tidy", ""),
+    (
+        "playlist-dedupe",
+        "Remove duplicates from the playlist",
+        "tidy",
+        "",
+    ),
     ("chapter-next", "Next chapter", "skip", "PgDn"),
     ("chapter-prev", "Previous chapter", "back", "PgUp"),
-    ("media-info", "Media information", "codec bitrate hdr resolution dropped frames details", "Ctrl+I"),
-    ("picture", "Adjust picture", "brightness contrast saturation gamma hue zoom pan aspect rotate", ""),
-    ("picture-reset", "Reset picture", "zoom aspect brightness", "Alt+Backspace"),
-    ("auto-crop", "Crop black bars on / off", "letterbox pillarbox borders autocrop widescreen", "C"),
+    (
+        "media-info",
+        "Media information",
+        "codec bitrate hdr resolution dropped frames details",
+        "Ctrl+I",
+    ),
+    (
+        "picture",
+        "Adjust picture",
+        "brightness contrast saturation gamma hue zoom pan aspect rotate",
+        "",
+    ),
+    (
+        "picture-reset",
+        "Reset picture",
+        "zoom aspect brightness",
+        "Alt+Backspace",
+    ),
+    (
+        "auto-crop",
+        "Crop black bars on / off",
+        "letterbox pillarbox borders autocrop widescreen",
+        "C",
+    ),
     ("deinterlace", "Deinterlace", "interlaced tv dvd", ""),
     ("ontop", "Always on top", "pin window float", ""),
     ("audio-delay-reset", "Reset audio delay", "sync lip", ""),
     ("sub-delay-reset", "Reset subtitle delay", "sync", ""),
-    ("sub-sync", "Line up subtitles with the speech", "sync timing delay early late automatic", ""),
-    ("subtitle-look", "Subtitle look", "size colour color position background box font", ""),
+    (
+        "sub-sync",
+        "Line up subtitles with the speech",
+        "sync timing delay early late automatic",
+        "",
+    ),
+    (
+        "subtitle-look",
+        "Subtitle look",
+        "size colour color position background box font",
+        "",
+    ),
     ("sleep-1", "Sleep timer: 15 minutes", "pause stop later", ""),
     ("sleep-2", "Sleep timer: 30 minutes", "pause stop later", ""),
     ("sleep-4", "Sleep timer: 1 hour", "pause stop later", ""),
@@ -170,7 +425,11 @@ fn score(query: &str, text: &str) -> Option<i32> {
     // The typed word as it is beats letters picked from here and there:
     // "radio" is "Internet radio", not "Reset audio delay".
     let (q, text) = (query.trim().to_lowercase(), text.to_lowercase());
-    if let Some(at) = text.match_indices(&q).map(|m| m.0).find(|&i| !text[..i].ends_with(char::is_alphanumeric)) {
+    if let Some(at) = text
+        .match_indices(&q)
+        .map(|m| m.0)
+        .find(|&i| !text[..i].ends_with(char::is_alphanumeric))
+    {
         score += if at == 0 { 110 } else { 100 };
     } else if q.chars().count() > 2 && text.contains(&q) {
         score += 40;
@@ -181,12 +440,16 @@ fn score(query: &str, text: &str) -> Option<i32> {
 
 /// The palette's entries for `query`: actions, what scripts offer (id,
 /// title, key), playlist items.
-pub fn entries(query: &str, playlist: &[String], scripts: &[(String, String, String)]) -> Vec<PaletteItem> {
+pub fn entries(
+    query: &str,
+    playlist: &[String],
+    scripts: &[(String, String, String)],
+) -> Vec<PaletteItem> {
     let mut scored: Vec<(i32, PaletteItem)> = ACTIONS
         .iter()
         .filter_map(|(id, title, keys, shortcut)| {
-            let s = score(query, title)
-                .max(score(query, &format!("{title} {keys}")).map(|s| s - 4))?;
+            let s =
+                score(query, title).max(score(query, &format!("{title} {keys}")).map(|s| s - 4))?;
             Some((s, item(id, title, shortcut)))
         })
         .collect();
@@ -198,7 +461,10 @@ pub fn entries(query: &str, playlist: &[String], scripts: &[(String, String, Str
     if !query.is_empty() {
         for (i, name) in playlist.iter().enumerate() {
             if let Some(s) = score(query, name) {
-                scored.push((s - 2, item(&format!("play:{i}"), &format!("Play: {name}"), "Playlist")));
+                scored.push((
+                    s - 2,
+                    item(&format!("play:{i}"), &format!("Play: {name}"), "Playlist"),
+                ));
             }
         }
         scored.sort_by_key(|s| std::cmp::Reverse(s.0));
@@ -207,7 +473,11 @@ pub fn entries(query: &str, playlist: &[String], scripts: &[(String, String, Str
 }
 
 fn item(id: &str, title: &str, detail: &str) -> PaletteItem {
-    PaletteItem { id: id.into(), title: title.into(), detail: detail.into() }
+    PaletteItem {
+        id: id.into(),
+        title: title.into(),
+        detail: detail.into(),
+    }
 }
 
 /// Wire the palette's callbacks.
@@ -216,8 +486,16 @@ pub fn install(ui: &AppWindow) {
     ui.on_palette_query(move |q| {
         let Some(ui) = weak.upgrade() else { return };
         use slint::Model;
-        let names: Vec<String> = ui.get_playlist().iter().map(|p| p.title.to_string()).collect();
-        ui.set_palette_items(ModelRc::new(VecModel::from(entries(&q, &names, &crate::scripts::actions()))));
+        let names: Vec<String> = ui
+            .get_playlist()
+            .iter()
+            .map(|p| p.title.to_string())
+            .collect();
+        ui.set_palette_items(ModelRc::new(VecModel::from(entries(
+            &q,
+            &names,
+            &crate::scripts::actions(),
+        ))));
     });
     let weak = ui.as_weak();
     ui.on_palette_run(move |id| {
@@ -250,7 +528,10 @@ pub fn run(ui: &AppWindow, id: &str) {
         ui.invoke_play_index(i);
         return;
     }
-    if let Some(s) = id.strip_prefix("speed-").and_then(|s| s.parse::<f32>().ok()) {
+    if let Some(s) = id
+        .strip_prefix("speed-")
+        .and_then(|s| s.parse::<f32>().ok())
+    {
         ui.invoke_set_speed(s);
         return;
     }
@@ -313,7 +594,14 @@ pub fn run(ui: &AppWindow, id: &str) {
         "picture" => ui.set_picture_open(true),
         "picture-reset" => ui.invoke_basic("reset".into(), 0.0),
         "auto-crop" => ui.invoke_toggle_auto_crop(),
-        "deinterlace" => ui.invoke_basic("deinterlace".into(), if ui.get_picture().deinterlace { 0.0 } else { 1.0 }),
+        "deinterlace" => ui.invoke_basic(
+            "deinterlace".into(),
+            if ui.get_picture().deinterlace {
+                0.0
+            } else {
+                1.0
+            },
+        ),
         "ontop" => {
             ui.set_s_always_on_top(!ui.get_s_always_on_top());
             ui.invoke_settings_changed();
@@ -402,14 +690,23 @@ mod tests {
         assert!(score("mn", "Night mode").is_none());
         // Word starts beat letters in the middle.
         assert!(score("sp", "Signal path").unwrap() > score("sp", "Display").unwrap());
-        for (q, id) in [("radio", "radio"), ("network", "network"), ("disc menu", "disc-menu"), ("saved", "library"), ("mute", "mute")] {
+        for (q, id) in [
+            ("radio", "radio"),
+            ("network", "network"),
+            ("disc menu", "disc-menu"),
+            ("saved", "library"),
+            ("mute", "mute"),
+        ] {
             assert_eq!(entries(q, &[], &[])[0].id, id, "{q}");
         }
         let e = entries("karao", &[], &[]);
         assert_eq!(e[0].id, "karaoke");
         let e = entries("song two", &["Song One".into(), "Song Two".into()], &[]);
         assert!(e.iter().any(|i| i.id == "play:1"));
-        assert_eq!(entries("", &["x".into()], &[]).len(), ACTIONS.len().min(MAX_SHOWN));
+        assert_eq!(
+            entries("", &["x".into()], &[]).len(),
+            ACTIONS.len().min(MAX_SHOWN)
+        );
     }
 
     /// Every action id is handled by `run` (no "unknown action" at runtime).
@@ -419,7 +716,9 @@ mod tests {
         let body = &src[src.find("fn run(").unwrap()..src.find("#[cfg(test)]").unwrap()];
         for (id, ..) in ACTIONS {
             let handled = body.contains(&format!("\"{id}\""))
-                || ["speed-", "vis-", "enhance-", "tonemap-", "sleep-", "seek"].iter().any(|p| id.starts_with(p));
+                || ["speed-", "vis-", "enhance-", "tonemap-", "sleep-", "seek"]
+                    .iter()
+                    .any(|p| id.starts_with(p));
             assert!(handled, "{id}");
         }
     }

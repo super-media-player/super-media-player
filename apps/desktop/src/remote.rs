@@ -65,13 +65,20 @@ impl Drop for Server {
 /// 128 random bits as hex, from the system's random source.
 pub fn secret() -> String {
     let mut b = [0u8; 16];
-    let ok = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut b)).is_ok();
+    let ok = std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut b))
+        .is_ok();
     if !ok {
         // No /dev/urandom (Windows): the std hasher's random keys.
         use std::hash::{BuildHasher, Hasher};
         for chunk in b.chunks_mut(8) {
             let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-            h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+            h.write_u128(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos(),
+            );
             chunk.copy_from_slice(&h.finish().to_le_bytes());
         }
     }
@@ -111,7 +118,12 @@ pub fn start(on_command: impl Fn(Command) + Send + Sync + 'static) -> Result<Ser
                             continue;
                         }
                         clients.fetch_add(1, Ordering::Relaxed);
-                        let (st, cmd, token, clients) = (st.clone(), on_command.clone(), token.clone(), clients.clone());
+                        let (st, cmd, token, clients) = (
+                            st.clone(),
+                            on_command.clone(),
+                            token.clone(),
+                            clients.clone(),
+                        );
                         std::thread::spawn(move || {
                             let _ = serve(stream, &token, &st, &*cmd);
                             clients.fetch_sub(1, Ordering::Relaxed);
@@ -130,7 +142,12 @@ pub fn start(on_command: impl Fn(Command) + Send + Sync + 'static) -> Result<Ser
 }
 
 /// One request (the page closes the connection after each).
-fn serve(stream: TcpStream, token: &str, state: &Mutex<State>, on_command: &dyn Fn(Command)) -> std::io::Result<()> {
+fn serve(
+    stream: TcpStream,
+    token: &str,
+    state: &Mutex<State>,
+    on_command: &dyn Fn(Command),
+) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
@@ -155,18 +172,29 @@ fn serve(stream: TcpStream, token: &str, state: &Mutex<State>, on_command: &dyn 
     out.write_all(body.as_bytes())
 }
 
-fn route(method: &str, target: &str, token: &str, state: &Mutex<State>, on_command: &dyn Fn(Command)) -> (&'static str, &'static str, String) {
+fn route(
+    method: &str,
+    target: &str,
+    token: &str,
+    state: &Mutex<State>,
+    on_command: &dyn Fn(Command),
+) -> (&'static str, &'static str, String) {
     const NOT_FOUND: (&str, &str, &str) = ("404 Not Found", "text/plain", "not found");
     let not_found = || (NOT_FOUND.0, NOT_FOUND.1, NOT_FOUND.2.to_owned());
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(token)) else { return not_found() };
+    let Some(rest) = path.strip_prefix('/').and_then(|p| p.strip_prefix(token)) else {
+        return not_found();
+    };
     match (method, rest) {
         ("GET", "/" | "") => ("200 OK", "text/html; charset=utf-8", PAGE.to_owned()),
         ("GET", "/state") => {
             let s = state.lock().map(|s| s.clone()).unwrap_or_default();
             ("200 OK", "application/json", state_json(&s))
         }
-        ("POST", cmd) => match cmd.strip_prefix("/cmd/").and_then(|c| parse_command(c, query)) {
+        ("POST", cmd) => match cmd
+            .strip_prefix("/cmd/")
+            .and_then(|c| parse_command(c, query))
+        {
             Some(c) => {
                 on_command(c);
                 ("200 OK", "text/plain", "ok".to_owned())
@@ -239,14 +267,22 @@ pub fn qr_image(text: &str, scale: u32) -> Option<slint::SharedPixelBuffer<slint
     let px = buf.make_mut_slice();
     for y in 0..size {
         for x in 0..size {
-            let (mx, my) = ((x / scale) as i64 - border as i64, (y / scale) as i64 - border as i64);
+            let (mx, my) = (
+                (x / scale) as i64 - border as i64,
+                (y / scale) as i64 - border as i64,
+            );
             let dark = mx >= 0
                 && my >= 0
                 && (mx as u32) < w
                 && (my as u32) < w
                 && colors[(my as u32 * w + mx as u32) as usize] == qrcode::Color::Dark;
             let v = if dark { 0 } else { 255 };
-            px[(y * size + x) as usize] = slint::Rgba8Pixel { r: v, g: v, b: v, a: 255 };
+            px[(y * size + x) as usize] = slint::Rgba8Pixel {
+                r: v,
+                g: v,
+                b: v,
+                a: 255,
+            };
         }
     }
     Some(buf)
@@ -318,7 +354,10 @@ mod tests {
 
     #[test]
     fn needs_the_secret() {
-        let state = Mutex::new(State { title: "A \"film\" <x>".into(), ..Default::default() });
+        let state = Mutex::new(State {
+            title: "A \"film\" <x>".into(),
+            ..Default::default()
+        });
         let got = Mutex::new(Vec::new());
         let cmd = |c| got.lock().unwrap().push(c);
         let r = |m, t| route(m, t, "abc123", &state, &cmd);
@@ -332,9 +371,18 @@ mod tests {
         assert_eq!(r("POST", "/abc123/cmd/volume?v=999").0, "200 OK");
         assert_eq!(r("POST", "/abc123/cmd/seek?v=NaN").0, "404 Not Found");
         assert_eq!(r("POST", "/abc123/cmd/rm-rf").0, "404 Not Found");
-        assert_eq!(*got.lock().unwrap(), vec![Command::SeekRelative(-10.0), Command::Volume(150.0)]);
+        assert_eq!(
+            *got.lock().unwrap(),
+            vec![Command::SeekRelative(-10.0), Command::Volume(150.0)]
+        );
         assert_eq!(secret().len(), 32);
-        assert!(qr_image("http://192.168.1.2:47801/0123456789abcdef0123456789abcdef/", 4).is_some());
+        assert!(
+            qr_image(
+                "http://192.168.1.2:47801/0123456789abcdef0123456789abcdef/",
+                4
+            )
+            .is_some()
+        );
     }
 
     /// Over a real socket: the page and a command.

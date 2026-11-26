@@ -123,7 +123,12 @@ impl DiscPlan {
         let cover = self.cd.as_ref().and_then(|c| c.cover.as_ref());
         let _ = player.command(&["change-list", "cover-art-files", "clr", ""]);
         if let Some(c) = cover {
-            let _ = player.command(&["change-list", "cover-art-files", "append", &c.to_string_lossy()]);
+            let _ = player.command(&[
+                "change-list",
+                "cover-art-files",
+                "append",
+                &c.to_string_lossy(),
+            ]);
         }
         if options.is_empty() {
             player.load(&self.url, LoadMode::Replace)
@@ -186,7 +191,9 @@ pub fn plan_drive(
     for (dev, props) in order {
         let label = drive_label(dev, props);
         if drive_status(dev) == DriveStatus::NotReady {
-            report(format!("Waiting for the {label} to get ready (up to 25 s)…"));
+            report(format!(
+                "Waiting for the {label} to get ready (up to 25 s)…"
+            ));
         } else {
             report(format!("Checking the {label}…"));
         }
@@ -276,7 +283,10 @@ pub enum DriveState {
     Refuses,
     /// A readable disc; `kind` from udev, `uhd` when its files are mounted
     /// and say so.
-    Disc { kind: Option<DiscKind>, uhd: bool },
+    Disc {
+        kind: Option<DiscKind>,
+        uhd: bool,
+    },
     Unknown,
 }
 
@@ -373,7 +383,10 @@ fn choose(
         {
             format!("The tray of the {names} is open. Close it and try again.")
         } else {
-            format!("No {} found: the {names} has no disc it can read.", want.name())
+            format!(
+                "No {} found: the {names} has no disc it can read.",
+                want.name()
+            )
         };
         if let Some((other, _)) = found.first() {
             let place = if other.drive.is_empty() {
@@ -440,8 +453,17 @@ fn short_model(props: &[String]) -> Option<String> {
         .filter(|w| {
             !matches!(
                 *w,
-                "BD-RE" | "BD-ROM" | "DVD+-RW" | "DVD+" | "-RW" | "DVD-RW" | "DVD-RAM" | "DVD-ROM"
-                    | "DVDRAM" | "CDDVDW" | "CD-RW"
+                "BD-RE"
+                    | "BD-ROM"
+                    | "DVD+-RW"
+                    | "DVD+"
+                    | "-RW"
+                    | "DVD-RW"
+                    | "DVD-RAM"
+                    | "DVD-ROM"
+                    | "DVDRAM"
+                    | "CDDVDW"
+                    | "CD-RW"
             )
         })
         .map(|w| match w {
@@ -466,7 +488,12 @@ fn detect(dev: &str, props: &[String]) -> Option<DiscPlan> {
     let cd = || {
         let mut plan = DiscPlan::new(DiscKind::AudioCd, dev.to_owned());
         plan.url = cd_playlist(&songs, None);
-        plan.cd = Some(CdDisc { toc: toc.clone(), tracks: songs.clone(), album: None, cover: None });
+        plan.cd = Some(CdDisc {
+            toc: toc.clone(),
+            tracks: songs.clone(),
+            album: None,
+            cover: None,
+        });
         plan
     };
     // A plain audio CD has no filesystem to look at.
@@ -658,8 +685,13 @@ pub fn library_present(names: &[&str]) -> bool {
 /// folder (next to the program), the developer copy in `.devlibs`, then the
 /// system's. For optional libraries loaded at runtime.
 pub fn open_bundled_library(names: &[&str]) -> Option<libloading::Library> {
-    let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
-    let mut dirs: Vec<PathBuf> = exe_dir.iter().flat_map(|d| [d.join("lib"), d.clone()]).collect();
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf));
+    let mut dirs: Vec<PathBuf> = exe_dir
+        .iter()
+        .flat_map(|d| [d.join("lib"), d.clone()])
+        .collect();
     if let Some(dev) = std::env::var_os("SMP_EXTRA_LIBS") {
         dirs.extend(std::env::split_paths(&dev));
     }
@@ -694,7 +726,11 @@ pub fn cd_playlist(tracks: &[CdTrack], album: Option<&crate::cd::Album>) -> Stri
         let name = match album {
             Some(a) => {
                 let (artist, title) = (a.track_artist(i), a.track_title(i, t.number));
-                if artist.is_empty() { title } else { format!("{artist} - {title}") }
+                if artist.is_empty() {
+                    title
+                } else {
+                    format!("{artist} - {title}")
+                }
             }
             None => format!("Track {}", t.number),
         };
@@ -766,7 +802,11 @@ fn drive_status(dev: &str) -> DriveStatus {
 #[cfg(windows)]
 fn drive_status(dev: &str) -> DriveStatus {
     // An empty drive's root can't be read.
-    if std::fs::read_dir(format!("{dev}\\")).is_ok() { DriveStatus::DiscOk } else { DriveStatus::NoDisc }
+    if std::fs::read_dir(format!("{dev}\\")).is_ok() {
+        DriveStatus::DiscOk
+    } else {
+        DriveStatus::NoDisc
+    }
 }
 
 #[cfg(not(any(target_os = "linux", windows)))]
@@ -925,7 +965,12 @@ fn list_drives() -> Option<Vec<(String, Vec<String>)>> {
             unsafe { GetDriveTypeW(root.as_ptr()) == DRIVE_CDROM }
         })
         .map(|l| {
-            let props = ["ID_CDROM_CD=1", "ID_CDROM_DVD=1", "ID_CDROM_BD=1", "SMP_ANY_DISC=1"];
+            let props = [
+                "ID_CDROM_CD=1",
+                "ID_CDROM_DVD=1",
+                "ID_CDROM_BD=1",
+                "SMP_ANY_DISC=1",
+            ];
             (format!("{l}:"), props.map(str::to_owned).to_vec())
         })
         .collect();
@@ -995,7 +1040,9 @@ pub(crate) mod toc {
     /// "no medium", though it reports a disc.
     pub fn readable(device: &str) -> bool {
         use std::os::unix::fs::FileExt;
-        let Some(file) = open(device) else { return false };
+        let Some(file) = open(device) else {
+            return false;
+        };
         let mut buf = [0u8; 2048];
         file.read_at(&mut buf, 16 * 2048).is_ok()
     }
@@ -1034,7 +1081,18 @@ pub(crate) mod toc {
     /// drive says it has (header included), or None.
     fn read_cd_text_into(fd: i32, buf: &mut [u8]) -> Option<usize> {
         let len = buf.len().min(0xFFFF) as u16;
-        let cdb = [0x43u8, 0x00, 0x05, 0, 0, 0, 0, (len >> 8) as u8, len as u8, 0];
+        let cdb = [
+            0x43u8,
+            0x00,
+            0x05,
+            0,
+            0,
+            0,
+            0,
+            (len >> 8) as u8,
+            len as u8,
+            0,
+        ];
         let mut sense = [0u8; 32];
         let mut hdr = SgIoHdr {
             interface_id: b'S' as i32,
@@ -1151,7 +1209,10 @@ mod tests {
         let found = vec![(cd, drives[0].1.as_slice())];
         let err = choose(Some(DiscKind::Bluray), found, &[], &drives).unwrap_err();
         assert!(err.contains("No Blu-ray found"), "{err}");
-        assert!(err.contains("the Blu-ray drive (LG, /dev/sr1) has no disc"), "{err}");
+        assert!(
+            err.contains("the Blu-ray drive (LG, /dev/sr1) has no disc"),
+            "{err}"
+        );
         assert!(err.contains("an audio CD in /dev/sr0"), "{err}");
     }
 
@@ -1192,7 +1253,10 @@ mod tests {
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].kind, DiscKind::AudioCd);
         let err = choose(Some(DiscKind::Bluray), vec![], &["/dev/sr1"], &drives).unwrap_err();
-        assert!(err.contains("tray of the Blu-ray drive (LG, /dev/sr1) is open"), "{err}");
+        assert!(
+            err.contains("tray of the Blu-ray drive (LG, /dev/sr1) is open"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -1200,7 +1264,10 @@ mod tests {
         let drives = two_drives();
         let dvd = DiscPlan::new(DiscKind::Dvd, "/dev/sr0".into());
         let bd = DiscPlan::new(DiscKind::Bluray, "/dev/sr1".into());
-        let found = vec![(dvd.clone(), drives[0].1.as_slice()), (bd.clone(), drives[1].1.as_slice())];
+        let found = vec![
+            (dvd.clone(), drives[0].1.as_slice()),
+            (bd.clone(), drives[1].1.as_slice()),
+        ];
         let plans = choose(None, found, &[], &drives).unwrap();
         assert_eq!(plans.len(), 2);
         // Asking for one kind still plays it straight away.
@@ -1239,11 +1306,14 @@ mod tests {
 
     #[test]
     fn playlist_has_one_timed_entry_per_song() {
-        let m3u = cd_playlist(&[CdTrack {
-            number: 2,
-            start: 19792,
-            frames: 18545,
-        }], None);
+        let m3u = cd_playlist(
+            &[CdTrack {
+                number: 2,
+                start: 19792,
+                frames: 18545,
+            }],
+            None,
+        );
         assert_eq!(
             m3u,
             "memory://#EXTM3U\n#EXTINF:247,Track 2\nedl://%7%cdda://,start=263.893,length=247.267\n"
@@ -1296,17 +1366,34 @@ mod tests {
 
     #[test]
     fn drives_have_plain_names() {
-        let lg = props(&["ID_MODEL=HL-DT-ST_BD-RE__WH14NS40", "ID_CDROM_DVD=1", "ID_CDROM_BD=1"]);
-        assert_eq!(drive_label("/dev/sr1", &lg), "Blu-ray drive (LG WH14NS40, /dev/sr1)");
-        let tsst = props(&["ID_MODEL=TSSTcorp_DVD+_-RW_SH-216DB", "ID_CDROM_CD=1", "ID_CDROM_DVD=1"]);
-        assert_eq!(drive_label("/dev/sr0", &tsst), "DVD drive (TSST SH-216DB, /dev/sr0)");
+        let lg = props(&[
+            "ID_MODEL=HL-DT-ST_BD-RE__WH14NS40",
+            "ID_CDROM_DVD=1",
+            "ID_CDROM_BD=1",
+        ]);
+        assert_eq!(
+            drive_label("/dev/sr1", &lg),
+            "Blu-ray drive (LG WH14NS40, /dev/sr1)"
+        );
+        let tsst = props(&[
+            "ID_MODEL=TSSTcorp_DVD+_-RW_SH-216DB",
+            "ID_CDROM_CD=1",
+            "ID_CDROM_DVD=1",
+        ]);
+        assert_eq!(
+            drive_label("/dev/sr0", &tsst),
+            "DVD drive (TSST SH-216DB, /dev/sr0)"
+        );
         assert_eq!(drive_label("/dev/sr2", &[]), "CD drive (/dev/sr2)");
     }
 
     #[test]
     fn refused_message_names_the_drive_once() {
         let m = refused_message("Blu-ray drive (LG WH14NS40, /dev/sr1)");
-        assert!(m.starts_with("The Blu-ray drive (LG WH14NS40, /dev/sr1) sees a disc"), "{m}");
+        assert!(
+            m.starts_with("The Blu-ray drive (LG WH14NS40, /dev/sr1) sees a disc"),
+            "{m}"
+        );
         assert!(is_refused_error(&m));
     }
 

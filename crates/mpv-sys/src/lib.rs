@@ -132,7 +132,8 @@ pub struct mpv_event_start_file {
 // Types from stream_cb.h
 // ---------------------------------------------------------------------------
 
-pub type mpv_stream_cb_read_fn = unsafe extern "C" fn(cookie: *mut c_void, buf: *mut c_char, nbytes: u64) -> i64;
+pub type mpv_stream_cb_read_fn =
+    unsafe extern "C" fn(cookie: *mut c_void, buf: *mut c_char, nbytes: u64) -> i64;
 pub type mpv_stream_cb_seek_fn = unsafe extern "C" fn(cookie: *mut c_void, offset: i64) -> i64;
 pub type mpv_stream_cb_size_fn = unsafe extern "C" fn(cookie: *mut c_void) -> i64;
 pub type mpv_stream_cb_close_fn = unsafe extern "C" fn(cookie: *mut c_void);
@@ -148,8 +149,11 @@ pub struct mpv_stream_cb_info {
     pub cancel_fn: Option<mpv_stream_cb_cancel_fn>,
 }
 
-pub type mpv_stream_cb_open_ro_fn =
-    unsafe extern "C" fn(user_data: *mut c_void, uri: *mut c_char, info: *mut mpv_stream_cb_info) -> c_int;
+pub type mpv_stream_cb_open_ro_fn = unsafe extern "C" fn(
+    user_data: *mut c_void,
+    uri: *mut c_char,
+    info: *mut mpv_stream_cb_info,
+) -> c_int;
 
 pub const MPV_ERROR_LOADING_FAILED: c_int = -13;
 

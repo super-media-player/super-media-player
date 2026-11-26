@@ -15,7 +15,9 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::artist::{begin_lookup, fresh_miss, http_get, json_string_field, lookup_failed, url_encode};
+use crate::artist::{
+    begin_lookup, fresh_miss, http_get, json_string_field, lookup_failed, url_encode,
+};
 
 const COVER_NAMES: &[&str] = &["cover", "folder", "front", "albumart", "album"];
 const IMAGE_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp"];
@@ -212,8 +214,14 @@ fn cache_bytes(kind: &str, bytes: &[u8]) -> Option<PathBuf> {
     }
     let hash = Sha256::digest(bytes);
     let name: String = hash[..12].iter().map(|b| format!("{b:02x}")).collect();
-    let ext = if bytes.starts_with(b"\x89PNG") { "png" } else { "jpg" };
-    let path = crate::settings::cache_dir()?.join(kind).join(format!("{name}.{ext}"));
+    let ext = if bytes.starts_with(b"\x89PNG") {
+        "png"
+    } else {
+        "jpg"
+    };
+    let path = crate::settings::cache_dir()?
+        .join(kind)
+        .join(format!("{name}.{ext}"));
     if !path.exists() {
         std::fs::create_dir_all(path.parent()?).ok()?;
         std::fs::write(&path, bytes).ok()?;
@@ -230,7 +238,8 @@ fn cached(kind: &str, key: &str, ext: &str) -> (Option<PathBuf>, Option<Option<V
         .map(|c| if c.is_alphanumeric() { c } else { '_' })
         .take(120)
         .collect();
-    let Some(path) = crate::settings::cache_dir().map(|d| d.join(kind).join(format!("{safe}.{ext}")))
+    let Some(path) =
+        crate::settings::cache_dir().map(|d| d.join(kind).join(format!("{safe}.{ext}")))
     else {
         return (None, None);
     };
@@ -313,9 +322,23 @@ fn lrclib(q: &Query) -> Option<Lyrics> {
 /// Words that show a Wikipedia page is about a musician or a band, not
 /// something else of the same name.
 const MUSIC_WORDS: &[&str] = &[
-    "band", "singer", "musician", "rapper", "group", "duo", "dj", "composer",
-    "songwriter", "producer", "orchestra", "guitarist", "pianist", "vocalist",
-    "music", "trio", "quartet",
+    "band",
+    "singer",
+    "musician",
+    "rapper",
+    "group",
+    "duo",
+    "dj",
+    "composer",
+    "songwriter",
+    "producer",
+    "orchestra",
+    "guitarist",
+    "pianist",
+    "vocalist",
+    "music",
+    "trio",
+    "quartet",
 ];
 
 fn wikipedia_summary(artist: &str) -> Option<String> {
@@ -337,10 +360,10 @@ fn wikipedia_summary(artist: &str) -> Option<String> {
             .to_lowercase();
         let extract = json_string_field(&json, "extract")?;
         let first = extract.to_lowercase();
-        let musical = MUSIC_WORDS
-            .iter()
-            .any(|w| desc.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w)
-                || first.contains(&format!(" {w}")));
+        let musical = MUSIC_WORDS.iter().any(|w| {
+            desc.split(|c: char| !c.is_alphanumeric()).any(|x| x == *w)
+                || first.contains(&format!(" {w}"))
+        });
         musical.then_some(extract)
     })();
     store(path.as_deref(), found.as_deref().map(str::as_bytes));
@@ -383,7 +406,10 @@ mod tests {
         std::fs::write(&song, b"").unwrap();
         assert_eq!(find_local_cover(&song.to_string_lossy()), None);
         std::fs::write(album.join("Front.PNG"), b"x").unwrap();
-        assert_eq!(find_local_cover(&song.to_string_lossy()), Some(album.join("Front.PNG")));
+        assert_eq!(
+            find_local_cover(&song.to_string_lossy()),
+            Some(album.join("Front.PNG"))
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

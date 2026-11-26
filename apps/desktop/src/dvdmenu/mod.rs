@@ -191,36 +191,42 @@ pub fn start(ui: &AppWindow, device: &str, at_menu: Option<i32>) {
     ui.set_toast("Opening the DVD's menu…".into());
     let device = device.to_owned();
     let weak = ui.as_weak();
-    let spawned = std::thread::Builder::new().name("dvd-menu".into()).spawn(move || {
-        let first = Machine::open(&device, &language()).map(|mut m| {
-            let mut outcome = m.advance();
-            if let Some(title) = at_menu {
-                if title > 0 {
-                    m.enter_title(title);
-                    m.advance();
-                }
-                outcome = m.act(Action::Menu(if title > 0 { Menu::Root } else { Menu::Title }), None);
-            }
-            (m, outcome)
-        });
-        match first {
-            Ok((m, outcome)) => {
-                let name = m.name();
-                let machine: Shared = Arc::new(Mutex::new(m));
-                let m = machine.clone();
-                let _ = weak.upgrade_in_event_loop(move |ui| opened(&ui, number, m, name, outcome));
-                work(&machine, &rx, &weak, number);
-            }
-            Err(e) => {
-                log::warn!("DVD menu: {e}");
-                let _ = weak.upgrade_in_event_loop(move |ui| {
-                    if NUMBER.get() == number {
-                        no_menu(&ui, "Couldn't open the DVD's menu: playing the main film");
+    let spawned = std::thread::Builder::new()
+        .name("dvd-menu".into())
+        .spawn(move || {
+            let first = Machine::open(&device, &language()).map(|mut m| {
+                let mut outcome = m.advance();
+                if let Some(title) = at_menu {
+                    if title > 0 {
+                        m.enter_title(title);
+                        m.advance();
                     }
-                });
+                    outcome = m.act(
+                        Action::Menu(if title > 0 { Menu::Root } else { Menu::Title }),
+                        None,
+                    );
+                }
+                (m, outcome)
+            });
+            match first {
+                Ok((m, outcome)) => {
+                    let name = m.name();
+                    let machine: Shared = Arc::new(Mutex::new(m));
+                    let m = machine.clone();
+                    let _ =
+                        weak.upgrade_in_event_loop(move |ui| opened(&ui, number, m, name, outcome));
+                    work(&machine, &rx, &weak, number);
+                }
+                Err(e) => {
+                    log::warn!("DVD menu: {e}");
+                    let _ = weak.upgrade_in_event_loop(move |ui| {
+                        if NUMBER.get() == number {
+                            no_menu(&ui, "Couldn't open the DVD's menu: playing the main film");
+                        }
+                    });
+                }
             }
-        }
-    });
+        });
     if let Err(e) = spawned {
         log::warn!("DVD menu: {e}");
         no_menu(ui, "Couldn't open the DVD's menu: playing the main film");
@@ -325,7 +331,11 @@ fn load_menu(ui: &AppWindow) {
         s.drawn = None;
         s.pressed_until = None;
         s.loading = false;
-        Some(if s.name.is_empty() { "DVD menu".to_owned() } else { format!("{} (menu)", s.name) })
+        Some(if s.name.is_empty() {
+            "DVD menu".to_owned()
+        } else {
+            format!("{} (menu)", s.name)
+        })
     });
     let Some(name) = name else { return };
     ui.set_dvd_menu(true);
@@ -362,7 +372,11 @@ fn play_title(ui: &AppWindow, t: TitleStart, seek_to: Option<f64>) {
     log::info!("DVD: title {}, chapter {}", t.title, t.chapter);
     ui.set_dvd_menu(false);
     TIMER.with(slint::Timer::stop);
-    let title = if name.is_empty() { format!("DVD title {}", t.title) } else { format!("{name} · title {}", t.title) };
+    let title = if name.is_empty() {
+        format!("DVD title {}", t.title)
+    } else {
+        format!("{name} · title {}", t.title)
+    };
     let start = format!("#{}", t.chapter);
     let mut options = vec![("force-media-title", title.as_str())];
     if t.chapter > 1 && seek_to.is_none() {
@@ -399,7 +413,9 @@ pub fn end(ui: &AppWindow) {
 
 /// A file started: is it still ours?
 pub fn file_started(ui: &AppWindow, path: Option<&str>) {
-    let Some(path) = path.filter(|p| !p.is_empty()) else { return };
+    let Some(path) = path.filter(|p| !p.is_empty()) else {
+        return;
+    };
     let ours = SESSION.with_borrow(|s| match s.as_ref().map(|s| &s.playing) {
         None => true,
         Some(Playing::Nothing) => true,
@@ -414,7 +430,9 @@ pub fn file_started(ui: &AppWindow, path: Option<&str>) {
 /// A title was loaded: the sound and subtitles chosen in the menu, and the
 /// place it was left at.
 pub fn file_loaded(player: &Player) {
-    if player.get_string("path").is_some_and(|p| p.starts_with("dvd://"))
+    if player
+        .get_string("path")
+        .is_some_and(|p| p.starts_with("dvd://"))
         && let Some(d) = player.get_double("duration").filter(|d| *d > 10.0)
     {
         // At a title's end mpv's DVD stream runs on into whatever the disc
@@ -431,7 +449,11 @@ pub fn file_loaded(player: &Player) {
     });
     let Some((t, seek_to)) = found else { return };
     let find = |kind: TrackKind, number: i32, mask: i64| {
-        tracks.iter().filter(|x| x.kind == kind).find(|x| x.src_id.is_some_and(|i| i & mask == i64::from(number))).map(|x| x.id)
+        tracks
+            .iter()
+            .filter(|x| x.kind == kind)
+            .find(|x| x.src_id.is_some_and(|i| i & mask == i64::from(number)))
+            .map(|x| x.id)
     };
     with_player(|p| {
         // Sound: 0x80 + n (AC-3), 0x88 + n (DTS), 0xA0 + n (PCM), 0xC0 + n.
@@ -567,7 +589,13 @@ fn open_menu(ui: &AppWindow) {
                             && title > 0
                             && pos > 5.0
                         {
-                            let t = TitleStart { title, chapter: 1, audio: None, subtitle: None, angle: 1 };
+                            let t = TitleStart {
+                                title,
+                                chapter: 1,
+                                audio: None,
+                                subtitle: None,
+                                angle: 1,
+                            };
                             s.left_at = Some((t, pos));
                         }
                     });
@@ -589,7 +617,12 @@ fn mouse(ui: &AppWindow, x: f32, y: f32, pressed: bool) {
     let hit = SESSION.with_borrow_mut(|s| {
         let s = s.as_mut().filter(|s| s.playing == Playing::Menu)?;
         let (vx, vy) = s.place?.to_video(px, py);
-        let i = s.moment.as_ref()?.buttons.iter().position(|b| b.rect.contains(vx, vy))?;
+        let i = s
+            .moment
+            .as_ref()?
+            .buttons
+            .iter()
+            .position(|b| b.rect.contains(vx, vy))?;
         let n = i as i32 + 1;
         let new = n != s.asked;
         s.asked = n;
@@ -605,18 +638,31 @@ fn mouse(ui: &AppWindow, x: f32, y: f32, pressed: bool) {
 
 /// Where mpv draws the picture.
 fn place(p: &Player) -> Option<spu::Place> {
-    let Some(Value::Map(d)) = p.get_value("osd-dimensions") else { return None };
+    let Some(Value::Map(d)) = p.get_value("osd-dimensions") else {
+        return None;
+    };
     let n = |k: &str| {
-        d.iter().find(|(key, _)| key == k).and_then(|(_, v)| match v {
-            Value::Int(i) => Some(*i as f64),
-            Value::Double(f) => Some(*f),
-            _ => None,
-        })
+        d.iter()
+            .find(|(key, _)| key == k)
+            .and_then(|(_, v)| match v {
+                Value::Int(i) => Some(*i as f64),
+                Value::Double(f) => Some(*f),
+                _ => None,
+            })
     };
     let (w, h) = (n("w")?, n("h")?);
     let (left, right, top, bottom) = (n("ml")?, n("mr")?, n("mt")?, n("mb")?);
-    let video = (p.get_double("video-params/w")? as u32, p.get_double("video-params/h")? as u32);
-    let place = spu::Place { left, top, width: w - left - right, height: h - top - bottom, video };
+    let video = (
+        p.get_double("video-params/w")? as u32,
+        p.get_double("video-params/h")? as u32,
+    );
+    let place = spu::Place {
+        left,
+        top,
+        width: w - left - right,
+        height: h - top - bottom,
+        video,
+    };
     (place.width > 1.0 && place.height > 1.0 && video.0 > 0 && video.1 > 0).then_some(place)
 }
 
@@ -628,7 +674,9 @@ fn tick(ui: &AppWindow) {
     let machine = SESSION.with_borrow(|s| s.as_ref().and_then(|s| s.machine.clone()));
     let Some(machine) = machine else { return };
     // The reader may hold it while the drive seeks: next time, then.
-    let Ok(mut m) = machine.try_lock() else { return };
+    let Ok(mut m) = machine.try_lock() else {
+        return;
+    };
     if m.hopped && m.halt.is_none() {
         // Only the reader saw the jump (a button pressed itself).
         let reload = m.advance();
@@ -637,9 +685,13 @@ fn tick(ui: &AppWindow) {
     }
     let halt = m.halt.clone();
     drop(m);
-    let shown = with_player(|p| p.get_string("eof-reached").as_deref() == Some("yes")).unwrap_or(false);
+    let shown =
+        with_player(|p| p.get_string("eof-reached").as_deref() == Some("yes")).unwrap_or(false);
     if let Some(halt) = halt.filter(|_| shown) {
-        let since = SESSION.with_borrow_mut(|s| s.as_mut().map(|s| *s.still_since.get_or_insert_with(Instant::now)));
+        let since = SESSION.with_borrow_mut(|s| {
+            s.as_mut()
+                .map(|s| *s.still_since.get_or_insert_with(Instant::now))
+        });
         match halt {
             Halt::Title(t) => return play_title(ui, t, None),
             Halt::End => return after(ui, Outcome::End),
@@ -667,13 +719,19 @@ fn draw(ui: &AppWindow) {
         let pressed = s.pressed_until.is_some_and(|t| Instant::now() < t);
         Some((s.machine.clone()?, s.drawn.clone(), pressed))
     });
-    let Some((machine, drawn, pressed)) = found else { return };
+    let Some((machine, drawn, pressed)) = found else {
+        return;
+    };
     with_player(|p| {
         let place = place(p);
         let Ok(m) = machine.try_lock() else { return };
         let still = m.halt.is_some() && p.get_string("eof-reached").as_deref() == Some("yes");
         let time = p.get_double("time-pos").unwrap_or(0.0);
-        let pts = if still { i64::MAX } else { 90_000 + (time * 90_000.0) as i64 + 9_000 };
+        let pts = if still {
+            i64::MAX
+        } else {
+            90_000 + (time * 90_000.0) as i64 + 9_000
+        };
         let (moment, picture) = m.at(pts);
         let (button, clut, in_menu) = (m.button, m.clut, m.in_menu());
         drop(m);
@@ -702,7 +760,9 @@ fn draw(ui: &AppWindow) {
             .and_then(|m| m.buttons.get(usize::try_from(button - 1).ok()?))
             .map(|b| (&b.rect, if pressed { &b.pressed } else { &b.selected }));
         // Subtitles of a clip are not the menu's business.
-        let overlay = picture.filter(|_| in_menu || has_buttons).and_then(|sp| spu::draw(&sp, lit, &clut, &place));
+        let overlay = picture
+            .filter(|_| in_menu || has_buttons)
+            .and_then(|sp| spu::draw(&sp, lit, &clut, &place));
         match overlay {
             Some(o) => {
                 let args = [

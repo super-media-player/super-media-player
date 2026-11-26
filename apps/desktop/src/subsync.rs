@@ -53,7 +53,12 @@ pub struct Fit {
 
 impl Fit {
     fn offset(&self, scaled: f64) -> f64 {
-        self.pieces.iter().rev().find(|p| p.0 <= scaled).or(self.pieces.first()).map_or(0.0, |p| p.1)
+        self.pieces
+            .iter()
+            .rev()
+            .find(|p| p.0 <= scaled)
+            .or(self.pieces.first())
+            .map_or(0.0, |p| p.1)
     }
 
     /// The new time of `t`, for a subtitle starting at `start` (so one that
@@ -72,13 +77,22 @@ impl Fit {
         if !self.changes() {
             return "they were already in time".into();
         }
-        let by = |o: f64| format!("{:.1} s {}", o.abs(), if o < 0.0 { "earlier" } else { "later" });
+        let by = |o: f64| {
+            format!(
+                "{:.1} s {}",
+                o.abs(),
+                if o < 0.0 { "earlier" } else { "later" }
+            )
+        };
         let mut text = match self.pieces.as_slice() {
             [p] => format!("moved {}", by(p.1)),
             p => format!("moved in {} parts, the first {}", p.len(), by(p[0].1)),
         };
         if (self.ratio - 1.0).abs() > 1e-6 {
-            text += &format!(", and fitted to the frame rate ({:+.1} %)", (self.ratio - 1.0) * 100.0);
+            text += &format!(
+                ", and fitted to the frame rate ({:+.1} %)",
+                (self.ratio - 1.0) * 100.0
+            );
         }
         text
     }
@@ -98,13 +112,24 @@ impl Biquad {
         let w = std::f64::consts::TAU * freq / f64::from(RATE);
         let alpha = w.sin() / std::f64::consts::SQRT_2;
         let (c, a0) = (w.cos(), 1.0 + alpha);
-        let b = if high { [(1.0 + c) / 2.0, -(1.0 + c), (1.0 + c) / 2.0] } else { [(1.0 - c) / 2.0, 1.0 - c, (1.0 - c) / 2.0] };
-        Self { b: b.map(|x| x / a0), a: [-2.0 * c / a0, (1.0 - alpha) / a0], z: [0.0; 2] }
+        let b = if high {
+            [(1.0 + c) / 2.0, -(1.0 + c), (1.0 + c) / 2.0]
+        } else {
+            [(1.0 - c) / 2.0, 1.0 - c, (1.0 - c) / 2.0]
+        };
+        Self {
+            b: b.map(|x| x / a0),
+            a: [-2.0 * c / a0, (1.0 - alpha) / a0],
+            z: [0.0; 2],
+        }
     }
 
     fn run(&mut self, x: f64) -> f64 {
         let y = self.b[0] * x + self.z[0];
-        self.z = [self.b[1] * x - self.a[0] * y + self.z[1], self.b[2] * x - self.a[1] * y];
+        self.z = [
+            self.b[1] * x - self.a[0] * y + self.z[1],
+            self.b[2] * x - self.a[1] * y,
+        ];
         y
     }
 }
@@ -130,13 +155,20 @@ fn loudness(samples: &[i16]) -> Vec<f64> {
     let energy: Vec<f64> = samples
         .chunks(FRAME)
         .map(|c| {
-            let e: f64 = c.iter().map(|s| lp.run(hp.run(f64::from(*s))).powi(2)).sum();
+            let e: f64 = c
+                .iter()
+                .map(|s| lp.run(hp.run(f64::from(*s))).powi(2))
+                .sum();
             (e / FRAME as f64 + 1.0).ln()
         })
         .collect();
     let near = smooth(&energy, 5);
     let around = smooth(&energy, (10.0 * FPS) as usize);
-    let x: Vec<f64> = near.iter().zip(around).map(|(a, b)| (a - b).clamp(-4.0, 4.0)).collect();
+    let x: Vec<f64> = near
+        .iter()
+        .zip(around)
+        .map(|(a, b)| (a - b).clamp(-4.0, 4.0))
+        .collect();
     let slow = smooth(&x, (60.0 * FPS) as usize);
     x.iter().zip(slow).map(|(a, b)| a - b).collect()
 }
@@ -175,8 +207,9 @@ fn fft(re: &mut [f64], im: &mut [f64], inverse: bool) {
     }
     let sign = if inverse { 1.0 } else { -1.0 };
     // One table of roots, so long transforms don't drift.
-    let table: Vec<(f64, f64)> =
-        (0..n / 2).map(|k| (sign * std::f64::consts::TAU * k as f64 / n as f64).sin_cos()).collect();
+    let table: Vec<(f64, f64)> = (0..n / 2)
+        .map(|k| (sign * std::f64::consts::TAU * k as f64 / n as f64).sin_cos())
+        .collect();
     let mut len = 2;
     while len <= n {
         let (half, step) = (len / 2, n / len);
@@ -236,12 +269,28 @@ fn slide(a: &[f64], b: &[f64], max: usize) -> Option<Peak> {
     let at = |lag: i64| xr[lag.rem_euclid(n as i64) as usize] / n as f64 / norm;
     let lag = (-max..=max).max_by(|x, y| at(*x).total_cmp(&at(*y)))?;
     let height = at(lag);
-    let next = (-max..=max).filter(|l| (l - lag).abs() > FPS as i64).map(at).fold(0.0, f64::max);
+    let next = (-max..=max)
+        .filter(|l| (l - lag).abs() > FPS as i64)
+        .map(at)
+        .fold(0.0, f64::max);
     let count = (2 * max + 1) as f64;
     let mean = (-max..=max).map(at).sum::<f64>() / count;
     let deviation = ((-max..=max).map(|l| (at(l) - mean).powi(2)).sum::<f64>() / count).sqrt();
-    let sigma = if deviation > 0.0 { (height - mean) / deviation } else { 0.0 };
-    Some(Peak { lag, height, sigma, lead: if next > 0.0 { height / next } else { f64::INFINITY } })
+    let sigma = if deviation > 0.0 {
+        (height - mean) / deviation
+    } else {
+        0.0
+    };
+    Some(Peak {
+        lag,
+        height,
+        sigma,
+        lead: if next > 0.0 {
+            height / next
+        } else {
+            f64::INFINITY
+        },
+    })
 }
 
 /// Where `cues` belong along `sound` (from [`loudness`]); None when they
@@ -252,7 +301,15 @@ pub fn fit(sound: &[f64], cues: &[Cue], cancel: &AtomicBool) -> Option<Fit> {
     }
     let same = 1.0;
     let (film, pal, ntsc) = (24.0, 25.0, 24000.0 / 1001.0);
-    let ratios = [same, film / ntsc, pal / ntsc, pal / film, ntsc / film, ntsc / pal, film / pal];
+    let ratios = [
+        same,
+        film / ntsc,
+        pal / ntsc,
+        pal / film,
+        ntsc / film,
+        ntsc / pal,
+        film / pal,
+    ];
     let last = cues.iter().map(|c| c.end).fold(0.0, f64::max);
     let length = |ratio: f64| sound.len().max((last * ratio * FPS) as usize + 1);
     let mut best: Option<(Peak, f64)> = None;
@@ -260,33 +317,59 @@ pub fn fit(sound: &[f64], cues: &[Cue], cancel: &AtomicBool) -> Option<Fit> {
         if cancel.load(Ordering::Relaxed) {
             return None;
         }
-        let p = slide(sound, &presence(cues, ratio, length(ratio)), (MAX_SHIFT * FPS) as usize)?;
+        let p = slide(
+            sound,
+            &presence(cues, ratio, length(ratio)),
+            (MAX_SHIFT * FPS) as usize,
+        )?;
         // Another speed has to fit clearly better than the one it has.
-        if best.as_ref().is_none_or(|(b, _)| p.height > b.height * 1.05) {
+        if best
+            .as_ref()
+            .is_none_or(|(b, _)| p.height > b.height * 1.05)
+        {
             best = Some((p, ratio));
         }
     }
     let (peak, ratio) = best?;
-    log::info!("subtitles: ratio {ratio:.4}, {:+.2} s, height {:.3}, {:.1} sigma", peak.lag as f64 / FPS, peak.height, peak.sigma);
+    log::info!(
+        "subtitles: ratio {ratio:.4}, {:+.2} s, height {:.3}, {:.1} sigma",
+        peak.lag as f64 / FPS,
+        peak.height,
+        peak.sigma
+    );
     if peak.height < MIN_SCORE || peak.sigma < MIN_SIGMA {
         return None;
     }
     let base = peak.lag as f64 / FPS;
     let pieces = cuts(sound, cues, ratio, base);
-    Some(Fit { ratio, pieces, score: peak.height })
+    Some(Fit {
+        ratio,
+        pieces,
+        score: peak.height,
+    })
 }
 
 /// The offsets of the film's parts: one piece, unless some parts clearly sit
 /// elsewhere than `base`.
 fn cuts(sound: &[f64], cues: &[Cue], ratio: f64, base: f64) -> Vec<(f64, f64)> {
-    let scaled: Vec<Cue> = cues.iter().map(|c| Cue { start: c.start * ratio, end: c.end * ratio }).collect();
+    let scaled: Vec<Cue> = cues
+        .iter()
+        .map(|c| Cue {
+            start: c.start * ratio,
+            end: c.end * ratio,
+        })
+        .collect();
     let last = scaled.iter().map(|c| c.start).fold(0.0, f64::max);
     // Each part's own best place, where it is clear.
     let mut found: Vec<(f64, f64)> = Vec::new();
     let margin = PART_SHIFT * FPS;
     for i in 0..(last / PART) as usize + 1 {
         let from = i as f64 * PART;
-        let part: Vec<Cue> = scaled.iter().copied().filter(|c| c.start >= from && c.start < from + PART).collect();
+        let part: Vec<Cue> = scaled
+            .iter()
+            .copied()
+            .filter(|c| c.start >= from && c.start < from + PART)
+            .collect();
         if part.len() < 8 {
             continue;
         }
@@ -296,9 +379,20 @@ fn cuts(sound: &[f64], cues: &[Cue], ratio: f64, base: f64) -> Vec<(f64, f64)> {
         if start >= end {
             continue;
         }
-        let moved: Vec<Cue> =
-            part.iter().map(|c| Cue { start: c.start + base - start as f64 / FPS, end: c.end + base - start as f64 / FPS }).collect();
-        let Some(p) = slide(&sound[start..end], &presence(&moved, 1.0, end - start), margin as usize) else { continue };
+        let moved: Vec<Cue> = part
+            .iter()
+            .map(|c| Cue {
+                start: c.start + base - start as f64 / FPS,
+                end: c.end + base - start as f64 / FPS,
+            })
+            .collect();
+        let Some(p) = slide(
+            &sound[start..end],
+            &presence(&moved, 1.0, end - start),
+            margin as usize,
+        ) else {
+            continue;
+        };
         if p.height >= 0.15 && p.lead >= 1.3 {
             let o = p.lag as f64 / FPS;
             found.push((from, if o.abs() < SAME { 0.0 } else { o }));
@@ -309,7 +403,9 @@ fn cuts(sound: &[f64], cues: &[Cue], ratio: f64, base: f64) -> Vec<(f64, f64)> {
     let sure: Vec<(f64, f64)> = (0..found.len())
         .filter(|&i| {
             let o = found[i].1;
-            o == 0.0 || (i > 0 && agree(found[i - 1].1, o)) || found.get(i + 1).is_some_and(|f| agree(f.1, o))
+            o == 0.0
+                || (i > 0 && agree(found[i - 1].1, o))
+                || found.get(i + 1).is_some_and(|f| agree(f.1, o))
         })
         .map(|i| found[i])
         .collect();
@@ -329,8 +425,14 @@ fn cuts(sound: &[f64], cues: &[Cue], ratio: f64, base: f64) -> Vec<(f64, f64)> {
             let s = &sound[at(c.start)..at(c.end).max(at(c.start))];
             s.iter().sum::<f64>()
         };
-        let between: Vec<&Cue> = scaled.iter().filter(|c| c.start >= w[0].1 && c.start < w[1].0 + PART).collect();
-        let gain: Vec<f64> = between.iter().map(|c| fits(c, w[0].2) - fits(c, w[1].2)).collect();
+        let between: Vec<&Cue> = scaled
+            .iter()
+            .filter(|c| c.start >= w[0].1 && c.start < w[1].0 + PART)
+            .collect();
+        let gain: Vec<f64> = between
+            .iter()
+            .map(|c| fits(c, w[0].2) - fits(c, w[1].2))
+            .collect();
         let (mut sum, mut top, mut cut) = (0.0, f64::MIN, 0);
         for (i, g) in gain.iter().enumerate() {
             if sum > top {
@@ -378,7 +480,13 @@ fn read(bytes: &[u8]) -> (String, bool) {
             .as_chunks::<2>()
             .0
             .iter()
-            .map(|b| if le { u16::from_le_bytes(*b) } else { u16::from_be_bytes(*b) })
+            .map(|b| {
+                if le {
+                    u16::from_le_bytes(*b)
+                } else {
+                    u16::from_be_bytes(*b)
+                }
+            })
             .collect();
         String::from_utf16_lossy(&u)
     };
@@ -390,7 +498,11 @@ fn read(bytes: &[u8]) -> (String, bool) {
 }
 
 fn write(text: &str, utf8: bool) -> Vec<u8> {
-    if utf8 { text.as_bytes().to_vec() } else { text.chars().map(|c| c as u8).collect() }
+    if utf8 {
+        text.as_bytes().to_vec()
+    } else {
+        text.chars().map(|c| c as u8).collect()
+    }
 }
 
 /// A line's times: what is before, the start, what is between, the end, the rest.
@@ -401,7 +513,15 @@ fn times(line: &str, kind: Kind) -> Option<(&str, Cue, &str, &str)> {
             let (a, b) = line.split_once("-->")?;
             let b = b.trim_start();
             let (end, rest) = b.split_at(b.find(char::is_whitespace).unwrap_or(b.len()));
-            Some(("", Cue { start: time(a)?, end: time(end)? }, " --> ", rest))
+            Some((
+                "",
+                Cue {
+                    start: time(a)?,
+                    end: time(end)?,
+                },
+                " --> ",
+                rest,
+            ))
         }
         Kind::Dialogue => {
             let rest = line.strip_prefix("Dialogue:")?;
@@ -410,7 +530,15 @@ fn times(line: &str, kind: Kind) -> Option<(&str, Cue, &str, &str)> {
             let (b, _) = rest.split_once(',')?;
             let before = &line[..line.len() - rest.len() - a.len() - 1];
             debug_assert!(before.ends_with(',') && before.contains(layer));
-            Some((before, Cue { start: time(a)?, end: time(b)? }, ",", &rest[b.len()..]))
+            Some((
+                before,
+                Cue {
+                    start: time(a)?,
+                    end: time(b)?,
+                },
+                ",",
+                &rest[b.len()..],
+            ))
         }
     }
 }
@@ -421,18 +549,26 @@ fn cues(text: &str, kind: Kind) -> Vec<Cue> {
     let mut all = Vec::new();
     let mut spoken = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        let Some((_, cue, _, rest)) = times(line, kind) else { continue };
+        let Some((_, cue, _, rest)) = times(line, kind) else {
+            continue;
+        };
         if cue.end <= cue.start {
             continue;
         }
         all.push(cue);
         let words = match kind {
-            Kind::Arrow => lines[i + 1..].iter().take_while(|l| !l.trim().is_empty()).copied().collect::<Vec<_>>().join(" "),
+            Kind::Arrow => lines[i + 1..]
+                .iter()
+                .take_while(|l| !l.trim().is_empty())
+                .copied()
+                .collect::<Vec<_>>()
+                .join(" "),
             Kind::Dialogue => rest.splitn(8, ',').last().unwrap_or_default().to_owned(),
         };
         let words = crate::transcribe::strip_markup(&words);
         let w = words.trim();
-        let sound = (w.starts_with('[') && w.ends_with(']')) || (w.starts_with('(') && w.ends_with(')'));
+        let sound =
+            (w.starts_with('[') && w.ends_with(']')) || (w.starts_with('(') && w.ends_with(')'));
         // "♪" in UTF-8, read byte by byte, or as it is.
         if !w.is_empty() && !sound && !w.contains('♪') && !w.contains("\u{e2}\u{99}\u{aa}") {
             spoken.push(cue);
@@ -444,12 +580,22 @@ fn cues(text: &str, kind: Kind) -> Vec<Cue> {
 fn clock(t: f64, comma: bool) -> String {
     let ms = (t.max(0.0) * 1000.0).round() as u64;
     let (h, m, s) = (ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60);
-    format!("{h:02}:{m:02}:{s:02}{}{:03}", if comma { ',' } else { '.' }, ms % 1000)
+    format!(
+        "{h:02}:{m:02}:{s:02}{}{:03}",
+        if comma { ',' } else { '.' },
+        ms % 1000
+    )
 }
 
 fn ass_clock(t: f64) -> String {
     let cs = (t.max(0.0) * 100.0).round() as u64;
-    format!("{}:{:02}:{:02}.{:02}", cs / 360_000, cs / 6000 % 60, cs / 100 % 60, cs % 100)
+    format!(
+        "{}:{:02}:{:02}.{:02}",
+        cs / 360_000,
+        cs / 6000 % 60,
+        cs / 100 % 60,
+        cs % 100
+    )
 }
 
 /// The file with its times moved.
@@ -466,7 +612,12 @@ fn retime(text: &str, kind: Kind, fit: &Fit) -> String {
             Kind::Arrow => clock(t, body.contains(',') && !text.starts_with("WEBVTT")),
             Kind::Dialogue => ass_clock(t),
         };
-        out += &format!("{before}{}{between}{}{rest}{}", show(a), show(b), &line[body.len()..]);
+        out += &format!(
+            "{before}{}{between}{}{rest}{}",
+            show(a),
+            show(b),
+            &line[body.len()..]
+        );
     }
     out
 }
@@ -486,17 +637,28 @@ pub const UNSURE: &str = "The subtitles don't clearly match the speech, so they 
 
 /// Listen to the film and work out how the subtitles must move. `progress`
 /// gets 0..1. Returns that, and the corrected file. Blocks for some seconds.
-pub fn run(job: &Job, cancel: &AtomicBool, progress: impl Fn(f32)) -> Result<(Fit, Vec<u8>), String> {
+pub fn run(
+    job: &Job,
+    cancel: &AtomicBool,
+    progress: impl Fn(f32),
+) -> Result<(Fit, Vec<u8>), String> {
     let kind = kind(&job.subtitles).ok_or("Only SRT, WebVTT and ASS subtitles can be lined up.")?;
-    let bytes = std::fs::read(&job.subtitles).map_err(|e| format!("{}: {e}", job.subtitles.display()))?;
+    let bytes =
+        std::fs::read(&job.subtitles).map_err(|e| format!("{}: {e}", job.subtitles.display()))?;
     let (text, utf8) = read(&bytes);
     let cues = cues(&text, kind);
     if cues.len() < 10 {
         return Err("There are too few lines in these subtitles to go by.".into());
     }
-    let dir = crate::settings::cache_dir().ok_or("no cache folder")?.join("pcm");
+    let dir = crate::settings::cache_dir()
+        .ok_or("no cache folder")?
+        .join("pcm");
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let raw = dir.join(format!("sync-{}-{:?}.raw", std::process::id(), std::thread::current().id()));
+    let raw = dir.join(format!(
+        "sync-{}-{:?}.raw",
+        std::process::id(),
+        std::thread::current().id()
+    ));
     let d = crate::pcm::Decode {
         source: &job.video,
         out: &raw,
@@ -507,11 +669,18 @@ pub fn run(job: &Job, cancel: &AtomicBool, progress: impl Fn(f32)) -> Result<(Fi
         aid: job.aid,
     };
     let duration = job.duration.max(1.0);
-    crate::pcm::render(&d, cancel, |t| progress((t / duration).clamp(0.0, 1.0) as f32))?;
+    crate::pcm::render(&d, cancel, |t| {
+        progress((t / duration).clamp(0.0, 1.0) as f32)
+    })?;
     let sound = std::fs::read(&raw);
     let _ = std::fs::remove_file(&raw);
     let sound = sound.map_err(|e| format!("{}: {e}", raw.display()))?;
-    let samples: Vec<i16> = sound.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect();
+    let samples: Vec<i16> = sound
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b))
+        .collect();
     let found = fit(&loudness(&samples), &cues, cancel);
     if cancel.load(Ordering::Relaxed) {
         return Err("Cancelled".into());
@@ -534,9 +703,11 @@ pub fn replace(file: &Path, new: &[u8], backup: bool) -> std::io::Result<()> {
     }
     // All or nothing: a full disk must not leave half a file.
     let part = file.with_extension("sync-part");
-    std::fs::write(&part, new).and_then(|()| std::fs::rename(&part, file)).inspect_err(|_| {
-        let _ = std::fs::remove_file(&part);
-    })
+    std::fs::write(&part, new)
+        .and_then(|()| std::fs::rename(&part, file))
+        .inspect_err(|_| {
+            let _ = std::fs::remove_file(&part);
+        })
 }
 
 #[cfg(test)]
@@ -547,7 +718,10 @@ mod tests {
     struct Rng(u64);
     impl Rng {
         fn next(&mut self) -> f64 {
-            self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             (self.0 >> 33) as f64 / (1u64 << 31) as f64
         }
     }
@@ -570,7 +744,10 @@ mod tests {
         let n = (length * f64::from(RATE)) as usize;
         let mut x: Vec<i16> = (0..n).map(|_| ((r.next() - 0.5) * 600.0) as i16).collect();
         for c in cues {
-            let (from, to) = ((c.start * 8000.0) as usize, ((c.end * 8000.0) as usize).min(n));
+            let (from, to) = (
+                (c.start * 8000.0) as usize,
+                ((c.end * 8000.0) as usize).min(n),
+            );
             for (i, v) in x[from..to].iter_mut().enumerate() {
                 let t = (from + i) as f64 / 8000.0;
                 let syllable = (t * 25.0).sin().max(0.0);
@@ -581,7 +758,12 @@ mod tests {
     }
 
     fn moved(cues: &[Cue], ratio: f64, by: f64) -> Vec<Cue> {
-        cues.iter().map(|c| Cue { start: (c.start + by) * ratio, end: (c.end + by) * ratio }).collect()
+        cues.iter()
+            .map(|c| Cue {
+                start: (c.start + by) * ratio,
+                end: (c.end + by) * ratio,
+            })
+            .collect()
     }
 
     static NEVER: AtomicBool = AtomicBool::new(false);
@@ -590,7 +772,13 @@ mod tests {
     fn finds_shift_and_frame_rate() {
         let spoken = speech(1, 900.0);
         let s = sound(&spoken, 900.0);
-        for (ratio, by) in [(1.0, 0.0), (1.0, 37.3), (1.0, -4.4), (25.0 / 24.0, 5.0), (24000.0 / 1001.0 / 25.0, -3.0)] {
+        for (ratio, by) in [
+            (1.0, 0.0),
+            (1.0, 37.3),
+            (1.0, -4.4),
+            (25.0 / 24.0, 5.0),
+            (24000.0 / 1001.0 / 25.0, -3.0),
+        ] {
             let f = fit(&s, &moved(&spoken, ratio, by), &NEVER).expect("fits");
             assert_eq!(f.pieces.len(), 1, "{f:?}");
             assert!((f.ratio * ratio - 1.0).abs() < 1e-4, "{f:?} for {ratio}");
@@ -617,29 +805,47 @@ mod tests {
             .iter()
             .map(|c| {
                 let by = if c.start >= 1000.0 { 22.0 } else { 2.0 };
-                Cue { start: c.start + by, end: c.end + by }
+                Cue {
+                    start: c.start + by,
+                    end: c.end + by,
+                }
             })
             .collect();
         let f = fit(&s, &cues, &NEVER).expect("fits");
         assert_eq!(f.pieces.len(), 2, "{f:?}");
-        let off = cues.iter().zip(&spoken).filter(|(c, s)| (f.map(c.start, c.start) - s.start).abs() > 0.2).count();
+        let off = cues
+            .iter()
+            .zip(&spoken)
+            .filter(|(c, s)| (f.map(c.start, c.start) - s.start).abs() > 0.2)
+            .count();
         assert!(off <= 2, "{off} lines off: {f:?}");
     }
 
     #[test]
     fn rewrites_only_the_times() {
-        let f = Fit { ratio: 1.0, pieces: vec![(0.0, 2.5)], score: 0.4 };
+        let f = Fit {
+            ratio: 1.0,
+            pieces: vec![(0.0, 2.5)],
+            score: 0.4,
+        };
         let srt = "1\r\n00:00:01,000 --> 00:00:02,500 X1:40\r\n\u{ce}i, ce faci?\r\n\r\n2\r\n01:59:58,000 --> 01:59:59,999\r\n--> no\r\n";
         // Latin-2 bytes, not UTF-8, come through untouched.
         let bytes: Vec<u8> = srt.chars().map(|c| c as u8).collect();
         let (text, utf8) = read(&bytes);
         let new = write(&retime(&text, Kind::Arrow, &f), utf8);
-        let expect = srt.replace("00:00:01,000", "00:00:03,500").replace("00:00:02,500", "00:00:05,000");
-        let expect = expect.replace("01:59:58,000", "02:00:00,500").replace("01:59:59,999", "02:00:02,499");
+        let expect = srt
+            .replace("00:00:01,000", "00:00:03,500")
+            .replace("00:00:02,500", "00:00:05,000");
+        let expect = expect
+            .replace("01:59:58,000", "02:00:00,500")
+            .replace("01:59:59,999", "02:00:02,499");
         assert_eq!(new, expect.chars().map(|c| c as u8).collect::<Vec<u8>>());
 
         let vtt = "WEBVTT\n\n00:05.000 --> 00:06.000 line:1, x\nHi\n";
-        assert_eq!(retime(vtt, Kind::Arrow, &f), "WEBVTT\n\n00:00:07.500 --> 00:00:08.500 line:1, x\nHi\n");
+        assert_eq!(
+            retime(vtt, Kind::Arrow, &f),
+            "WEBVTT\n\n00:00:07.500 --> 00:00:08.500 line:1, x\nHi\n"
+        );
 
         let ass = "[Events]\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Hi, you\nComment: 0,0:00:01.00,0:00:02.00,x\n";
         assert_eq!(
@@ -647,17 +853,29 @@ mod tests {
             "[Events]\nDialogue: 0,0:00:03.50,0:00:04.50,Default,,0,0,0,,Hi, you\nComment: 0,0:00:01.00,0:00:02.00,x\n"
         );
         // Nothing goes below zero.
-        let back = Fit { ratio: 1.0, pieces: vec![(0.0, -5.0)], score: 0.4 };
+        let back = Fit {
+            ratio: 1.0,
+            pieces: vec![(0.0, -5.0)],
+            score: 0.4,
+        };
         assert!(retime(vtt, Kind::Arrow, &back).contains("00:00:00.000 --> 00:00:01.000"));
     }
 
     #[test]
     fn utf16_becomes_utf8() {
         let mut b = vec![0xff, 0xfe];
-        b.extend("1\n00:00:01,000 --> 00:00:02,000\nПривет\n".encode_utf16().flat_map(u16::to_le_bytes));
+        b.extend(
+            "1\n00:00:01,000 --> 00:00:02,000\nПривет\n"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes),
+        );
         let (text, utf8) = read(&b);
         assert!(utf8 && text.contains("Привет"));
-        assert!(String::from_utf8(write(&text, utf8)).unwrap().contains("Привет"));
+        assert!(
+            String::from_utf8(write(&text, utf8))
+                .unwrap()
+                .contains("Привет")
+        );
     }
 
     #[test]
@@ -666,7 +884,13 @@ mod tests {
         for i in 0..20 {
             let what = ["Hello.", "[door slams]", "(sighs)", "♪ La la ♪"][i % 4];
             let t = i * 4;
-            srt += &format!("{i}\n00:{:02}:{:02},000 --> 00:{:02}:{:02},000\n{what}\n\n", t / 60, t % 60, (t + 2) / 60, (t + 2) % 60);
+            srt += &format!(
+                "{i}\n00:{:02}:{:02},000 --> 00:{:02}:{:02},000\n{what}\n\n",
+                t / 60,
+                t % 60,
+                (t + 2) / 60,
+                (t + 2) % 60
+            );
         }
         // Too few are left: all of them are used.
         assert_eq!(cues(&srt, Kind::Arrow).len(), 20);
@@ -678,11 +902,24 @@ mod tests {
 
     #[test]
     fn says_what_it_did() {
-        let f = |ratio, pieces: &[(f64, f64)]| Fit { ratio, pieces: pieces.to_vec(), score: 0.4 }.describe();
+        let f = |ratio, pieces: &[(f64, f64)]| {
+            Fit {
+                ratio,
+                pieces: pieces.to_vec(),
+                score: 0.4,
+            }
+            .describe()
+        };
         assert_eq!(f(1.0, &[(0.0, 0.04)]), "they were already in time");
         assert_eq!(f(1.0, &[(0.0, -2.34)]), "moved 2.3 s earlier");
-        assert_eq!(f(25.0 / 24.0, &[(0.0, 1.0)]), "moved 1.0 s later, and fitted to the frame rate (+4.2 %)");
-        assert_eq!(f(1.0, &[(0.0, 1.0), (9.0, 2.0)]), "moved in 2 parts, the first 1.0 s later");
+        assert_eq!(
+            f(25.0 / 24.0, &[(0.0, 1.0)]),
+            "moved 1.0 s later, and fitted to the frame rate (+4.2 %)"
+        );
+        assert_eq!(
+            f(1.0, &[(0.0, 1.0), (9.0, 2.0)]),
+            "moved in 2 parts, the first 1.0 s later"
+        );
     }
 
     #[test]

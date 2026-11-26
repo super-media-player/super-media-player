@@ -25,9 +25,14 @@ pub fn run(d: &Device, rx: &Receiver<Cmd>, status: &Shared) -> Result<(), String
         .http_status_as_error(false)
         .build()
         .new_agent();
-    let mut r = Renderer { d, agent, max_volume: 100.0 };
+    let mut r = Renderer {
+        d,
+        agent,
+        max_volume: 100.0,
+    };
     // Is it there?
-    r.transport_state().map_err(|e| format!("{} didn't answer ({e})", d.name))?;
+    r.transport_state()
+        .map_err(|e| format!("{} didn't answer ({e})", d.name))?;
     let sink = r.sink();
     if let Some(u) = &d.dlna.rendering_scpd
         && let Some(m) = network::get_text(u).ok().and_then(|x| volume_max(&x))
@@ -95,11 +100,17 @@ pub fn run(d: &Device, rx: &Receiver<Cmd>, status: &Shared) -> Result<(), String
                     }
                     Cmd::Volume(v) => r.rc(
                         "SetVolume",
-                        &format!("<Channel>Master</Channel><DesiredVolume>{:.0}</DesiredVolume>", v * r.max_volume),
+                        &format!(
+                            "<Channel>Master</Channel><DesiredVolume>{:.0}</DesiredVolume>",
+                            v * r.max_volume
+                        ),
                     ),
                     Cmd::Mute(m) => r.rc(
                         "SetMute",
-                        &format!("<Channel>Master</Channel><DesiredMute>{}</DesiredMute>", u8::from(m)),
+                        &format!(
+                            "<Channel>Master</Channel><DesiredMute>{}</DesiredMute>",
+                            u8::from(m)
+                        ),
                     ),
                     Cmd::Load(_) | Cmd::Quit => Ok(String::new()),
                 };
@@ -138,7 +149,9 @@ pub fn run(d: &Device, rx: &Receiver<Cmd>, status: &Shared) -> Result<(), String
             "PLAYING" => Phase::Playing,
             "PAUSED_PLAYBACK" | "PAUSED_RECORDING" => Phase::Paused,
             "TRANSITIONING" => Phase::Buffering,
-            _ if transport_status == "ERROR_OCCURRED" && since_load.elapsed() > Duration::from_secs(2) => {
+            _ if transport_status == "ERROR_OCCURRED"
+                && since_load.elapsed() > Duration::from_secs(2) =>
+            {
                 Phase::Failed("it couldn't play this".into())
             }
             "STOPPED" | "NO_MEDIA_PRESENT" if seen_playing => Phase::Stopped,
@@ -204,7 +217,10 @@ impl Renderer<'_> {
     }
 
     fn seek(&self, t: f64) -> Result<String, String> {
-        self.av("Seek", &format!("<Unit>REL_TIME</Unit><Target>{}</Target>", clock(t)))
+        self.av(
+            "Seek",
+            &format!("<Unit>REL_TIME</Unit><Target>{}</Target>", clock(t)),
+        )
     }
 
     /// CurrentTransportState and CurrentTransportStatus.
@@ -225,15 +241,19 @@ impl Renderer<'_> {
         let v = self.rc("GetVolume", "<Channel>Master</Channel>").ok();
         let m = self.rc("GetMute", "<Channel>Master</Channel>").ok();
         (
-            v.and_then(|x| field(&x, "CurrentVolume")?.parse::<f64>().ok()).map(|v| (v / self.max_volume).clamp(0.0, 1.0)),
-            m.and_then(|x| field(&x, "CurrentMute")).map(|m| m == "1" || m.eq_ignore_ascii_case("true")),
+            v.and_then(|x| field(&x, "CurrentVolume")?.parse::<f64>().ok())
+                .map(|v| (v / self.max_volume).clamp(0.0, 1.0)),
+            m.and_then(|x| field(&x, "CurrentMute"))
+                .map(|m| m == "1" || m.eq_ignore_ascii_case("true")),
         )
     }
 
     /// The content types it says it plays.
     fn sink(&self) -> Vec<String> {
         let u = &self.d.dlna;
-        let Some(url) = &u.connection else { return Vec::new() };
+        let Some(url) = &u.connection else {
+            return Vec::new();
+        };
         self.soap(url, &u.connection_type, "GetProtocolInfo", "")
             .ok()
             .and_then(|x| field(&x, "Sink"))
@@ -243,13 +263,25 @@ impl Renderer<'_> {
 
     fn av(&self, action: &str, args: &str) -> Result<String, String> {
         let u = &self.d.dlna;
-        self.soap(&u.transport, &u.transport_type, action, &format!("<InstanceID>0</InstanceID>{args}"))
+        self.soap(
+            &u.transport,
+            &u.transport_type,
+            action,
+            &format!("<InstanceID>0</InstanceID>{args}"),
+        )
     }
 
     fn rc(&self, action: &str, args: &str) -> Result<String, String> {
         let u = &self.d.dlna;
-        let Some(url) = &u.rendering else { return Err("it has no volume control".into()) };
-        self.soap(url, &u.rendering_type, action, &format!("<InstanceID>0</InstanceID>{args}"))
+        let Some(url) = &u.rendering else {
+            return Err("it has no volume control".into());
+        };
+        self.soap(
+            url,
+            &u.rendering_type,
+            action,
+            &format!("<InstanceID>0</InstanceID>{args}"),
+        )
     }
 
     fn soap(&self, url: &str, service: &str, action: &str, args: &str) -> Result<String, String> {
@@ -267,7 +299,12 @@ impl Renderer<'_> {
             .send(body.as_bytes())
             .map_err(|e| e.to_string())?;
         let ok = resp.status().is_success();
-        let xml = resp.body_mut().with_config().limit(1024 * 1024).read_to_string().map_err(|e| e.to_string())?;
+        let xml = resp
+            .body_mut()
+            .with_config()
+            .limit(1024 * 1024)
+            .read_to_string()
+            .map_err(|e| e.to_string())?;
         if ok {
             return Ok(xml);
         }
@@ -296,9 +333,14 @@ fn volume_max(scpd: &str) -> Option<f64> {
     let doc = roxmltree::Document::parse(scpd).ok()?;
     let var = doc.descendants().find(|n| {
         n.tag_name().name() == "stateVariable"
-            && n.children().any(|c| c.tag_name().name() == "name" && c.text().is_some_and(|t| t.trim() == "Volume"))
+            && n.children().any(|c| {
+                c.tag_name().name() == "name" && c.text().is_some_and(|t| t.trim() == "Volume")
+            })
     })?;
-    let max = var.descendants().find(|n| n.tag_name().name() == "maximum")?.text()?;
+    let max = var
+        .descendants()
+        .find(|n| n.tag_name().name() == "maximum")?
+        .text()?;
     max.trim().parse::<f64>().ok().filter(|m| *m >= 1.0)
 }
 
@@ -338,7 +380,11 @@ fn parse_clock(s: &str) -> Option<f64> {
 
 /// What the renderer is told about the media.
 fn didl(m: &Media) -> String {
-    let class = if m.video { "object.item.videoItem.movie" } else { "object.item.audioItem.musicTrack" };
+    let class = if m.video {
+        "object.item.videoItem.movie"
+    } else {
+        "object.item.audioItem.musicTrack"
+    };
     let mut x = format!(
         "<DIDL-Lite xmlns=\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\" \
          xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:upnp=\"urn:schemas-upnp-org:metadata-1-0/upnp/\" \
@@ -348,7 +394,10 @@ fn didl(m: &Media) -> String {
         xml_escape(&m.title)
     );
     if !m.artist.is_empty() {
-        x += &format!("<dc:creator>{0}</dc:creator><upnp:artist>{0}</upnp:artist>", xml_escape(&m.artist));
+        x += &format!(
+            "<dc:creator>{0}</dc:creator><upnp:artist>{0}</upnp:artist>",
+            xml_escape(&m.artist)
+        );
     }
     if !m.album.is_empty() {
         x += &format!("<upnp:album>{}</upnp:album>", xml_escape(&m.album));
@@ -358,9 +407,16 @@ fn didl(m: &Media) -> String {
     }
     if let Some(srt) = &m.srt {
         // Samsung's way; the plain <res> below is everyone else's.
-        x += &format!("<sec:CaptionInfoEx sec:type=\"srt\">{}</sec:CaptionInfoEx>", xml_escape(srt));
+        x += &format!(
+            "<sec:CaptionInfoEx sec:type=\"srt\">{}</sec:CaptionInfoEx>",
+            xml_escape(srt)
+        );
     }
-    let length = if m.duration > 0.0 { format!(" duration=\"{}.000\"", clock(m.duration)) } else { String::new() };
+    let length = if m.duration > 0.0 {
+        format!(" duration=\"{}.000\"", clock(m.duration))
+    } else {
+        String::new()
+    };
     x += &format!(
         "<res protocolInfo=\"http-get:*:{}:{}\"{length}>{}</res>",
         xml_escape(&m.mime),
@@ -368,7 +424,10 @@ fn didl(m: &Media) -> String {
         xml_escape(&m.url)
     );
     if let Some(srt) = &m.srt {
-        x += &format!("<res protocolInfo=\"http-get:*:text/srt:*\">{}</res>", xml_escape(srt));
+        x += &format!(
+            "<res protocolInfo=\"http-get:*:text/srt:*\">{}</res>",
+            xml_escape(srt)
+        );
     }
     x + "</item></DIDL-Lite>"
 }
@@ -389,10 +448,15 @@ mod tests {
     #[test]
     fn answers() {
         let x = r#"<s:Envelope xmlns:s="x"><s:Body><u:R xmlns:u="y"><CurrentTransportState>PLAYING</CurrentTransportState></u:R></s:Body></s:Envelope>"#;
-        assert_eq!(field(x, "CurrentTransportState").as_deref(), Some("PLAYING"));
+        assert_eq!(
+            field(x, "CurrentTransportState").as_deref(),
+            Some("PLAYING")
+        );
         assert_eq!(field("not xml", "a"), None);
         assert_eq!(
-            parse_sink("http-get:*:audio/mpeg:DLNA.ORG_PN=MP3,http-get:*:audio/mpeg:*,rtsp-rtp-udp:*:video/mp4:*,http-get:*:audio/L16;rate=44100:*"),
+            parse_sink(
+                "http-get:*:audio/mpeg:DLNA.ORG_PN=MP3,http-get:*:audio/mpeg:*,rtsp-rtp-udp:*:video/mp4:*,http-get:*:audio/L16;rate=44100:*"
+            ),
             vec!["audio/mpeg", "audio/l16"]
         );
         let scpd = "<scpd><serviceStateTable><stateVariable><name>Mute</name></stateVariable>\
@@ -418,9 +482,15 @@ mod tests {
         };
         let x = didl(&m);
         let doc = roxmltree::Document::parse(&x).unwrap();
-        let res = doc.descendants().find(|n| n.tag_name().name() == "res").unwrap();
+        let res = doc
+            .descendants()
+            .find(|n| n.tag_name().name() == "res")
+            .unwrap();
         assert_eq!(res.text(), Some("http://h/1/a.mp4?x=1&y=2"));
-        assert_eq!(res.attribute("protocolInfo"), Some("http-get:*:video/mp4:DLNA.ORG_OP=01"));
+        assert_eq!(
+            res.attribute("protocolInfo"),
+            Some("http-get:*:video/mp4:DLNA.ORG_OP=01")
+        );
         assert_eq!(res.attribute("duration"), Some("1:01:40.000"));
         assert_eq!(field(&x, "title").as_deref(), Some("Tom & <Jerry>"));
     }

@@ -18,12 +18,30 @@ use player_core::Player;
 const SHADERS: &[(&str, &str)] = &[
     ("SMP_CAS.glsl", include_str!("../shaders/SMP_CAS.glsl")),
     ("FSR.glsl", include_str!("../shaders/FSR.glsl")),
-    ("Anime4K_Clamp_Highlights.glsl", include_str!("../shaders/Anime4K_Clamp_Highlights.glsl")),
-    ("Anime4K_Restore_CNN_M.glsl", include_str!("../shaders/Anime4K_Restore_CNN_M.glsl")),
-    ("Anime4K_Upscale_CNN_x2_M.glsl", include_str!("../shaders/Anime4K_Upscale_CNN_x2_M.glsl")),
-    ("Anime4K_AutoDownscalePre_x2.glsl", include_str!("../shaders/Anime4K_AutoDownscalePre_x2.glsl")),
-    ("Anime4K_AutoDownscalePre_x4.glsl", include_str!("../shaders/Anime4K_AutoDownscalePre_x4.glsl")),
-    ("Anime4K_Upscale_CNN_x2_S.glsl", include_str!("../shaders/Anime4K_Upscale_CNN_x2_S.glsl")),
+    (
+        "Anime4K_Clamp_Highlights.glsl",
+        include_str!("../shaders/Anime4K_Clamp_Highlights.glsl"),
+    ),
+    (
+        "Anime4K_Restore_CNN_M.glsl",
+        include_str!("../shaders/Anime4K_Restore_CNN_M.glsl"),
+    ),
+    (
+        "Anime4K_Upscale_CNN_x2_M.glsl",
+        include_str!("../shaders/Anime4K_Upscale_CNN_x2_M.glsl"),
+    ),
+    (
+        "Anime4K_AutoDownscalePre_x2.glsl",
+        include_str!("../shaders/Anime4K_AutoDownscalePre_x2.glsl"),
+    ),
+    (
+        "Anime4K_AutoDownscalePre_x4.glsl",
+        include_str!("../shaders/Anime4K_AutoDownscalePre_x4.glsl"),
+    ),
+    (
+        "Anime4K_Upscale_CNN_x2_S.glsl",
+        include_str!("../shaders/Anime4K_Upscale_CNN_x2_S.glsl"),
+    ),
 ];
 
 /// The shaders of each enhancement (settings::ENHANCE), in order.
@@ -115,9 +133,16 @@ fn write_chain(mode: &str, split: Option<f64>) -> Result<Vec<PathBuf>, String> {
     chain(mode)
         .iter()
         .map(|name| {
-            let src = SHADERS.iter().find(|(n, _)| n == name).map(|(_, s)| *s).ok_or("missing shader")?;
+            let src = SHADERS
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, s)| *s)
+                .ok_or("missing shader")?;
             let (file, text) = match split {
-                Some(s) => (format!("split-{:04}-{name}", (s * 1000.0).round() as u32), with_split(src, s)),
+                Some(s) => (
+                    format!("split-{:04}-{name}", (s * 1000.0).round() as u32),
+                    with_split(src, s),
+                ),
                 None => (name.to_string(), src.to_owned()),
             };
             let path = dir.join(file);
@@ -132,10 +157,17 @@ fn write_chain(mode: &str, split: Option<f64>) -> Result<Vec<PathBuf>, String> {
 /// Put enhancement `mode` on the player; with `split`, the comparison.
 pub fn apply(player: &Player, mode: &str, split: Option<f64>) -> Result<(), String> {
     let paths = write_chain(mode, split)?;
-    player.command(&["change-list", "glsl-shaders", "clr", ""]).map_err(|e| e.to_string())?;
+    player
+        .command(&["change-list", "glsl-shaders", "clr", ""])
+        .map_err(|e| e.to_string())?;
     for p in paths {
         player
-            .command(&["change-list", "glsl-shaders", "append", &p.to_string_lossy()])
+            .command(&[
+                "change-list",
+                "glsl-shaders",
+                "append",
+                &p.to_string_lossy(),
+            ])
             .map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -144,11 +176,17 @@ pub fn apply(player: &Player, mode: &str, split: Option<f64>) -> Result<(), Stri
 /// A split across the window (0..1) as a split across the picture, which
 /// may have black bars (mpv's `osd-dimensions`).
 pub fn window_to_video(player: &Player, split: f64) -> f64 {
-    let Some(d) = player.get_value("osd-dimensions") else { return split };
+    let Some(d) = player.get_value("osd-dimensions") else {
+        return split;
+    };
     let f = |k: &str| d.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
     let (w, ml, mr) = (f("w"), f("ml"), f("mr"));
     let vw = w - ml - mr;
-    if vw <= 1.0 { split } else { crate::autocrop::across_frame(((split * w - ml) / vw).clamp(0.0, 1.0)) }
+    if vw <= 1.0 {
+        split
+    } else {
+        crate::autocrop::across_frame(((split * w - ml) / vw).clamp(0.0, 1.0))
+    }
 }
 
 /// Smoother motion: mpv shows each frame for a share of the screen's
@@ -177,7 +215,10 @@ pub fn set_smooth(player: &Player, on: bool, refresh: Option<f64>) {
 /// so dark scenes are not dimmed for highlights they don't have. SDR video
 /// is not touched by either.
 pub fn set_tone_mapping(player: &Player, curve: &str, peak_detect: bool) {
-    for (k, v) in [("tone-mapping", curve), ("hdr-compute-peak", if peak_detect { "auto" } else { "no" })] {
+    for (k, v) in [
+        ("tone-mapping", curve),
+        ("hdr-compute-peak", if peak_detect { "auto" } else { "no" }),
+    ] {
         if let Err(e) = player.set_string(k, v) {
             log::warn!("{k}={v}: {e}");
         }
@@ -215,7 +256,10 @@ mod tests {
         // The second pass didn't bind its input; now it does.
         assert_eq!(out.matches("//!BIND HOOKED").count(), 2, "{out}");
         // A pass binding its input by name uses that name, not a second binding.
-        assert!(out.contains("if (MAIN_pos.x < 0.2500) return MAIN_tex(MAIN_pos);"), "{out}");
+        assert!(
+            out.contains("if (MAIN_pos.x < 0.2500) return MAIN_tex(MAIN_pos);"),
+            "{out}"
+        );
         // The intermediate pass is untouched.
         assert!(out.contains("//!SAVE tmp\nvec4 hook() { return vec4(1); }"));
         // Every shipped shader keeps one final pass per file at least.
@@ -241,7 +285,10 @@ mod tests {
         for mode in crate::settings::ENHANCE {
             apply(&p, mode, None).unwrap();
             apply(&p, mode, Some(0.5)).unwrap();
-            let n = p.get_value("glsl-shaders").map(|v| v.as_array().len()).unwrap_or(0);
+            let n = p
+                .get_value("glsl-shaders")
+                .map(|v| v.as_array().len())
+                .unwrap_or(0);
             assert_eq!(n, chain(mode).len(), "{mode}");
         }
     }

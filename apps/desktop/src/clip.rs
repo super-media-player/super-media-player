@@ -112,7 +112,10 @@ fn options(job: &Job) -> Vec<(String, String)> {
             o.push(("oacopts", "b=128k".into()));
         }
     }
-    o.into_iter().map(|(k, v)| (k.to_owned(), v)).chain(job.extra.iter().cloned()).collect()
+    o.into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .chain(job.extra.iter().cloned())
+        .collect()
 }
 
 /// Run `job`, reporting progress (0..1). Blocks; run it on a worker thread.
@@ -129,7 +132,9 @@ pub fn run(job: &Job, cancel: &AtomicBool, progress: impl Fn(f32)) -> Result<Pat
         let _ = tx.send(e);
     })
     .map_err(|e| e.to_string())?;
-    player.load(&job.source, LoadMode::Replace).map_err(|e| e.to_string())?;
+    player
+        .load(&job.source, LoadMode::Replace)
+        .map_err(|e| e.to_string())?;
     let length = (job.end - job.start).max(0.01);
     let result = loop {
         if cancel.load(Ordering::Relaxed) {
@@ -140,7 +145,10 @@ pub fn run(job: &Job, cancel: &AtomicBool, progress: impl Fn(f32)) -> Result<Pat
             Ok(PlayerEvent::Property(Property::TimePos(Some(t)))) => {
                 progress((((t - job.start) / length).clamp(0.0, 1.0)) as f32);
             }
-            Ok(PlayerEvent::EndFile { reason: EndReason::Eof, .. }) => break Ok(()),
+            Ok(PlayerEvent::EndFile {
+                reason: EndReason::Eof,
+                ..
+            }) => break Ok(()),
             Ok(PlayerEvent::EndFile { reason, error }) => {
                 break Err(error.unwrap_or_else(|| format!("{reason:?}")));
             }
@@ -179,7 +187,10 @@ pub fn user_dir(key: &str, fallback: &str) -> PathBuf {
         .and_then(|t| {
             t.lines()
                 .find_map(|l| l.strip_prefix(prefix.as_str()))
-                .map(|v| v.trim_matches('"').replace("$HOME", &home.to_string_lossy()))
+                .map(|v| {
+                    v.trim_matches('"')
+                        .replace("$HOME", &home.to_string_lossy())
+                })
         })
         .map(PathBuf::from);
     from_xdg
@@ -193,7 +204,13 @@ pub fn user_dir(key: &str, fallback: &str) -> PathBuf {
 pub fn output_path(dir: &Path, title: &str, start: f64, format: Format) -> PathBuf {
     let clean: String = title
         .chars()
-        .map(|c| if c.is_alphanumeric() || " -_.()".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || " -_.()".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .take(80)
         .collect();
     let clean = clean.trim().trim_matches('.');
@@ -239,8 +256,26 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let src = dir.join("src.mkv");
         let made = std::process::Command::new("ffmpeg")
-            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=3"])
-            .args(["-f", "lavfi", "-i", "sine=duration=3", "-shortest", "-c:v", "libx264", "-c:a", "aac"])
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=320x240:rate=25:duration=3",
+            ])
+            .args([
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=duration=3",
+                "-shortest",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+            ])
             .arg(&src)
             .status()
             .is_ok_and(|s| s.success());
@@ -264,7 +299,10 @@ mod tests {
             match format {
                 Format::Gif => assert!(head.starts_with(b"GIF89a"), "not a GIF"),
                 Format::Flac => assert!(head.starts_with(b"fLaC"), "not a FLAC"),
-                Format::Opus => assert!(head.starts_with(b"OggS") && head.windows(8).any(|w| w == b"OpusHead"), "not Opus"),
+                Format::Opus => assert!(
+                    head.starts_with(b"OggS") && head.windows(8).any(|w| w == b"OpusHead"),
+                    "not Opus"
+                ),
                 _ => assert!(head.starts_with(b"ID3") || head[0] == 0xff, "not an MP3"),
             }
         }

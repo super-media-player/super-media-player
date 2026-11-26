@@ -253,16 +253,26 @@ impl VideoRenderer {
                 log::warn!("MilkDrop could not start in this window");
             }
         }
-        let Some(md) = self.milkdrop.as_mut() else { return };
+        let Some(md) = self.milkdrop.as_mut() else {
+            return;
+        };
         let window = ui.window();
         let scale = window.scale_factor() as f64;
         let h = window.size().height as f64;
         let menu = (h - ui.get_content_height() as f64 * scale).max(0.0);
         let x = ui.get_video_x() as f64 * scale;
         let top = ui.get_video_y() as f64 * scale + menu;
-        let (vw, vh) = (ui.get_video_width() as f64 * scale, ui.get_video_height() as f64 * scale);
+        let (vw, vh) = (
+            ui.get_video_width() as f64 * scale,
+            ui.get_video_height() as f64 * scale,
+        );
         let [fbo] = gl.integers::<1>(GL_FRAMEBUFFER_BINDING);
-        let rect = (x.round() as i32, (h - top - vh).round().max(0.0) as i32, vw.round() as i32, vh.round() as i32);
+        let rect = (
+            x.round() as i32,
+            (h - top - vh).round().max(0.0) as i32,
+            vw.round() as i32,
+            vh.round() as i32,
+        );
         md.draw(fbo as u32, rect);
     }
 
@@ -307,8 +317,15 @@ impl VideoRenderer {
         };
         // Text scripts show (top left) goes inside the picture's area too, and
         // under the title. mpv counts these as if the window were 720 high.
-        let title = if ui.get_s_view_mode() != 0 { 0.0 } else { 56.0 * scale / h };
-        let osd = [(m[0] * w / h * 720.0 + 25.0).min(300.0), ((m[1] + title) * 720.0 + 10.0).min(600.0)];
+        let title = if ui.get_s_view_mode() != 0 {
+            0.0
+        } else {
+            56.0 * scale / h
+        };
+        let osd = [
+            (m[0] * w / h * 720.0 + 25.0).min(300.0),
+            ((m[1] + title) * 720.0 + 10.0).min(600.0),
+        ];
         slint::Timer::single_shot(Duration::ZERO, move || {
             for (name, v) in ["osd-margin-x", "osd-margin-y"].iter().zip(osd) {
                 let _ = player.set_string(name, &format!("{v:.0}"));

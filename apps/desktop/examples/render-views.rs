@@ -27,7 +27,10 @@ mod skins;
 
 /// The window, and a clock that only moves when told to (so each shot can
 /// jump past its animations: a bar sliding in, a panel fading).
-struct Offscreen(Rc<MinimalSoftwareWindow>, Rc<std::cell::Cell<std::time::Duration>>);
+struct Offscreen(
+    Rc<MinimalSoftwareWindow>,
+    Rc<std::cell::Cell<std::time::Duration>>,
+);
 
 impl Platform for Offscreen {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
@@ -54,21 +57,28 @@ fn main() {
     ui.set_volume(80.0);
     ui.set_media_title("Sample Artist - A Song With A Fairly Long Title".into());
     ui.set_audio_info("MP3 · 320 kbps · 44.1 kHz".into());
-    let levels: Vec<f32> = (0..20).map(|i| (0.9 - i as f32 * 0.03) * (0.6 + 0.4 * ((i * 7 % 5) as f32 / 4.0))).collect();
+    let levels: Vec<f32> = (0..20)
+        .map(|i| (0.9 - i as f32 * 0.03) * (0.6 + 0.4 * ((i * 7 % 5) as f32 / 4.0)))
+        .collect();
     ui.set_spectrum(Rc::new(VecModel::from(levels)).into());
     let items: Vec<PlaylistItem> = (1..=6)
-        .map(|i| PlaylistItem { title: format!("Track {i}").into(), detail: "Music".into(), current: i == 2 })
+        .map(|i| PlaylistItem {
+            title: format!("Track {i}").into(),
+            detail: "Music".into(),
+            current: i == 2,
+        })
         .collect();
     ui.set_playlist(Rc::new(VecModel::from(items)).into());
 
-    let check = |level, title: &str, detail: &str, action: &str, label: &str, command: &str| CheckItem {
-        level,
-        title: title.into(),
-        detail: detail.into(),
-        action: action.into(),
-        action_label: label.into(),
-        command: command.into(),
-    };
+    let check =
+        |level, title: &str, detail: &str, action: &str, label: &str, command: &str| CheckItem {
+            level,
+            title: title.into(),
+            detail: detail.into(),
+            action: action.into(),
+            action_label: label.into(),
+            command: command.into(),
+        };
     ui.set_check_items(
         Rc::new(VecModel::from(vec![
             check(3, "The drive won't read the disc in it", "/dev/sr1 reports a disc but refuses to read it. This is what an Ultra HD Blu-ray does in a drive that isn't UHD-friendly.", "", "", ""),
@@ -171,7 +181,12 @@ fn main() {
                     v += spike[beat] * (0.35 + 0.4 * ((i / 16 * 7 % 5) as f32 / 4.0));
                 }
                 let mid = view_h / 2.0;
-                format!("{}{} {:.1} ", if i == 0 { 'M' } else { 'L' }, i, mid - v * mid * 0.92)
+                format!(
+                    "{}{} {:.1} ",
+                    if i == 0 { 'M' } else { 'L' },
+                    i,
+                    mid - v * mid * 0.92
+                )
             })
             .collect()
     };
@@ -207,66 +222,145 @@ fn main() {
         if name == "library-network" {
             ui.set_library_tab(3);
             ui.set_library_status("1 media server found".into());
-            let r = |t: &str, d: &str, a: &str, b: &str| LibraryRow { title: t.into(), detail: d.into(), primary: a.into(), secondary: b.into() };
-            ui.set_library_rows(Rc::new(VecModel::from(vec![
-                r("Living room NAS", "Media server (DLNA / UPnP) on your network", "Open", ""),
-                r("smb://nas/music", "Saved share · dima", "Connect", "Forget"),
-            ])).into());
+            let r = |t: &str, d: &str, a: &str, b: &str| LibraryRow {
+                title: t.into(),
+                detail: d.into(),
+                primary: a.into(),
+                secondary: b.into(),
+            };
+            ui.set_library_rows(
+                Rc::new(VecModel::from(vec![
+                    r(
+                        "Living room NAS",
+                        "Media server (DLNA / UPnP) on your network",
+                        "Open",
+                        "",
+                    ),
+                    r("smb://nas/music", "Saved share · dima", "Connect", "Forget"),
+                ]))
+                .into(),
+            );
         }
         ui.set_subsearch_open(name == "subsearch");
         ui.set_subsync_open(name == "subsync");
         ui.set_subsync_done(true);
-        ui.set_subsync_status("Done: moved 2.3 s earlier, and fitted to the frame rate (-4.1 %).".into());
+        ui.set_subsync_status(
+            "Done: moved 2.3 s earlier, and fitted to the frame rate (-4.1 %).".into(),
+        );
         if name == "library-saved" {
             ui.set_library_tab(0);
             ui.set_library_status("".into());
-            let r = |t: &str, d: &str| LibraryRow { title: t.into(), detail: d.into(), primary: "Play".into(), secondary: "Remove".into() };
-            ui.set_library_rows(Rc::new(VecModel::from(vec![
-                r("Kiss FM Chișinău", "https://live.kissfm.ro/kissfm.chisinau"),
-                r("Hit FM", "https://radio.example/hit_fm_hot_hits/hitfm_hothits128.aac"),
-            ])).into());
+            let r = |t: &str, d: &str| LibraryRow {
+                title: t.into(),
+                detail: d.into(),
+                primary: "Play".into(),
+                secondary: "Remove".into(),
+            };
+            ui.set_library_rows(
+                Rc::new(VecModel::from(vec![
+                    r("Kiss FM Chișinău", "https://live.kissfm.ro/kissfm.chisinau"),
+                    r(
+                        "Hit FM",
+                        "https://radio.example/hit_fm_hot_hits/hitfm_hothits128.aac",
+                    ),
+                ]))
+                .into(),
+            );
         }
         if name == "library-radio" {
             ui.set_library_tab(1);
             ui.set_library_country("MD".into());
             ui.set_library_status("83 found".into());
-            let r = |t: &str, d: &str, saved: bool| LibraryRow { title: t.into(), detail: d.into(), primary: "Play".into(), secondary: if saved { "★ Saved" } else { "☆ Save" }.into() };
-            ui.set_library_rows(Rc::new(VecModel::from(vec![
-                r("Kiss FM Chișinău", "Moldova · top hits, top40 · AAC 80 kbit/s", true),
-                r("Radio Moldova", "Moldova · news, talk · MP3 128 kbit/s", false),
-                r("Hit FM", "Moldova · pop · AAC 64 kbit/s", false),
-            ])).into());
+            let r = |t: &str, d: &str, saved: bool| LibraryRow {
+                title: t.into(),
+                detail: d.into(),
+                primary: "Play".into(),
+                secondary: if saved { "★ Saved" } else { "☆ Save" }.into(),
+            };
+            ui.set_library_rows(
+                Rc::new(VecModel::from(vec![
+                    r(
+                        "Kiss FM Chișinău",
+                        "Moldova · top hits, top40 · AAC 80 kbit/s",
+                        true,
+                    ),
+                    r(
+                        "Radio Moldova",
+                        "Moldova · news, talk · MP3 128 kbit/s",
+                        false,
+                    ),
+                    r("Hit FM", "Moldova · pop · AAC 64 kbit/s", false),
+                ]))
+                .into(),
+            );
         }
-        ui.set_shortcut_rows(Rc::new(VecModel::from(vec![
-            ShortcutRow { keys: "Shift+Right".into(), action: "Forward 1 minute".into() },
-            ShortcutRow { keys: "F".into(), action: "Nothing (key turned off)".into() },
-        ])).into());
+        ui.set_shortcut_rows(
+            Rc::new(VecModel::from(vec![
+                ShortcutRow {
+                    keys: "Shift+Right".into(),
+                    action: "Forward 1 minute".into(),
+                },
+                ShortcutRow {
+                    keys: "F".into(),
+                    action: "Nothing (key turned off)".into(),
+                },
+            ]))
+            .into(),
+        );
         ui.set_bookmark_times(Rc::new(VecModel::from(vec![95.0f32])).into());
         ui.set_media_info_open(name == "media-info");
         if name == "picture" {
-            ui.set_picture(PictureState { brightness: 12.0, contrast: 5.0, zoom: 0.26, aspect: 1, ..Default::default() });
+            ui.set_picture(PictureState {
+                brightness: 12.0,
+                contrast: 5.0,
+                zoom: 0.26,
+                aspect: 1,
+                ..Default::default()
+            });
         }
         if name == "media-info" {
-            let row = |l: &str, v: &str, h: bool| InfoRow { label: l.into(), value: v.into(), heading: h };
-            ui.set_media_info_rows(Rc::new(VecModel::from(vec![
-                row("FILE", "", true),
-                row("Location", "/home/me/Videos/film.mkv", false),
-                row("Format", "matroska,webm", false),
-                row("Size", "4.21 GB", false),
-                row("VIDEO", "", true),
-                row("Codec", "hevc (H.265 / HEVC)", false),
-                row("Resolution", "3840 × 2160", false),
-                row("HDR", "HDR10 (PQ), peak 1000 nits", false),
-                row("Hardware decoding", "Yes (vaapi)", false),
-                row("Dropped frames", "0 by the display, 0 by the decoder", false),
-                row("AUDIO", "", true),
-                row("Codec", "eac3 (Dolby Digital Plus)", false),
-                row("Channels", "5.1", false),
-            ])).into());
+            let row = |l: &str, v: &str, h: bool| InfoRow {
+                label: l.into(),
+                value: v.into(),
+                heading: h,
+            };
+            ui.set_media_info_rows(
+                Rc::new(VecModel::from(vec![
+                    row("FILE", "", true),
+                    row("Location", "/home/me/Videos/film.mkv", false),
+                    row("Format", "matroska,webm", false),
+                    row("Size", "4.21 GB", false),
+                    row("VIDEO", "", true),
+                    row("Codec", "hevc (H.265 / HEVC)", false),
+                    row("Resolution", "3840 × 2160", false),
+                    row("HDR", "HDR10 (PQ), peak 1000 nits", false),
+                    row("Hardware decoding", "Yes (vaapi)", false),
+                    row(
+                        "Dropped frames",
+                        "0 by the display, 0 by the decoder",
+                        false,
+                    ),
+                    row("AUDIO", "", true),
+                    row("Codec", "eac3 (Dolby Digital Plus)", false),
+                    row("Channels", "5.1", false),
+                ]))
+                .into(),
+            );
         }
         ui.set_s_eq_enabled(true);
-        ui.set_eq_gains(Rc::new(VecModel::from(vec![5.0f32, 4.0, 2.0, 0.0, -1.0, -1.0, 0.0, 2.0, 4.0, 5.0])).into());
-        ui.set_eq_preset_names(Rc::new(VecModel::from(vec![slint::SharedString::from("Flat"), "Loudness".into()])).into());
+        ui.set_eq_gains(
+            Rc::new(VecModel::from(vec![
+                5.0f32, 4.0, 2.0, 0.0, -1.0, -1.0, 0.0, 2.0, 4.0, 5.0,
+            ]))
+            .into(),
+        );
+        ui.set_eq_preset_names(
+            Rc::new(VecModel::from(vec![
+                slint::SharedString::from("Flat"),
+                "Loudness".into(),
+            ]))
+            .into(),
+        );
         if name.starts_with("music") || name == "skin-aurora" {
             ui.set_media_artist("Sample Artist".into());
             ui.set_media_album("Sample Album".into());
@@ -287,7 +381,14 @@ fn main() {
         ui.set_makemkv_open(name == "makemkv");
         ui.set_rip_active(name.starts_with("ripping") || name == "rip-scanning");
         ui.set_rip_percent(if name == "rip-scanning" { -1.0 } else { 0.42 });
-        ui.set_rip_title(if name == "rip-scanning" { "Reading the disc…" } else { "HOLIDAY FILM" }.into());
+        ui.set_rip_title(
+            if name == "rip-scanning" {
+                "Reading the disc…"
+            } else {
+                "HOLIDAY FILM"
+            }
+            .into(),
+        );
         ui.set_ask_open(name == "ask");
         ui.set_ask_title("Rip & play".into());
         ui.set_ask_text("Copy \"HOLIDAY FILM\" (2:35:31, 7.6 GB) from the DVD drive (TSST SH-216DB, /dev/sr0) to\n/home/alex/Videos/Super Media Player/Rip & play (temporary)/HOLIDAY FILM\n\nIt starts playing when the copy is done. A DVD takes 10 to 30 minutes, an Ultra HD movie 20 to 60; you can cancel at any time.\n\nThe copy is temporary: it is deleted when playback ends, when you play something else, or when you close the player.".into());
@@ -296,7 +397,9 @@ fn main() {
         ui.set_rip_drive("Blu-ray drive (LG WH14NS40, /dev/sr1)".into());
         ui.set_rip_stage("Saving to MKV file".into());
         ui.set_rip_eta("about 12 min left".into());
-        ui.set_makemkv_status("MakeMKV (Flatpak) 2.0.0 is installed and registered: ready for Rip & play.".into());
+        ui.set_makemkv_status(
+            "MakeMKV (Flatpak) 2.0.0 is installed and registered: ready for Rip & play.".into(),
+        );
         ui.set_makemkv_ready(true);
         ui.set_makemkv_installed(true);
         ui.set_makemkv_install_command("flatpak install -y flathub com.makemkv.MakeMKV".into());
@@ -305,7 +408,10 @@ fn main() {
             ui.set_rip_heading("READING THE DISC".into());
             ui.set_rip_drive("".into());
             ui.set_rip_eta("".into());
-            ui.set_rip_stage("Waiting for the Blu-ray drive (LG WH14NS40, /dev/sr1) to get ready (up to 25 s)…".into());
+            ui.set_rip_stage(
+                "Waiting for the Blu-ray drive (LG WH14NS40, /dev/sr1) to get ready (up to 25 s)…"
+                    .into(),
+            );
         }
         extras(&ui, name);
         let h = if view == 0 { h + MENU } else { h };
@@ -325,7 +431,10 @@ fn main() {
         window.draw_if_needed(|r| {
             r.render(&mut buf, w as usize);
         });
-        let rgba: Vec<u8> = buf.iter().flat_map(|p| [p.red, p.green, p.blue, 255]).collect();
+        let rgba: Vec<u8> = buf
+            .iter()
+            .flat_map(|p| [p.red, p.green, p.blue, 255])
+            .collect();
         let path = out.join(format!("{file}.png"));
         let file = std::fs::File::create(&path).unwrap();
         let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
@@ -344,9 +453,14 @@ fn extras(ui: &AppWindow, name: &str) {
     ui.set_s_nav_docked(true);
     if name == "navigation" {
         let labels = |v: &[&str]| -> slint::ModelRc<S> {
-            Rc::new(VecModel::from(v.iter().map(|x| S::from(*x)).collect::<Vec<_>>())).into()
+            Rc::new(VecModel::from(
+                v.iter().map(|x| S::from(*x)).collect::<Vec<_>>(),
+            ))
+            .into()
         };
-        ui.set_nav_step_labels(labels(&["1 frame", "1 ms", "10 ms", "40 ms", "100 ms", "1 s", "5 s"]));
+        ui.set_nav_step_labels(labels(&[
+            "1 frame", "1 ms", "10 ms", "40 ms", "100 ms", "1 s", "5 s",
+        ]));
         ui.set_nav_turn_labels(labels(&["0.5 s", "1 s", "2 s", "5 s"]));
         ui.set_nav_state(NavState {
             position: 74.25,
@@ -375,21 +489,53 @@ fn extras(ui: &AppWindow, name: &str) {
     }
     if name == "palette" {
         let items = vec![
-            PaletteItem { id: "night".into(), title: "Night mode".into(), detail: "".into() },
-            PaletteItem { id: "next".into(), title: "Next".into(), detail: "N".into() },
-            PaletteItem { id: "play:1".into(), title: "Play: Track 2".into(), detail: "Playlist".into() },
+            PaletteItem {
+                id: "night".into(),
+                title: "Night mode".into(),
+                detail: "".into(),
+            },
+            PaletteItem {
+                id: "next".into(),
+                title: "Next".into(),
+                detail: "N".into(),
+            },
+            PaletteItem {
+                id: "play:1".into(),
+                title: "Play: Track 2".into(),
+                detail: "Playlist".into(),
+            },
         ];
         ui.set_palette_items(Rc::new(VecModel::from(items)).into());
     }
     ui.set_signal_open(name == "signal-path");
-    let st = |t: &str, d: &str, l| SignalStage { title: t.into(), detail: d.into(), level: l };
+    let st = |t: &str, d: &str, l| SignalStage {
+        title: t.into(),
+        detail: d.into(),
+        level: l,
+    };
     ui.set_signal_stages(
         Rc::new(VecModel::from(vec![
-            st("Source", "FLAC · 16-bit integer · 44100 Hz · stereo · lossless", 0),
+            st(
+                "Source",
+                "FLAC · 16-bit integer · 44100 Hz · stereo · lossless",
+                0,
+            ),
             st("Filters", "None: the decoded samples pass straight on", 0),
-            st("Volume", "100%: untouched (use the sound card's or amplifier's volume)", 0),
-            st("Player output", "pipewire · 16-bit integer · 44100 Hz · stereo", 0),
-            st("Sound server", "PipeWire clock 48000 Hz; may switch to: 48000. It converts 44100 Hz to 48000 Hz.", 1),
+            st(
+                "Volume",
+                "100%: untouched (use the sound card's or amplifier's volume)",
+                0,
+            ),
+            st(
+                "Player output",
+                "pipewire · 16-bit integer · 44100 Hz · stereo",
+                0,
+            ),
+            st(
+                "Sound server",
+                "PipeWire clock 48000 Hz; may switch to: 48000. It converts 44100 Hz to 48000 Hz.",
+                1,
+            ),
             st("Sound card", "A50 · S16_LE · 48000 Hz", 1),
         ]))
         .into(),
@@ -410,7 +556,11 @@ fn extras(ui: &AppWindow, name: &str) {
     ui.set_has_transcript(true);
     ui.set_can_transcribe(true);
     ui.set_transcript_status("Subtitles are ready: search them below.".into());
-    let tl = |t: f32, c: &str, x: &str| TranscriptLine { time: t, clock: c.into(), text: x.into() };
+    let tl = |t: f32, c: &str, x: &str| TranscriptLine {
+        time: t,
+        clock: c.into(),
+        text: x.into(),
+    };
     ui.set_transcript_results(
         Rc::new(VecModel::from(vec![
             tl(62.0, "1:02", "The password is in the drawer."),
@@ -442,7 +592,12 @@ fn extras(ui: &AppWindow, name: &str) {
     ui.set_cast_devices(
         Rc::new(VecModel::from(vec![
             device("Bedroom TV", "DLNA · Samsung UE40", false, false),
-            device("Kitchen speaker", "Chromecast, sound only · Nest Audio", true, false),
+            device(
+                "Kitchen speaker",
+                "Chromecast, sound only · Nest Audio",
+                true,
+                false,
+            ),
             device("Living room TV", "Chromecast", false, true),
         ]))
         .into(),
@@ -452,14 +607,32 @@ fn extras(ui: &AppWindow, name: &str) {
     ui.set_party_invite("192.168.1.20:47800/ab12cd34".into());
     ui.set_party_name("Mia".into());
     ui.set_party_status("In step with everyone.".into());
-    ui.set_party_people(Rc::new(VecModel::from(vec![S::from("Mia (host, you)"), "Ann".into(), "Bob".into()])).into());
-    ui.set_skip_text(match name {
-        "skip-intro" => "Skip intro",
-        "skip-sponsor" => "Skip sponsor",
-        _ => "",
-    }.into());
+    ui.set_party_people(
+        Rc::new(VecModel::from(vec![
+            S::from("Mia (host, you)"),
+            "Ann".into(),
+            "Bob".into(),
+        ]))
+        .into(),
+    );
+    ui.set_skip_text(
+        match name {
+            "skip-intro" => "Skip intro",
+            "skip-sponsor" => "Skip sponsor",
+            _ => "",
+        }
+        .into(),
+    );
     let mark = |start, end, main| SeekMark { start, end, main };
-    let marks = if name == "skip-sponsor" { vec![mark(30.0, 75.0, true), mark(150.0, 151.0, true), mark(190.0, 220.0, false)] } else { vec![] };
+    let marks = if name == "skip-sponsor" {
+        vec![
+            mark(30.0, 75.0, true),
+            mark(150.0, 151.0, true),
+            mark(190.0, 220.0, false),
+        ]
+    } else {
+        vec![]
+    };
     ui.set_sponsor_marks(Rc::new(VecModel::from(marks)).into());
     ui.set_intro_start(if name == "skip-intro" { 40.0 } else { -1.0 });
     ui.set_intro_end(if name == "skip-intro" { 95.0 } else { -1.0 });
@@ -478,11 +651,28 @@ fn media_library(ui: &AppWindow, name: &str) {
         removable: progress >= 0.0,
         ..Default::default()
     };
-    let head = |t: &str| MediaLine { kind: 0, title: t.into(), ..Default::default() };
-    let row = |first, count, columns, shape| MediaLine { kind: 1, first, count, columns, shape, ..Default::default() };
+    let head = |t: &str| MediaLine {
+        kind: 0,
+        title: t.into(),
+        ..Default::default()
+    };
+    let row = |first, count, columns, shape| MediaLine {
+        kind: 1,
+        first,
+        count,
+        columns,
+        shape,
+        ..Default::default()
+    };
     let song = |i: i32, t: &str, d: &str, r: &str| MediaLine {
-        kind: 2, title: t.into(), detail: d.into(), right: r.into(), number: (i + 1).to_string().into(),
-        path: format!("/{i}").into(), first: i, ..Default::default()
+        kind: 2,
+        title: t.into(),
+        detail: d.into(),
+        right: r.into(),
+        number: (i + 1).to_string().into(),
+        path: format!("/{i}").into(),
+        first: i,
+        ..Default::default()
     };
     ui.set_media_empty(name == "media-empty");
     ui.set_media_page(if name == "media-album" { 1 } else { 0 });
@@ -490,32 +680,68 @@ fn media_library(ui: &AppWindow, name: &str) {
     ui.set_media_can_play(name == "media-album");
     ui.set_media_has_head(name == "media-album");
     ui.set_media_playing("/1".into());
-    ui.set_media_status(if name == "media-home" { "Reading 1200 of 4312…" } else { "" }.into());
+    ui.set_media_status(
+        if name == "media-home" {
+            "Reading 1200 of 4312…"
+        } else {
+            ""
+        }
+        .into(),
+    );
     if name == "media-album" {
         ui.set_media_heading("An Album With Quite A Long Name".into());
         ui.set_media_subheading("Some Artist · 2019 · 3 songs · 11 min".into());
         ui.set_media_head(card("", "", 0, 0, "", -1.0));
         ui.set_media_cards(Default::default());
-        ui.set_media_lines(Rc::new(VecModel::from(vec![
-            song(0, "First song", "Some Artist", "3:41"),
-            song(1, "Second song", "Some Artist feat. Other", "4:05"),
-            song(2, "Third song", "Some Artist", "3:12"),
-        ])).into());
+        ui.set_media_lines(
+            Rc::new(VecModel::from(vec![
+                song(0, "First song", "Some Artist", "3:41"),
+                song(1, "Second song", "Some Artist feat. Other", "4:05"),
+                song(2, "Third song", "Some Artist", "3:12"),
+            ]))
+            .into(),
+        );
     } else {
         ui.set_media_heading("Home".into());
         ui.set_media_subheading("4312 songs · 87 videos".into());
         ui.set_media_sorts(Rc::new(VecModel::from(Vec::<S>::new())).into());
-        ui.set_media_cards(Rc::new(VecModel::from(vec![
-            card("A Film (2021)", "Stopped at 41:20", 2, 2, "1:02:11 left", 0.4),
-            card("Series S01E03", "Stopped at 12:04", 2, 2, "31:00 left", 0.28),
-            card("First Album", "Artist · 2020", 0, 0, "", -1.0),
-            card("Second Album", "Other Artist · 1998", 0, 0, "", -1.0),
-            card("Band", "2 albums · 24 songs", 1, 1, "", -1.0),
-            card("Rock", "Music", 3, 0, "12 songs", -1.0),
-        ])).into());
-        ui.set_media_lines(if name == "media-empty" { Default::default() } else { Rc::new(VecModel::from(vec![
-            head("Continue watching"), row(0, 2, 3, 2), head("New albums"), row(2, 4, 5, 0), head("New songs"),
-            song(0, "A song", "Artist · Folder", "3:41"),
-        ])).into() });
+        ui.set_media_cards(
+            Rc::new(VecModel::from(vec![
+                card(
+                    "A Film (2021)",
+                    "Stopped at 41:20",
+                    2,
+                    2,
+                    "1:02:11 left",
+                    0.4,
+                ),
+                card(
+                    "Series S01E03",
+                    "Stopped at 12:04",
+                    2,
+                    2,
+                    "31:00 left",
+                    0.28,
+                ),
+                card("First Album", "Artist · 2020", 0, 0, "", -1.0),
+                card("Second Album", "Other Artist · 1998", 0, 0, "", -1.0),
+                card("Band", "2 albums · 24 songs", 1, 1, "", -1.0),
+                card("Rock", "Music", 3, 0, "12 songs", -1.0),
+            ]))
+            .into(),
+        );
+        ui.set_media_lines(if name == "media-empty" {
+            Default::default()
+        } else {
+            Rc::new(VecModel::from(vec![
+                head("Continue watching"),
+                row(0, 2, 3, 2),
+                head("New albums"),
+                row(2, 4, 5, 0),
+                head("New songs"),
+                song(0, "A song", "Artist · Folder", "3:41"),
+            ]))
+            .into()
+        });
     }
 }

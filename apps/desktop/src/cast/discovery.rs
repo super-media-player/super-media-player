@@ -49,7 +49,11 @@ impl Device {
             Kind::Chromecast => "Chromecast, sound only",
             Kind::Dlna => "DLNA",
         };
-        if self.model.is_empty() || self.model == kind { kind.to_owned() } else { format!("{kind} · {}", self.model) }
+        if self.model.is_empty() || self.model == kind {
+            kind.to_owned()
+        } else {
+            format!("{kind} · {}", self.model)
+        }
     }
 }
 
@@ -70,7 +74,10 @@ pub fn at_address(text: &str) -> Result<Device, String> {
         return describe(text);
     }
     let (host, port) = match text.rsplit_once(':') {
-        Some((h, p)) if !h.contains(':') => (h, p.parse::<u16>().map_err(|_| "That isn't a valid address")?),
+        Some((h, p)) if !h.contains(':') => (
+            h,
+            p.parse::<u16>().map_err(|_| "That isn't a valid address")?,
+        ),
         _ => (text, 8009),
     };
     let addr = std::net::ToSocketAddrs::to_socket_addrs(&(host, port))
@@ -96,7 +103,10 @@ pub fn at_address(text: &str) -> Result<Device, String> {
             }
         });
     }
-    hit.into_inner().ok().flatten().ok_or_else(|| format!("Nothing that can play was found at {host}"))
+    hit.into_inner()
+        .ok()
+        .flatten()
+        .ok_or_else(|| format!("Nothing that can play was found at {host}"))
 }
 
 // ---- DLNA ----
@@ -104,57 +114,79 @@ pub fn at_address(text: &str) -> Result<Device, String> {
 fn renderers(wait: Duration, only: Option<Ipv4Addr>, found: &(impl Fn(Device) + Sync)) {
     let seen = std::sync::Mutex::new(Vec::<String>::new());
     std::thread::scope(|s| {
-        network::ssdp("urn:schemas-upnp-org:device:MediaRenderer:1", wait, only, |loc| {
-            let seen = &seen;
-            s.spawn(move || match describe(&loc) {
-                Ok(d) => {
-                    let new = seen.lock().is_ok_and(|mut s| {
-                        let new = !s.contains(&d.id);
-                        s.push(d.id.clone());
-                        new
-                    });
-                    if new {
-                        found(d);
+        network::ssdp(
+            "urn:schemas-upnp-org:device:MediaRenderer:1",
+            wait,
+            only,
+            |loc| {
+                let seen = &seen;
+                s.spawn(move || match describe(&loc) {
+                    Ok(d) => {
+                        let new = seen.lock().is_ok_and(|mut s| {
+                            let new = !s.contains(&d.id);
+                            s.push(d.id.clone());
+                            new
+                        });
+                        if new {
+                            found(d);
+                        }
                     }
-                }
-                Err(e) => log::info!("renderer {loc}: {e}"),
-            });
-        });
+                    Err(e) => log::info!("renderer {loc}: {e}"),
+                });
+            },
+        );
     });
 }
 
 fn describe(location: &str) -> Result<Device, String> {
     let xml = network::get_text(location)?;
-    parse_renderer(&xml, location).ok_or_else(|| "it can't be told to play (no AVTransport service)".into())
+    parse_renderer(&xml, location)
+        .ok_or_else(|| "it can't be told to play (no AVTransport service)".into())
 }
 
 /// The host and port of an http link.
 pub fn host_of(url: &str) -> Option<SocketAddr> {
     let host = url.split_once("://")?.1.split('/').next()?;
-    let with_port = if host.contains(':') { host.to_owned() } else { format!("{host}:80") };
-    std::net::ToSocketAddrs::to_socket_addrs(&with_port).ok()?.find(SocketAddr::is_ipv4)
+    let with_port = if host.contains(':') {
+        host.to_owned()
+    } else {
+        format!("{host}:80")
+    };
+    std::net::ToSocketAddrs::to_socket_addrs(&with_port)
+        .ok()?
+        .find(SocketAddr::is_ipv4)
 }
 
 pub fn parse_renderer(xml: &str, location: &str) -> Option<Device> {
     let doc = roxmltree::Document::parse(xml).ok()?;
     let text = |n: roxmltree::Node, name: &str| {
-        n.descendants().find(|c| c.tag_name().name() == name).and_then(|c| c.text()).map(|t| t.trim().to_owned())
+        n.descendants()
+            .find(|c| c.tag_name().name() == name)
+            .and_then(|c| c.text())
+            .map(|t| t.trim().to_owned())
     };
     let root = doc.root_element();
-    let base = text(root, "URLBase").filter(|b| !b.is_empty()).unwrap_or_else(|| location.to_owned());
+    let base = text(root, "URLBase")
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| location.to_owned());
     // The renderer may be one of several devices in the file.
     let device = root
         .descendants()
         .filter(|n| n.has_tag_name("device") || n.tag_name().name() == "device")
         .find(|n| {
-            n.children()
-                .any(|c| c.tag_name().name() == "deviceType" && c.text().is_some_and(|t| t.contains("MediaRenderer")))
+            n.children().any(|c| {
+                c.tag_name().name() == "deviceType"
+                    && c.text().is_some_and(|t| t.contains("MediaRenderer"))
+            })
         })
         .unwrap_or(root);
     let service = |kind: &str| {
         let n = device.descendants().find(|n| {
             n.tag_name().name() == "service"
-                && n.children().any(|c| c.tag_name().name() == "serviceType" && c.text().is_some_and(|t| t.contains(kind)))
+                && n.children().any(|c| {
+                    c.tag_name().name() == "serviceType"
+                        && c.text().is_some_and(|t| t.contains(kind))
+                })
         })?;
         Some((
             network::join_url(&base, &text(n, "controlURL")?),
@@ -259,7 +291,8 @@ impl Answers {
     /// Take in one packet. `None`: not a valid one.
     pub fn add(&mut self, p: &[u8], sender: Ipv4Addr) -> Option<()> {
         let questions = u16_at(p, 4)?;
-        let records = u32::from(u16_at(p, 6)?) + u32::from(u16_at(p, 8)?) + u32::from(u16_at(p, 10)?);
+        let records =
+            u32::from(u16_at(p, 6)?) + u32::from(u16_at(p, 8)?) + u32::from(u16_at(p, 10)?);
         let mut i = 12;
         for _ in 0..questions {
             i = name_at(p, i)?.1 + 4;
@@ -289,7 +322,9 @@ impl Answers {
                     let mut j = 0;
                     while j < bytes.len() {
                         let n = bytes[j] as usize;
-                        let Some(s) = bytes.get(j + 1..j + 1 + n) else { break };
+                        let Some(s) = bytes.get(j + 1..j + 1 + n) else {
+                            break;
+                        };
                         if let Some((k, v)) = String::from_utf8_lossy(s).split_once('=') {
                             map.insert(k.to_lowercase(), v.to_owned());
                         }
@@ -298,7 +333,8 @@ impl Answers {
                     self.txt.insert(key, map);
                 }
                 TYPE_A if len == 4 => {
-                    self.a.insert(key, Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]));
+                    self.a
+                        .insert(key, Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]));
                 }
                 _ => {}
             }
@@ -320,7 +356,10 @@ impl Answers {
                 let addr = SocketAddr::new((*ip).into(), *port);
                 Some(Device {
                     kind: Kind::Chromecast,
-                    name: txt.get("fn").cloned().unwrap_or_else(|| format!("Chromecast at {ip}")),
+                    name: txt
+                        .get("fn")
+                        .cloned()
+                        .unwrap_or_else(|| format!("Chromecast at {ip}")),
                     model: txt.get("md").cloned().unwrap_or_default(),
                     id: txt.get("id").cloned().unwrap_or_else(|| addr.to_string()),
                     addr,
@@ -335,8 +374,12 @@ impl Answers {
 fn chromecasts(wait: Duration, found: &(impl Fn(Device) + Sync)) {
     // Bound to our own address, the packet leaves through that network
     // (and not through a VPN or a container bridge).
-    let local = crate::remote::lan_ip().filter(IpAddr::is_ipv4).unwrap_or(Ipv4Addr::UNSPECIFIED.into());
-    let Ok(sock) = UdpSocket::bind((local, 0)).or_else(|_| UdpSocket::bind("0.0.0.0:0")) else { return };
+    let local = crate::remote::lan_ip()
+        .filter(IpAddr::is_ipv4)
+        .unwrap_or(Ipv4Addr::UNSPECIFIED.into());
+    let Ok(sock) = UdpSocket::bind((local, 0)).or_else(|_| UdpSocket::bind("0.0.0.0:0")) else {
+        return;
+    };
     let _ = sock.set_multicast_ttl_v4(255);
     let _ = sock.set_read_timeout(Some(Duration::from_millis(200)));
     let mut answers = Answers::default();
@@ -352,7 +395,9 @@ fn chromecasts(wait: Duration, found: &(impl Fn(Device) + Sync)) {
             }
             asked += 1;
         }
-        let Ok((n, from)) = sock.recv_from(&mut buf) else { continue };
+        let Ok((n, from)) = sock.recv_from(&mut buf) else {
+            continue;
+        };
         let IpAddr::V4(ip) = from.ip() else { continue };
         answers.add(&buf[..n], ip);
         for d in answers.devices() {
@@ -449,9 +494,18 @@ mod tests {
         assert_eq!(d.name, "[TV] Living room");
         assert_eq!(d.detail(), "DLNA · Samsung UE55");
         assert_eq!(d.dlna.transport, "http://192.168.1.40:9197/av/control");
-        assert_eq!(d.dlna.rendering.as_deref(), Some("http://192.168.1.40:9197/rc/control"));
+        assert_eq!(
+            d.dlna.rendering.as_deref(),
+            Some("http://192.168.1.40:9197/rc/control")
+        );
         assert_eq!(d.addr.to_string(), "192.168.1.40:9197");
         // A media server isn't a renderer.
-        assert_eq!(parse_renderer(&xml.replace("AVTransport", "ContentDirectory"), "http://h/x"), None);
+        assert_eq!(
+            parse_renderer(
+                &xml.replace("AVTransport", "ContentDirectory"),
+                "http://h/x"
+            ),
+            None
+        );
     }
 }

@@ -71,7 +71,11 @@ impl Drop for Party {
 
 /// Names travel inside lines and lists: keep them short and plain.
 pub fn clean_name(name: &str) -> String {
-    let n: String = name.chars().filter(|c| !c.is_control() && *c != '|').take(32).collect();
+    let n: String = name
+        .chars()
+        .filter(|c| !c.is_control() && *c != '|')
+        .take(32)
+        .collect();
     let n = n.trim().to_owned();
     if n.is_empty() { "Someone".into() } else { n }
 }
@@ -79,7 +83,12 @@ pub fn clean_name(name: &str) -> String {
 fn code() -> String {
     use std::hash::{BuildHasher, Hasher};
     let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-    h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+    );
     format!("{:08x}", h.finish() as u32)
 }
 
@@ -95,16 +104,34 @@ pub fn parse_line(line: &str) -> Option<Event> {
         "STATE" => {
             let mut p = rest.splitn(3, ' ');
             let paused = p.next()? == "1";
-            let position: f64 = p.next()?.parse().ok().filter(|x: &f64| x.is_finite() && *x >= 0.0)?;
-            Some(Event::State(Shared { paused, position, file: p.next().unwrap_or("").to_owned() }))
+            let position: f64 = p
+                .next()?
+                .parse()
+                .ok()
+                .filter(|x: &f64| x.is_finite() && *x >= 0.0)?;
+            Some(Event::State(Shared {
+                paused,
+                position,
+                file: p.next().unwrap_or("").to_owned(),
+            }))
         }
-        "PEOPLE" => Some(Event::People(rest.split('|').filter(|s| !s.is_empty()).map(clean_name).collect())),
+        "PEOPLE" => Some(Event::People(
+            rest.split('|')
+                .filter(|s| !s.is_empty())
+                .map(clean_name)
+                .collect(),
+        )),
         "CTRL" => {
             let mut p = rest.split(' ');
             Some(Event::Control(match p.next()? {
                 "pause" => Control::Pause,
                 "play" => Control::Play,
-                "seek" => Control::Seek(p.next()?.parse().ok().filter(|x: &f64| x.is_finite() && *x >= 0.0)?),
+                "seek" => Control::Seek(
+                    p.next()?
+                        .parse()
+                        .ok()
+                        .filter(|x: &f64| x.is_finite() && *x >= 0.0)?,
+                ),
                 _ => return None,
             }))
         }
@@ -145,9 +172,16 @@ impl Party {
             while !stop.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((s, _)) => {
-                        let (tx, out, code, stop, host_name) =
-                            (tx.clone(), out.clone(), code.clone(), stop.clone(), host_name.clone());
-                        std::thread::spawn(move || guest_conn(s, &code, &host_name, &out, &tx, &stop));
+                        let (tx, out, code, stop, host_name) = (
+                            tx.clone(),
+                            out.clone(),
+                            code.clone(),
+                            stop.clone(),
+                            host_name.clone(),
+                        );
+                        std::thread::spawn(move || {
+                            guest_conn(s, &code, &host_name, &out, &tx, &stop)
+                        });
                     }
                     Err(_) => std::thread::sleep(Duration::from_millis(100)),
                 }
@@ -160,18 +194,28 @@ impl Party {
     /// Join with an invite `address:port/code`.
     pub fn join(invite: &str, name: &str) -> Result<Party, String> {
         let invite = invite.trim().trim_start_matches("smp://");
-        let (addr, code) = invite.rsplit_once('/').ok_or("the invite looks like 192.168.1.20:47800/ab12cd34")?;
-        let addr = if addr.contains(':') { addr.to_owned() } else { format!("{addr}:{PORT}") };
+        let (addr, code) = invite
+            .rsplit_once('/')
+            .ok_or("the invite looks like 192.168.1.20:47800/ab12cd34")?;
+        let addr = if addr.contains(':') {
+            addr.to_owned()
+        } else {
+            format!("{addr}:{PORT}")
+        };
         let sock: SocketAddr = std::net::ToSocketAddrs::to_socket_addrs(&addr)
             .map_err(|e| format!("{addr}: {e}"))?
             .next()
             .ok_or("bad address")?;
-        let mut s = TcpStream::connect_timeout(&sock, Duration::from_secs(5)).map_err(|e| format!("couldn't reach the host: {e}"))?;
-        s.set_read_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
+        let mut s = TcpStream::connect_timeout(&sock, Duration::from_secs(5))
+            .map_err(|e| format!("couldn't reach the host: {e}"))?;
+        s.set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| e.to_string())?;
         writeln!(s, "HELLO {} {}", code.trim(), clean_name(name)).map_err(|e| e.to_string())?;
         let mut reader = BufReader::new(s.try_clone().map_err(|e| e.to_string())?);
         let mut first = String::new();
-        reader.read_line(&mut first).map_err(|_| "the host didn't answer".to_owned())?;
+        reader
+            .read_line(&mut first)
+            .map_err(|_| "the host didn't answer".to_owned())?;
         if first.trim() != "WELCOME" {
             return Err("the host turned the invite down (wrong code?)".into());
         }
@@ -199,7 +243,13 @@ impl Party {
                 }
             }
         });
-        Ok(Party { hosting: false, invite: invite.to_owned(), events, out, stop })
+        Ok(Party {
+            hosting: false,
+            invite: invite.to_owned(),
+            events,
+            out,
+            stop,
+        })
     }
 
     /// (Host) tell everyone the state.
@@ -214,7 +264,10 @@ impl Party {
 
     /// Names of the guests (host side).
     pub fn guests(&self) -> Vec<String> {
-        self.out.lock().map(|o| o.iter().map(|(_, n)| n.clone()).collect()).unwrap_or_default()
+        self.out
+            .lock()
+            .map(|o| o.iter().map(|(_, n)| n.clone()).collect())
+            .unwrap_or_default()
     }
 
     /// (Host) tell everyone who is watching.
@@ -230,7 +283,14 @@ impl Party {
 }
 
 /// One guest's connection, on the host.
-fn guest_conn(s: TcpStream, code: &str, _host: &str, out: &Mutex<Vec<(TcpStream, String)>>, tx: &Sender<Event>, stop: &AtomicBool) {
+fn guest_conn(
+    s: TcpStream,
+    code: &str,
+    _host: &str,
+    out: &Mutex<Vec<(TcpStream, String)>>,
+    tx: &Sender<Event>,
+    stop: &AtomicBool,
+) {
     let _ = s.set_nonblocking(false);
     let _ = s.set_read_timeout(Some(Duration::from_secs(10)));
     let Ok(clone) = s.try_clone() else { return };
@@ -272,7 +332,12 @@ fn guest_conn(s: TcpStream, code: &str, _host: &str, out: &Mutex<Vec<(TcpStream,
 
 /// What a guest should do to match the host: a pause change and/or a seek.
 /// `local` is this player's position; `latency` how old the host's report is.
-pub fn follow(host: &Shared, local_paused: bool, local: f64, latency: f64) -> (Option<bool>, Option<f64>) {
+pub fn follow(
+    host: &Shared,
+    local_paused: bool,
+    local: f64,
+    latency: f64,
+) -> (Option<bool>, Option<f64>) {
     let expected = host.position + if host.paused { 0.0 } else { latency };
     let pause = (host.paused != local_paused).then_some(host.paused);
     let seek = ((expected - local).abs() > 1.5).then_some(expected);
@@ -285,15 +350,49 @@ mod tests {
 
     #[test]
     fn lines_round_trip() {
-        let s = Shared { paused: true, position: 61.5, file: "Show S01E02.mkv".into() };
+        let s = Shared {
+            paused: true,
+            position: 61.5,
+            file: "Show S01E02.mkv".into(),
+        };
         assert_eq!(parse_line(&encode_state(&s)), Some(Event::State(s)));
-        assert_eq!(parse_line("CTRL seek 12.5\n"), Some(Event::Control(Control::Seek(12.5))));
+        assert_eq!(
+            parse_line("CTRL seek 12.5\n"),
+            Some(Event::Control(Control::Seek(12.5)))
+        );
         assert_eq!(parse_line("CTRL seek NaN"), None);
         assert_eq!(parse_line("CTRL format c:"), None);
-        assert_eq!(parse_line("PEOPLE Ann|Bob"), Some(Event::People(vec!["Ann".into(), "Bob".into()])));
+        assert_eq!(
+            parse_line("PEOPLE Ann|Bob"),
+            Some(Event::People(vec!["Ann".into(), "Bob".into()]))
+        );
         assert_eq!(clean_name("Evil\n|Name"), "EvilName");
-        assert_eq!(follow(&Shared { paused: false, position: 100.0, file: String::new() }, false, 100.2, 0.1), (None, None));
-        assert_eq!(follow(&Shared { paused: true, position: 50.0, file: String::new() }, false, 100.0, 0.1), (Some(true), Some(50.0)));
+        assert_eq!(
+            follow(
+                &Shared {
+                    paused: false,
+                    position: 100.0,
+                    file: String::new()
+                },
+                false,
+                100.2,
+                0.1
+            ),
+            (None, None)
+        );
+        assert_eq!(
+            follow(
+                &Shared {
+                    paused: true,
+                    position: 50.0,
+                    file: String::new()
+                },
+                false,
+                100.0,
+                0.1
+            ),
+            (Some(true), Some(50.0))
+        );
     }
 
     /// A host and a guest on this computer: the guest hears the state, the
@@ -313,9 +412,16 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert_eq!(host.guests(), vec!["Bob".to_owned()]);
-        let s = Shared { paused: false, position: 10.0, file: "a.mkv".into() };
+        let s = Shared {
+            paused: false,
+            position: 10.0,
+            file: "a.mkv".into(),
+        };
         host.broadcast(&s);
-        assert_eq!(guest.events.recv_timeout(Duration::from_secs(3)).unwrap(), Event::State(s));
+        assert_eq!(
+            guest.events.recv_timeout(Duration::from_secs(3)).unwrap(),
+            Event::State(s)
+        );
         guest.control(&Control::Seek(42.0));
         let got = loop {
             if let Event::Control(c) = host.events.recv_timeout(Duration::from_secs(3)).unwrap() {

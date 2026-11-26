@@ -115,7 +115,9 @@ fn take_messages(buf: &mut Vec<u8>) -> Result<Vec<Message>, String> {
         if n > MAX_MESSAGE {
             return Err("the answer isn't a Chromecast's".into());
         }
-        let Some(body) = buf.get(at + 4..at + 4 + n) else { break };
+        let Some(body) = buf.get(at + 4..at + 4 + n) else {
+            break;
+        };
         out.extend(Message::decode(body));
         at += 4 + n;
     }
@@ -182,7 +184,9 @@ fn connect(d: &Device) -> Result<Tls, String> {
     let mut tls = rustls::StreamOwned::new(conn, tcp);
     // The handshake, with the long timeout; then short reads.
     while tls.conn.is_handshaking() {
-        tls.conn.complete_io(&mut tls.sock).map_err(|e| format!("couldn't connect securely to {} ({e})", d.name))?;
+        tls.conn
+            .complete_io(&mut tls.sock)
+            .map_err(|e| format!("couldn't connect securely to {} ({e})", d.name))?;
     }
     let _ = tls.sock.set_read_timeout(Some(Duration::from_millis(100)));
     Ok(tls)
@@ -219,7 +223,11 @@ pub fn run(d: &Device, rx: &Receiver<Cmd>, status: &Shared) -> Result<(), String
         load_request: 0,
         load_id: 0,
     };
-    c.send(RECEIVER, NS_CONNECTION, json!({"type": "CONNECT", "origin": {}}))?;
+    c.send(
+        RECEIVER,
+        NS_CONNECTION,
+        json!({"type": "CONNECT", "origin": {}}),
+    )?;
     c.ask(RECEIVER, NS_RECEIVER, json!({"type": "GET_STATUS"}))?;
     let mut buf = Vec::new();
     let mut chunk = vec![0u8; 16 * 1024];
@@ -234,7 +242,11 @@ pub fn run(d: &Device, rx: &Receiver<Cmd>, status: &Shared) -> Result<(), String
                     c.handle(&m)?;
                 }
             }
-            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted) => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+                ) => {}
             Err(e) => return Err(format!("the connection to {} was lost ({e})", d.name)),
         }
         loop {
@@ -256,7 +268,9 @@ pub fn run(d: &Device, rx: &Receiver<Cmd>, status: &Shared) -> Result<(), String
         }
         if polled.elapsed() > Duration::from_secs(1) {
             polled = Instant::now();
-            if c.media_session.is_some() && let Some(t) = c.transport.clone() {
+            if c.media_session.is_some()
+                && let Some(t) = c.transport.clone()
+            {
                 c.ask(&t, NS_MEDIA, json!({"type": "GET_STATUS"}))?;
             }
         }
@@ -265,7 +279,12 @@ pub fn run(d: &Device, rx: &Receiver<Cmd>, status: &Shared) -> Result<(), String
 
 impl Cast<'_> {
     fn send(&mut self, dest: &str, ns: &str, body: Value) -> Result<(), String> {
-        let m = Message { source: ME.into(), dest: dest.into(), ns: ns.into(), payload: body.to_string() };
+        let m = Message {
+            source: ME.into(),
+            dest: dest.into(),
+            ns: ns.into(),
+            payload: body.to_string(),
+        };
         self.tls
             .write_all(&m.encode())
             .and_then(|()| self.tls.flush())
@@ -282,7 +301,9 @@ impl Cast<'_> {
 
     /// A command for what is playing.
     fn media(&mut self, mut body: Value) -> Result<(), String> {
-        let (Some(t), Some(id)) = (self.transport.clone(), self.media_session) else { return Ok(()) };
+        let (Some(t), Some(id)) = (self.transport.clone(), self.media_session) else {
+            return Ok(());
+        };
         body["mediaSessionId"] = json!(id);
         self.ask(&t, NS_MEDIA, body).map(|_| ())
     }
@@ -302,25 +323,39 @@ impl Cast<'_> {
                 self.pending = Some(m);
                 if !self.launching {
                     self.launching = true;
-                    self.ask(RECEIVER, NS_RECEIVER, json!({"type": "LAUNCH", "appId": APP}))?;
+                    self.ask(
+                        RECEIVER,
+                        NS_RECEIVER,
+                        json!({"type": "LAUNCH", "appId": APP}),
+                    )?;
                 }
                 Ok(())
             }
             Cmd::Play => self.media(json!({"type": "PLAY"})),
             Cmd::Pause => self.media(json!({"type": "PAUSE"})),
             Cmd::Seek(t) => self.media(json!({"type": "SEEK", "currentTime": t})),
-            Cmd::Volume(v) => {
-                self.ask(RECEIVER, NS_RECEIVER, json!({"type": "SET_VOLUME", "volume": {"level": v}})).map(|_| ())
-            }
-            Cmd::Mute(m) => {
-                self.ask(RECEIVER, NS_RECEIVER, json!({"type": "SET_VOLUME", "volume": {"muted": m}})).map(|_| ())
-            }
+            Cmd::Volume(v) => self
+                .ask(
+                    RECEIVER,
+                    NS_RECEIVER,
+                    json!({"type": "SET_VOLUME", "volume": {"level": v}}),
+                )
+                .map(|_| ()),
+            Cmd::Mute(m) => self
+                .ask(
+                    RECEIVER,
+                    NS_RECEIVER,
+                    json!({"type": "SET_VOLUME", "volume": {"muted": m}}),
+                )
+                .map(|_| ()),
             Cmd::Quit => Ok(()),
         }
     }
 
     fn load(&mut self, m: &Media) -> Result<(), String> {
-        let Some(t) = self.transport.clone() else { return Ok(()) };
+        let Some(t) = self.transport.clone() else {
+            return Ok(());
+        };
         self.media_session = None;
         self.load_id = m.id;
         self.load_request = self.ask(&t, NS_MEDIA, load_body(m))?;
@@ -329,7 +364,11 @@ impl Cast<'_> {
 
     fn quit(&mut self) {
         if let Some(id) = self.app_session.take() {
-            let _ = self.ask(RECEIVER, NS_RECEIVER, json!({"type": "STOP", "sessionId": id}));
+            let _ = self.ask(
+                RECEIVER,
+                NS_RECEIVER,
+                json!({"type": "STOP", "sessionId": id}),
+            );
         }
         if let Some(t) = self.transport.take() {
             let _ = self.send(&t, NS_CONNECTION, json!({"type": "CLOSE"}));
@@ -349,10 +388,14 @@ impl Cast<'_> {
     }
 
     fn handle(&mut self, m: &Message) -> Result<(), String> {
-        let Ok(v) = serde_json::from_str::<Value>(&m.payload) else { return Ok(()) };
+        let Ok(v) = serde_json::from_str::<Value>(&m.payload) else {
+            return Ok(());
+        };
         let kind = v["type"].as_str().unwrap_or("");
         match (m.ns.as_str(), kind) {
-            (NS_HEARTBEAT, "PING") => self.send(&m.source, NS_HEARTBEAT, json!({"type": "PONG"}))?,
+            (NS_HEARTBEAT, "PING") => {
+                self.send(&m.source, NS_HEARTBEAT, json!({"type": "PONG"}))?
+            }
             (NS_CONNECTION, "CLOSE") => {
                 if Some(&m.source) == self.transport.as_ref() {
                     self.gone();
@@ -399,7 +442,9 @@ impl Cast<'_> {
                 s.phase = Phase::Ready;
             }
         });
-        let ours = st["applications"].as_array().and_then(|a| a.iter().find(|a| a["appId"] == APP));
+        let ours = st["applications"]
+            .as_array()
+            .and_then(|a| a.iter().find(|a| a["appId"] == APP));
         match ours.and_then(|a| Some((a["transportId"].as_str()?, a["sessionId"].as_str()?))) {
             // Before our own launch, someone else may be using the same app.
             Some((t, s)) if self.launching => {
@@ -524,7 +569,12 @@ mod tests {
         for n in 0..body.len() {
             let _ = Message::decode(&body[..n]);
         }
-        assert_eq!(Message::decode(&[0x32, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01]), None);
+        assert_eq!(
+            Message::decode(&[
+                0x32, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01
+            ]),
+            None
+        );
     }
 
     #[test]
@@ -545,7 +595,11 @@ mod tests {
         assert_eq!(b["autoplay"], true);
         assert_eq!(b["activeTrackIds"], json!([1]));
         assert_eq!(b["media"]["tracks"][0]["trackContentId"], "http://h/x.vtt");
-        let song = load_body(&Media { title: "Song".into(), artist: "Band".into(), ..Default::default() });
+        let song = load_body(&Media {
+            title: "Song".into(),
+            artist: "Band".into(),
+            ..Default::default()
+        });
         assert_eq!(song["media"]["streamType"], "LIVE");
         assert_eq!(song["media"]["metadata"]["artist"], "Band");
         assert_eq!(song.get("activeTrackIds"), None);

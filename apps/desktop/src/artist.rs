@@ -197,13 +197,18 @@ pub(crate) fn json_string_field(json: &str, field: &str) -> Option<String> {
             '"' => return Some(out),
             '\\' => match chars.next()? {
                 'u' => {
-                    let mut hex4 = || u32::from_str_radix(&chars.by_ref().take(4).collect::<String>(), 16).ok();
+                    let mut hex4 = || {
+                        u32::from_str_radix(&chars.by_ref().take(4).collect::<String>(), 16).ok()
+                    };
                     let hi = hex4()?;
                     // Characters outside the BMP (emoji) come as a
                     // surrogate pair: \ud83c\udfb5.
                     let code = if (0xD800..0xDC00).contains(&hi) {
                         let lo = (chars.next() == Some('\\') && chars.next() == Some('u'))
-                            .then(|| u32::from_str_radix(&chars.by_ref().take(4).collect::<String>(), 16).ok())
+                            .then(|| {
+                                u32::from_str_radix(&chars.by_ref().take(4).collect::<String>(), 16)
+                                    .ok()
+                            })
                             .flatten()
                             .filter(|lo| (0xDC00..0xE000).contains(lo));
                         lo.map_or(0xFFFD, |lo| 0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00))

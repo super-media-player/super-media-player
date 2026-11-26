@@ -30,7 +30,10 @@ pub fn source(device: &str) -> String {
     }
     match linux::raw_source(device) {
         Some(folder) => {
-            log::info!("{device}: the drive reads without bus encryption; opening the disc through {}", folder.display());
+            log::info!(
+                "{device}: the drive reads without bus encryption; opening the disc through {}",
+                folder.display()
+            );
             folder.to_string_lossy().into_owned()
         }
         None => device.to_owned(),
@@ -80,7 +83,11 @@ fn link_folder(root: &Path, dir: &Path) -> std::io::Result<()> {
 
 /// The folder standing in for `device`.
 fn stand_in(device: &str) -> PathBuf {
-    let name = Path::new(device).file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let name = Path::new(device)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     let base = match std::env::var_os("XDG_RUNTIME_DIR") {
         Some(d) if Path::new(&d).is_dir() => PathBuf::from(d).join("super-media-player"),
         _ => {
@@ -119,11 +126,17 @@ mod linux {
 
     /// The disc's big streams, the largest first.
     fn films(root: &Path) -> Vec<PathBuf> {
-        let Ok(dir) = std::fs::read_dir(root.join("BDMV/STREAM")) else { return Vec::new() };
+        let Ok(dir) = std::fs::read_dir(root.join("BDMV/STREAM")) else {
+            return Vec::new();
+        };
         let mut files: Vec<(u64, PathBuf)> = dir
             .flatten()
             .filter_map(|e| Some((e.metadata().ok()?.len(), e.path())))
-            .filter(|(size, p)| *size > SMALL && p.extension().is_some_and(|x| x.eq_ignore_ascii_case("m2ts")))
+            .filter(|(size, p)| {
+                *size > SMALL
+                    && p.extension()
+                        .is_some_and(|x| x.eq_ignore_ascii_case("m2ts"))
+            })
             .collect();
         files.sort_by(|a, b| b.cmp(a));
         files.into_iter().map(|f| f.1).collect()
@@ -148,15 +161,24 @@ mod linux {
     /// the files first and then their contents, both in disc order: 3 s.
     fn read_ahead(root: &Path) {
         use std::os::unix::fs::DirEntryExt;
-        let mut files: Vec<(u64, PathBuf)> = ["BDMV", "BDMV/PLAYLIST", "BDMV/CLIPINF", "BDMV/BDJO", "AACS", "CERTIFICATE"]
-            .iter()
-            .filter_map(|d| std::fs::read_dir(root.join(d)).ok())
-            .flat_map(|d| d.flatten().map(|e| (e.ino(), e.path())))
-            .collect();
+        let mut files: Vec<(u64, PathBuf)> = [
+            "BDMV",
+            "BDMV/PLAYLIST",
+            "BDMV/CLIPINF",
+            "BDMV/BDJO",
+            "AACS",
+            "CERTIFICATE",
+        ]
+        .iter()
+        .filter_map(|d| std::fs::read_dir(root.join(d)).ok())
+        .flat_map(|d| d.flatten().map(|e| (e.ino(), e.path())))
+        .collect();
         files.sort();
         let small: Vec<PathBuf> = files
             .into_iter()
-            .filter(|(_, p)| std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() <= MAX_AHEAD))
+            .filter(|(_, p)| {
+                std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.len() <= MAX_AHEAD)
+            })
             .map(|f| f.1)
             .collect();
         for p in small {
@@ -227,7 +249,11 @@ mod linux {
         fn bluray_this_machine() {
             let device = std::env::var("SMP_TEST_BLURAY").unwrap_or("/dev/sr1".into());
             let start = std::time::Instant::now();
-            println!("{device} -> {} ({:?})", super::super::source(&device), start.elapsed());
+            println!(
+                "{device} -> {} ({:?})",
+                super::super::source(&device),
+                start.elapsed()
+            );
         }
     }
 }
@@ -276,7 +302,10 @@ mod tests {
         // Another disc: nothing is left of the first, and the discs are untouched.
         link_folder(&b, &dir).unwrap();
         assert!(!dir.join("AACS").exists() && a.join("AACS").is_dir());
-        assert_eq!(std::fs::read_link(dir.join("BDMV")).unwrap(), b.join("BDMV"));
+        assert_eq!(
+            std::fs::read_link(dir.join("BDMV")).unwrap(),
+            b.join("BDMV")
+        );
         std::fs::remove_dir_all(base).unwrap();
     }
 }

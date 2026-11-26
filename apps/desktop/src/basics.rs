@@ -93,7 +93,11 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         });
     }
     ui.on_chapter_name(|t| {
-        B.with_borrow(|b| chapter_at(&b.chapters, f64::from(t)).unwrap_or_default().into())
+        B.with_borrow(|b| {
+            chapter_at(&b.chapters, f64::from(t))
+                .unwrap_or_default()
+                .into()
+        })
     });
 
     #[cfg(target_os = "linux")]
@@ -117,7 +121,11 @@ fn act(ui: &AppWindow, p: &Player, settings: &Rc<RefCell<Settings>>, action: &st
             let now = p.get_double(action).unwrap_or(0.0);
             let new = ((now + v) * 1000.0).round() / 1000.0;
             let _ = p.set_double(action, new);
-            let what = if action == "audio-delay" { "Audio delay" } else { "Subtitle delay" };
+            let what = if action == "audio-delay" {
+                "Audio delay"
+            } else {
+                "Subtitle delay"
+            };
             toast(format!("{what}: {}", fmt_delay(new)));
         }
         "audio-delay-reset" => {
@@ -164,7 +172,9 @@ fn act(ui: &AppWindow, p: &Player, settings: &Rc<RefCell<Settings>>, action: &st
             }
         }
         "bookmark-add" => {
-            let (Some(path), Some(t)) = (p.get_string("path"), crate::cast::position(p)) else { return };
+            let (Some(path), Some(t)) = (p.get_string("path"), crate::cast::position(p)) else {
+                return;
+            };
             let name = chapter_at(&B.with_borrow(|b| b.chapters.clone()), t).unwrap_or_default();
             B.with_borrow_mut(|b| {
                 b.bookmarks.push((path.clone(), t, name));
@@ -175,7 +185,11 @@ fn act(ui: &AppWindow, p: &Player, settings: &Rc<RefCell<Settings>>, action: &st
         }
         "bookmark" => {
             let path = p.get_string("path");
-            let t = B.with_borrow(|b| file_bookmarks(&b.bookmarks, path.as_deref()).get(v as usize).map(|m| m.0));
+            let t = B.with_borrow(|b| {
+                file_bookmarks(&b.bookmarks, path.as_deref())
+                    .get(v as usize)
+                    .map(|m| m.0)
+            });
             if let Some(t) = t {
                 let _ = p.command(&["seek", &format!("{t:.3}"), "absolute+exact"]);
             }
@@ -183,7 +197,8 @@ fn act(ui: &AppWindow, p: &Player, settings: &Rc<RefCell<Settings>>, action: &st
         "bookmarks-clear" => {
             let path = p.get_string("path");
             B.with_borrow_mut(|b| {
-                b.bookmarks.retain(|m| Some(m.0.as_str()) != path.as_deref());
+                b.bookmarks
+                    .retain(|m| Some(m.0.as_str()) != path.as_deref());
                 save_bookmarks(&b.bookmarks);
             });
             show_bookmarks(ui, path.as_deref());
@@ -215,15 +230,26 @@ fn picture(ui: &AppWindow, p: &Player, action: &str, v: f64) {
                 let _ = p.set_double(action, v);
             }
             "zoom" | "zoom-to" => {
-                let z = if action == "zoom" { f64::from(pic.zoom) + v } else { v };
+                let z = if action == "zoom" {
+                    f64::from(pic.zoom) + v
+                } else {
+                    v
+                };
                 pic.zoom = (z.clamp(-1.0, 2.0) * 100.0).round() as f32 / 100.0;
                 let _ = p.set_double("video-zoom", f64::from(pic.zoom));
-                toast = Some(format!("Zoom {:.0}%", 2f64.powf(f64::from(pic.zoom)) * 100.0));
+                toast = Some(format!(
+                    "Zoom {:.0}%",
+                    2f64.powf(f64::from(pic.zoom)) * 100.0
+                ));
             }
             "pan-x" | "pan-x-to" | "pan-y" | "pan-y-to" => {
                 let x = action.starts_with("pan-x");
                 let cur = if x { pic.pan_x } else { pic.pan_y };
-                let n = if action.ends_with("-to") { v } else { f64::from(cur) + v };
+                let n = if action.ends_with("-to") {
+                    v
+                } else {
+                    f64::from(cur) + v
+                };
                 let n = (n.clamp(-1.0, 1.0) * 100.0).round() as f32 / 100.0;
                 if x {
                     pic.pan_x = n;
@@ -237,7 +263,10 @@ fn picture(ui: &AppWindow, p: &Player, action: &str, v: f64) {
                 pic.aspect = i as i32;
                 let stretch = ASPECTS[i] == "stretch";
                 let _ = p.set_flag("keepaspect", !stretch);
-                let _ = p.set_string("video-aspect-override", if stretch { "-1" } else { ASPECTS[i] });
+                let _ = p.set_string(
+                    "video-aspect-override",
+                    if stretch { "-1" } else { ASPECTS[i] },
+                );
                 toast = Some(match i {
                     0 => "Aspect ratio: automatic".into(),
                     6 => "Aspect ratio: stretched to the window".into(),
@@ -252,11 +281,24 @@ fn picture(ui: &AppWindow, p: &Player, action: &str, v: f64) {
             "deinterlace" => {
                 pic.deinterlace = v > 0.5;
                 let _ = p.set_flag("deinterlace", pic.deinterlace);
-                toast = Some(format!("Deinterlace {}", if pic.deinterlace { "on" } else { "off" }));
+                toast = Some(format!(
+                    "Deinterlace {}",
+                    if pic.deinterlace { "on" } else { "off" }
+                ));
             }
             "reset" => {
                 *pic = PictureState::default();
-                for k in ["brightness", "contrast", "saturation", "gamma", "hue", "video-zoom", "video-pan-x", "video-pan-y", "video-rotate"] {
+                for k in [
+                    "brightness",
+                    "contrast",
+                    "saturation",
+                    "gamma",
+                    "hue",
+                    "video-zoom",
+                    "video-pan-x",
+                    "video-pan-y",
+                    "video-rotate",
+                ] {
                     let _ = p.set_double(k, 0.0);
                 }
                 let _ = p.set_string("video-aspect-override", "-1");
@@ -301,9 +343,20 @@ pub fn apply_subtitle_look(p: &Player, s: &Settings) {
     let _ = p.set_string("sub-color", color);
     let boxed = matches!(s.sub_style.as_str(), "box" | "lightbox");
     // mpv colours are #AARRGGBB.
-    let back = if s.sub_style == "lightbox" { "#80000000" } else { "#D0000000" };
+    let back = if s.sub_style == "lightbox" {
+        "#80000000"
+    } else {
+        "#D0000000"
+    };
     let has_style = p
-        .set_string("sub-border-style", if boxed { "background-box" } else { "outline-and-shadow" })
+        .set_string(
+            "sub-border-style",
+            if boxed {
+                "background-box"
+            } else {
+                "outline-and-shadow"
+            },
+        )
         .is_ok();
     let _ = p.set_string("sub-border-color", "#FF000000");
     if boxed {
@@ -334,7 +387,11 @@ pub fn apply_on_top(ui: &AppWindow, on: bool, tell: bool) {
         );
     }
     ui.window().with_winit_window(|w| {
-        w.set_window_level(if on { WindowLevel::AlwaysOnTop } else { WindowLevel::Normal });
+        w.set_window_level(if on {
+            WindowLevel::AlwaysOnTop
+        } else {
+            WindowLevel::Normal
+        });
     });
 }
 
@@ -367,10 +424,15 @@ fn toggle_recording(ui: &AppWindow, p: &Player) {
         return;
     }
     let Some(src) = p.get_string("path").filter(|s| can_record(s)) else {
-        ui.set_toast("Recording is for streams and discs; a file can be saved with Save a clip or convert".into());
+        ui.set_toast(
+            "Recording is for streams and discs; a file can be saved with Save a clip or convert"
+                .into(),
+        );
         return;
     };
-    let title = p.get_string("media-title").unwrap_or_else(|| "Recording".into());
+    let title = p
+        .get_string("media-title")
+        .unwrap_or_else(|| "Recording".into());
     let ext = if ui.get_has_video() { "mkv" } else { "mka" };
     let out = recording_path(&crate::clip::videos_dir(), &title, ext);
     if let Err(e) = p.set_string("stream-record", &out.to_string_lossy()) {
@@ -407,7 +469,13 @@ fn stop_recording(ui: &AppWindow, p: &Player) {
 fn recording_path(dir: &Path, title: &str, ext: &str) -> PathBuf {
     let clean: String = title
         .chars()
-        .map(|c| if c.is_alphanumeric() || " -_.()".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || " -_.()".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .take(80)
         .collect();
     let clean = clean.trim().trim_matches('.');
@@ -424,7 +492,9 @@ fn recording_path(dir: &Path, title: &str, ext: &str) -> PathBuf {
 
 /// "2026-11-24 21-05", local time (from `date`, else UTC).
 fn local_stamp() -> String {
-    if let Ok(o) = std::process::Command::new("date").arg("+%Y-%m-%d %H-%M").output()
+    if let Ok(o) = std::process::Command::new("date")
+        .arg("+%Y-%m-%d %H-%M")
+        .output()
         && o.status.success()
     {
         let s = String::from_utf8_lossy(&o.stdout).trim().to_owned();
@@ -432,7 +502,9 @@ fn local_stamp() -> String {
             return s;
         }
     }
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
     let (days, rem) = ((secs / 86_400) as i64, secs % 86_400);
     // Civil date from days since 1970 (Howard Hinnant's algorithm).
     let z = days + 719_468;
@@ -444,7 +516,11 @@ fn local_stamp() -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + i64::from(m <= 2);
-    format!("{y:04}-{m:02}-{d:02} {:02}-{:02}", rem / 3600, rem % 3600 / 60)
+    format!(
+        "{y:04}-{m:02}-{d:02} {:02}-{:02}",
+        rem / 3600,
+        rem % 3600 / 60
+    )
 }
 
 // ---- sleep timer ----
@@ -456,9 +532,9 @@ fn set_sleep(ui: &AppWindow, p: &Player, choice: i32) {
         }
         b.sleep = Sleep {
             choice,
-            deadline: (1..=5)
-                .contains(&choice)
-                .then(|| Instant::now() + Duration::from_secs(SLEEP_MINUTES[choice as usize - 1] * 60)),
+            deadline: (1..=5).contains(&choice).then(|| {
+                Instant::now() + Duration::from_secs(SLEEP_MINUTES[choice as usize - 1] * 60)
+            }),
             faded_from: None,
         };
     });
@@ -469,7 +545,10 @@ fn set_sleep(ui: &AppWindow, p: &Player, choice: i32) {
         match choice {
             0 => "Sleep timer off".to_string(),
             6 => "Playback will pause at the end of this file".into(),
-            c => format!("Playback will pause in {} minutes", SLEEP_MINUTES[c as usize - 1]),
+            c => format!(
+                "Playback will pause in {} minutes",
+                SLEEP_MINUTES[c as usize - 1]
+            ),
         }
         .into(),
     );
@@ -586,7 +665,10 @@ fn refresh(ui: &AppWindow, p: &Player, settings: &Rc<RefCell<Settings>>, tick: u
         let wanted = settings.borrow().audio_device.clone();
         if B.with_borrow(|b| b.devices != devices) {
             ui.set_audio_devices(ModelRc::new(VecModel::from(
-                devices.iter().map(|d| SharedString::from(d.1.as_str())).collect::<Vec<_>>(),
+                devices
+                    .iter()
+                    .map(|d| SharedString::from(d.1.as_str()))
+                    .collect::<Vec<_>>(),
             )));
             B.with_borrow_mut(|b| b.devices = devices.clone());
         }
@@ -635,7 +717,9 @@ pub fn settings_changed(ui: &AppWindow, p: &Player, old: &Settings, new: &Settin
 /// until then, which mustn't overwrite the saved choice).
 pub fn device_name(index: i32) -> Option<String> {
     B.with_borrow(|b| {
-        b.device_applied.then(|| b.devices.get(index.max(0) as usize).map(|d| d.0.clone())).flatten()
+        b.device_applied
+            .then(|| b.devices.get(index.max(0) as usize).map(|d| d.0.clone()))
+            .flatten()
     })
 }
 
@@ -647,7 +731,9 @@ fn bookmarks_file() -> Option<PathBuf> {
 
 /// Lines of "time<TAB>name<TAB>file".
 fn load_bookmarks() -> Vec<(String, f64, String)> {
-    let text = bookmarks_file().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    let text = bookmarks_file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .unwrap_or_default();
     parse_bookmarks(&text)
 }
 
@@ -669,22 +755,29 @@ fn save_bookmarks(list: &[(String, f64, String)]) {
         let _ = std::fs::create_dir_all(d);
     }
     let clean = |s: &str| s.replace(['\t', '\n', '\r'], " ");
-    let text: String =
-        list.iter().map(|(file, t, name)| format!("{t:.3}\t{}\t{}\n", clean(name), clean(file))).collect();
+    let text: String = list
+        .iter()
+        .map(|(file, t, name)| format!("{t:.3}\t{}\t{}\n", clean(name), clean(file)))
+        .collect();
     let _ = std::fs::write(f, text);
 }
 
 /// The bookmarks of `path`, by time: (time, name).
 fn file_bookmarks(all: &[(String, f64, String)], path: Option<&str>) -> Vec<(f64, String)> {
-    let mut v: Vec<(f64, String)> =
-        all.iter().filter(|m| Some(m.0.as_str()) == path).map(|m| (m.1, m.2.clone())).collect();
+    let mut v: Vec<(f64, String)> = all
+        .iter()
+        .filter(|m| Some(m.0.as_str()) == path)
+        .map(|m| (m.1, m.2.clone()))
+        .collect();
     v.sort_by(|a, b| a.0.total_cmp(&b.0));
     v
 }
 
 fn show_bookmarks(ui: &AppWindow, path: Option<&str>) {
     let list = B.with_borrow(|b| file_bookmarks(&b.bookmarks, path));
-    ui.set_bookmark_times(ModelRc::new(VecModel::from(list.iter().map(|m| m.0 as f32).collect::<Vec<_>>())));
+    ui.set_bookmark_times(ModelRc::new(VecModel::from(
+        list.iter().map(|m| m.0 as f32).collect::<Vec<_>>(),
+    )));
     ui.set_bookmark_titles(ModelRc::new(VecModel::from(
         list.iter()
             .map(|(t, n)| {
@@ -707,7 +800,13 @@ fn recent_file() -> Option<PathBuf> {
 fn load_recent() -> Vec<String> {
     recent_file()
         .and_then(|f| std::fs::read_to_string(f).ok())
-        .map(|t| t.lines().filter(|l| !l.trim().is_empty()).take(RECENT_MAX).map(String::from).collect())
+        .map(|t| {
+            t.lines()
+                .filter(|l| !l.trim().is_empty())
+                .take(RECENT_MAX)
+                .map(String::from)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -751,7 +850,11 @@ fn labels(list: &[String]) -> ModelRc<SharedString> {
                         .map_or_else(|| p.clone(), |n| n.to_string_lossy().into_owned())
                 };
                 let short: String = name.chars().take(70).collect();
-                SharedString::from(if short.len() < name.len() { short + "…" } else { short })
+                SharedString::from(if short.len() < name.len() {
+                    short + "…"
+                } else {
+                    short
+                })
             })
             .collect::<Vec<_>>(),
     ))
@@ -772,7 +875,11 @@ fn chapters_of(v: &Value) -> Vec<(f64, String)> {
 }
 
 fn chapter_at(chapters: &[(f64, String)], t: f64) -> Option<String> {
-    chapters.iter().rev().find(|c| c.0 <= t).map(|c| c.1.clone())
+    chapters
+        .iter()
+        .rev()
+        .find(|c| c.0 <= t)
+        .map(|c| c.1.clone())
 }
 
 fn devices_of(v: &Value) -> Vec<(String, String)> {
@@ -781,7 +888,11 @@ fn devices_of(v: &Value) -> Vec<(String, String)> {
         .filter_map(|d| {
             let name = d.str_field("name")?;
             let desc = d.str_field("description").unwrap_or_else(|| name.clone());
-            Some(if name == "auto" { (name, "Automatic (system default)".into()) } else { (name, desc) })
+            Some(if name == "auto" {
+                (name, "Automatic (system default)".into())
+            } else {
+                (name, desc)
+            })
         })
         .collect()
 }
@@ -851,7 +962,11 @@ fn clock_seconds(t: &str) -> Option<f64> {
 
 fn fmt_delay(s: f64) -> String {
     let ms = (s * 1000.0).round() as i64;
-    if ms == 0 { "0 ms".into() } else { format!("{ms:+} ms") }
+    if ms == 0 {
+        "0 ms".into()
+    } else {
+        format!("{ms:+} ms")
+    }
 }
 
 // ---- media information ----
@@ -860,7 +975,13 @@ fn show_media_info(ui: &AppWindow, p: &Player) {
     let rows = media_info(p);
     let text = rows
         .iter()
-        .map(|r| if r.heading { format!("\n{}", r.label) } else { format!("  {}: {}", r.label, r.value) })
+        .map(|r| {
+            if r.heading {
+                format!("\n{}", r.label)
+            } else {
+                format!("  {}: {}", r.label, r.value)
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
     ui.set_media_info_text(text.trim_start().into());
@@ -870,11 +991,19 @@ fn show_media_info(ui: &AppWindow, p: &Player) {
 fn media_info(p: &Player) -> Vec<InfoRow> {
     let mut rows = Vec::new();
     let head = |rows: &mut Vec<InfoRow>, t: &str| {
-        rows.push(InfoRow { label: t.into(), value: SharedString::new(), heading: true })
+        rows.push(InfoRow {
+            label: t.into(),
+            value: SharedString::new(),
+            heading: true,
+        })
     };
     let row = |rows: &mut Vec<InfoRow>, l: &str, v: Option<String>| {
         if let Some(v) = v.filter(|v| !v.trim().is_empty()) {
-            rows.push(InfoRow { label: l.into(), value: v.into(), heading: false });
+            rows.push(InfoRow {
+                label: l.into(),
+                value: v.into(),
+                heading: false,
+            });
         }
     };
     let s = |k: &str| p.get_string(k).filter(|v| !v.is_empty());
@@ -892,7 +1021,11 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
     let duration = d("duration");
     row(&mut rows, "Length", duration.map(crate::fmt_clock));
     if let (Some(size), Some(dur)) = (d("file-size"), duration.filter(|d| *d > 0.0)) {
-        row(&mut rows, "Overall bitrate", Some(fmt_rate(size * 8.0 / dur)));
+        row(
+            &mut rows,
+            "Overall bitrate",
+            Some(fmt_rate(size * 8.0 / dur)),
+        );
     }
     let chapters = d("chapters").unwrap_or(0.0);
     if chapters > 0.0 {
@@ -902,9 +1035,16 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
     let tracks = p.get_value("track-list").unwrap_or_default();
     let tracks = tracks.as_array();
     let selected = |kind: &str| {
-        tracks.iter().find(|t| t.str_field("type").as_deref() == Some(kind) && t.bool_field("selected"))
+        tracks
+            .iter()
+            .find(|t| t.str_field("type").as_deref() == Some(kind) && t.bool_field("selected"))
     };
-    let count = |kind: &str| tracks.iter().filter(|t| t.str_field("type").as_deref() == Some(kind)).count();
+    let count = |kind: &str| {
+        tracks
+            .iter()
+            .filter(|t| t.str_field("type").as_deref() == Some(kind))
+            .count()
+    };
 
     if let Some(v) = selected("video").filter(|t| !t.bool_field("albumart")) {
         head(&mut rows, "VIDEO");
@@ -920,10 +1060,18 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
             row(&mut rows, "Resolution", Some(res));
             row(&mut rows, "Black bars cropped to", crate::autocrop::shown());
         }
-        row(&mut rows, "Aspect ratio", d("video-params/aspect").map(|a| format!("{a:.3}:1")));
+        row(
+            &mut rows,
+            "Aspect ratio",
+            d("video-params/aspect").map(|a| format!("{a:.3}:1")),
+        );
         let fps = d("container-fps").or_else(|| d("estimated-vf-fps"));
         row(&mut rows, "Frame rate", fps.map(|f| format!("{f:.3} fps")));
-        row(&mut rows, "Bitrate", d("video-bitrate").filter(|b| *b > 0.0).map(fmt_rate));
+        row(
+            &mut rows,
+            "Bitrate",
+            d("video-bitrate").filter(|b| *b > 0.0).map(fmt_rate),
+        );
         row(&mut rows, "Pixel format", s("video-params/pixelformat"));
         let gamma = s("video-params/gamma").unwrap_or_default();
         let hdr = match gamma.as_str() {
@@ -931,12 +1079,16 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
             "hlg" => Some("HLG".to_string()),
             _ => None,
         };
-        let colour = [s("video-params/colormatrix"), s("video-params/primaries"), Some(gamma.clone())]
-            .into_iter()
-            .flatten()
-            .filter(|x| !x.is_empty())
-            .collect::<Vec<_>>()
-            .join(" · ");
+        let colour = [
+            s("video-params/colormatrix"),
+            s("video-params/primaries"),
+            Some(gamma.clone()),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|x| !x.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ");
         row(&mut rows, "Colour", Some(colour));
         row(
             &mut rows,
@@ -959,18 +1111,44 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
         );
         let drops = d("frame-drop-count").unwrap_or(0.0);
         let dec = d("decoder-frame-drop-count").unwrap_or(0.0);
-        row(&mut rows, "Dropped frames", Some(format!("{drops:.0} by the display, {dec:.0} by the decoder")));
+        row(
+            &mut rows,
+            "Dropped frames",
+            Some(format!(
+                "{drops:.0} by the display, {dec:.0} by the decoder"
+            )),
+        );
     }
     if let Some(a) = selected("audio") {
         head(&mut rows, "AUDIO");
         row(&mut rows, "Codec", codec(a));
         row(&mut rows, "Language", a.str_field("lang"));
-        row(&mut rows, "Channels", s("audio-params/hr-channels").or_else(|| a.str_field("demux-channels")));
-        row(&mut rows, "Sample rate", d("audio-params/samplerate").map(|r| format!("{:.1} kHz", r / 1000.0)));
+        row(
+            &mut rows,
+            "Channels",
+            s("audio-params/hr-channels").or_else(|| a.str_field("demux-channels")),
+        );
+        row(
+            &mut rows,
+            "Sample rate",
+            d("audio-params/samplerate").map(|r| format!("{:.1} kHz", r / 1000.0)),
+        );
         row(&mut rows, "Sample format", s("audio-params/format"));
-        row(&mut rows, "Bitrate", d("audio-bitrate").filter(|b| *b > 0.0).map(fmt_rate));
-        let out = [s("audio-out-params/format"), d("audio-out-params/samplerate").map(|r| format!("{:.1} kHz", r / 1000.0)), s("audio-out-params/hr-channels")];
-        row(&mut rows, "Sent to the device as", Some(out.into_iter().flatten().collect::<Vec<_>>().join(" · ")));
+        row(
+            &mut rows,
+            "Bitrate",
+            d("audio-bitrate").filter(|b| *b > 0.0).map(fmt_rate),
+        );
+        let out = [
+            s("audio-out-params/format"),
+            d("audio-out-params/samplerate").map(|r| format!("{:.1} kHz", r / 1000.0)),
+            s("audio-out-params/hr-channels"),
+        ];
+        row(
+            &mut rows,
+            "Sent to the device as",
+            Some(out.into_iter().flatten().collect::<Vec<_>>().join(" · ")),
+        );
         row(&mut rows, "Output device", s("audio-device"));
         let delay = d("audio-delay").unwrap_or(0.0);
         if delay != 0.0 {
@@ -980,12 +1158,19 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
     let subs = count("sub");
     if subs > 0 {
         head(&mut rows, "SUBTITLES");
-        for t in tracks.iter().filter(|t| t.str_field("type").as_deref() == Some("sub")) {
-            let mut name = [t.str_field("lang"), t.str_field("title"), t.str_field("codec")]
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>()
-                .join(" · ");
+        for t in tracks
+            .iter()
+            .filter(|t| t.str_field("type").as_deref() == Some("sub"))
+        {
+            let mut name = [
+                t.str_field("lang"),
+                t.str_field("title"),
+                t.str_field("codec"),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" · ");
             if t.bool_field("external") {
                 name += " (file)";
             }
@@ -1004,10 +1189,18 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
     row(
         &mut rows,
         "In this file",
-        Some(format!("{} video, {} audio, {subs} subtitle", count("video"), count("audio"))),
+        Some(format!(
+            "{} video, {} audio, {subs} subtitle",
+            count("video"),
+            count("audio")
+        )),
     );
     if let Some(Value::Map(tags)) = p.get_value("metadata") {
-        let tags: Vec<_> = tags.iter().filter_map(|(k, v)| Some((k, v.as_str()?.to_owned()))).take(20).collect();
+        let tags: Vec<_> = tags
+            .iter()
+            .filter_map(|(k, v)| Some((k, v.as_str()?.to_owned())))
+            .take(20)
+            .collect();
         if !tags.is_empty() {
             head(&mut rows, "TAGS");
             for (k, v) in tags {
@@ -1020,10 +1213,15 @@ fn media_info(p: &Player) -> Vec<InfoRow> {
 
 fn codec(t: &Value) -> Option<String> {
     let c = t.str_field("codec")?;
-    Some(match t.str_field("codec-desc").or_else(|| t.str_field("decoder-desc")) {
-        Some(desc) if !desc.is_empty() && desc != c => format!("{c} ({desc})"),
-        _ => c,
-    })
+    Some(
+        match t
+            .str_field("codec-desc")
+            .or_else(|| t.str_field("decoder-desc"))
+        {
+            Some(desc) if !desc.is_empty() && desc != c => format!("{c} ({desc})"),
+            _ => c,
+        },
+    )
 }
 
 fn fmt_bytes(b: f64) -> String {
@@ -1035,7 +1233,11 @@ fn fmt_bytes(b: f64) -> String {
 }
 
 fn fmt_rate(bps: f64) -> String {
-    if bps >= 1e6 { format!("{:.2} Mbit/s", bps / 1e6) } else { format!("{:.0} kbit/s", bps / 1e3) }
+    if bps >= 1e6 {
+        format!("{:.2} Mbit/s", bps / 1e6)
+    } else {
+        format!("{:.0} kbit/s", bps / 1e3)
+    }
 }
 
 // ---- MPRIS ----
@@ -1043,11 +1245,20 @@ fn fmt_rate(bps: f64) -> String {
 /// A cover picture next to the file, as a file:// URL.
 fn folder_cover(path: &str) -> Option<String> {
     let dir = Path::new(path).parent().filter(|_| !path.contains("://"))?;
-    ["cover.jpg", "folder.jpg", "front.jpg", "cover.png", "folder.png", "Cover.jpg", "Folder.jpg", "AlbumArt.jpg"]
-        .iter()
-        .map(|n| dir.join(n))
-        .find(|p| p.is_file())
-        .map(|p| format!("file://{}", p.display()))
+    [
+        "cover.jpg",
+        "folder.jpg",
+        "front.jpg",
+        "cover.png",
+        "folder.png",
+        "Cover.jpg",
+        "Folder.jpg",
+        "AlbumArt.jpg",
+    ]
+    .iter()
+    .map(|n| dir.join(n))
+    .find(|p| p.is_file())
+    .map(|p| format!("file://{}", p.display()))
 }
 
 #[cfg(target_os = "linux")]
@@ -1168,7 +1379,11 @@ mod tests {
 
     #[test]
     fn chapter_lookup() {
-        let c = vec![(0.0, "Intro".to_string()), (60.0, "Part 1".into()), (300.0, "End".into())];
+        let c = vec![
+            (0.0, "Intro".to_string()),
+            (60.0, "Part 1".into()),
+            (300.0, "End".into()),
+        ];
         assert_eq!(chapter_at(&c, 30.0).as_deref(), Some("Intro"));
         assert_eq!(chapter_at(&c, 60.0).as_deref(), Some("Part 1"));
         assert_eq!(chapter_at(&c, 900.0).as_deref(), Some("End"));
@@ -1177,11 +1392,15 @@ mod tests {
 
     #[test]
     fn bookmarks_round_trip() {
-        let text = "12.500\tPart 1\t/a/film.mkv\n3.000\t\t/a/film.mkv\nbad line\n9\tx\thttps://y/z\n";
+        let text =
+            "12.500\tPart 1\t/a/film.mkv\n3.000\t\t/a/film.mkv\nbad line\n9\tx\thttps://y/z\n";
         let all = parse_bookmarks(text);
         assert_eq!(all.len(), 3);
         let mine = file_bookmarks(&all, Some("/a/film.mkv"));
-        assert_eq!(mine, vec![(3.0, String::new()), (12.5, "Part 1".to_string())]);
+        assert_eq!(
+            mine,
+            vec![(3.0, String::new()), (12.5, "Part 1".to_string())]
+        );
     }
 
     #[test]
@@ -1203,8 +1422,26 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let src = dir.join("src.mkv");
         let made = std::process::Command::new("ffmpeg")
-            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=25:duration=2"])
-            .args(["-f", "lavfi", "-i", "sine=duration=2", "-shortest", "-c:v", "libx264", "-c:a", "aac"])
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=160x120:rate=25:duration=2",
+            ])
+            .args([
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=duration=2",
+                "-shortest",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+            ])
             .arg(&src)
             .status()
             .is_ok_and(|s| s.success());
@@ -1222,7 +1459,8 @@ mod tests {
             return;
         }
         let out = dir.join("rec.mkv");
-        p.set_string("stream-record", &out.to_string_lossy()).unwrap();
+        p.set_string("stream-record", &out.to_string_lossy())
+            .unwrap();
         p.load(&src.to_string_lossy(), LoadMode::Replace).unwrap();
         let deadline = Instant::now() + Duration::from_secs(20);
         while Instant::now() < deadline {
@@ -1233,7 +1471,10 @@ mod tests {
         let _ = p.set_string("stream-record", "");
         drop(p);
         let head = std::fs::read(&out).unwrap_or_default();
-        assert!(head.len() > 1000 && head.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]), "no Matroska recording");
+        assert!(
+            head.len() > 1000 && head.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]),
+            "no Matroska recording"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

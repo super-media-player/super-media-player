@@ -98,7 +98,12 @@ impl Default for Status {
 impl Status {
     /// Where it is now.
     pub fn position_now(&self) -> f64 {
-        self.position + if self.phase == Phase::Playing { self.at.elapsed().as_secs_f64() } else { 0.0 }
+        self.position
+            + if self.phase == Phase::Playing {
+                self.at.elapsed().as_secs_f64()
+            } else {
+                0.0
+            }
     }
 }
 

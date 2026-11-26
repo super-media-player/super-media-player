@@ -61,7 +61,9 @@ pub struct SubTrack {
 impl SubTrack {
     /// Pictures (DVD, Blu-ray): they can only be drawn into the video.
     pub fn is_picture(&self) -> bool {
-        ["pgs", "dvd", "dvb", "xsub", "vobsub"].iter().any(|k| self.codec.contains(k))
+        ["pgs", "dvd", "dvb", "xsub", "vobsub"]
+            .iter()
+            .any(|k| self.codec.contains(k))
     }
 }
 
@@ -99,8 +101,21 @@ enum Place {
 impl Source {
     fn place(&self) -> Result<Place, String> {
         let p = self.path.as_str();
-        if ["dvd://", "smpdvd://", "dvdnav://", "bd://", "bluray://", "cdda://", "edl://"].iter().any(|s| p.starts_with(s)) {
-            return Err("Discs can't be cast directly: rip the disc first, then cast the file.".into());
+        if [
+            "dvd://",
+            "smpdvd://",
+            "dvdnav://",
+            "bd://",
+            "bluray://",
+            "cdda://",
+            "edl://",
+        ]
+        .iter()
+        .any(|s| p.starts_with(s))
+        {
+            return Err(
+                "Discs can't be cast directly: rip the disc first, then cast the file.".into(),
+            );
         }
         if !p.contains("://") {
             return Ok(Place::File);
@@ -111,7 +126,9 @@ impl Source {
         if !self.stream.is_empty() && self.stream != p {
             return Ok(Place::Site);
         }
-        let pieces = ["hls", "dash", "applehttp"].iter().any(|f| self.format.contains(f));
+        let pieces = ["hls", "dash", "applehttp"]
+            .iter()
+            .any(|f| self.format.contains(f));
         Ok(if pieces { Place::Pieces } else { Place::Web })
     }
 
@@ -125,7 +142,11 @@ impl Source {
         let video = self.video.is_some();
         let has = |n: &str| f.split(',').any(|x| x == n);
         if has("mp4") || has("mov") {
-            return if video { &["video/mp4", "video/quicktime", "video/x-m4v"] } else { &["audio/mp4", "audio/x-m4a", "audio/m4a"] };
+            return if video {
+                &["video/mp4", "video/quicktime", "video/x-m4v"]
+            } else {
+                &["audio/mp4", "audio/x-m4a", "audio/m4a"]
+            };
         }
         if has("mkv") || has("matroska") || has("webm") {
             return match (video, ext == "webm") {
@@ -144,7 +165,11 @@ impl Source {
             return &["video/x-msvideo", "video/avi", "video/divx"];
         }
         if has("asf") {
-            return if video { &["video/x-ms-wmv", "video/x-ms-asf"] } else { &["audio/x-ms-wma"] };
+            return if video {
+                &["video/x-ms-wmv", "video/x-ms-asf"]
+            } else {
+                &["audio/x-ms-wma"]
+            };
         }
         if has("flv") {
             return &["video/x-flv"];
@@ -156,7 +181,11 @@ impl Source {
             return &["audio/flac", "audio/x-flac"];
         }
         if has("ogg") {
-            return if video { &["video/ogg"] } else { &["audio/ogg", "application/ogg", "audio/x-ogg"] };
+            return if video {
+                &["video/ogg"]
+            } else {
+                &["audio/ogg", "application/ogg", "audio/x-ogg"]
+            };
         }
         if has("wav") {
             return &["audio/wav", "audio/x-wav", "audio/wave"];
@@ -235,7 +264,9 @@ impl Plan {
             return "sent as it is".into();
         }
         let mut s = match (self.video, self.audio) {
-            (VideoOut::Copy, AudioOut::Copy | AudioOut::None) => "repackaged, quality untouched".to_owned(),
+            (VideoOut::Copy, AudioOut::Copy | AudioOut::None) => {
+                "repackaged, quality untouched".to_owned()
+            }
             (VideoOut::Copy, _) => "picture as it is, sound converted".into(),
             (VideoOut::H264, _) if self.small => "converted to H.264, 720p".into(),
             (VideoOut::H264, _) => "converted to H.264".into(),
@@ -255,15 +286,37 @@ fn accepted(t: &Target, names: &[&str]) -> Option<String> {
     let yes = |m: &&&str| match t.kind {
         Kind::Chromecast => matches!(
             **m,
-            "video/mp4" | "video/webm" | "video/x-matroska" | "audio/mp4" | "audio/webm" | "audio/mpeg" | "audio/flac"
-                | "audio/ogg" | "audio/wav" | "audio/aac"
+            "video/mp4"
+                | "video/webm"
+                | "video/x-matroska"
+                | "audio/mp4"
+                | "audio/webm"
+                | "audio/mpeg"
+                | "audio/flac"
+                | "audio/ogg"
+                | "audio/wav"
+                | "audio/aac"
         ),
         Kind::Dlna if t.sink.is_empty() => matches!(
             **m,
-            "video/mp4" | "video/x-matroska" | "video/mp2t" | "video/mpeg" | "video/x-msvideo" | "audio/mpeg" | "audio/mp4"
-                | "audio/flac" | "audio/wav"
+            "video/mp4"
+                | "video/x-matroska"
+                | "video/mp2t"
+                | "video/mpeg"
+                | "video/x-msvideo"
+                | "audio/mpeg"
+                | "audio/mp4"
+                | "audio/flac"
+                | "audio/wav"
         ),
-        Kind::Dlna => t.sink.iter().any(|s| s == **m || s == "*" || Some(s.as_str()) == m.split('/').next().map(|k| if k == "video" { "video/*" } else { "audio/*" })),
+        Kind::Dlna => t.sink.iter().any(|s| {
+            s == **m
+                || s == "*"
+                || Some(s.as_str())
+                    == m.split('/')
+                        .next()
+                        .map(|k| if k == "video" { "video/*" } else { "audio/*" })
+        }),
     };
     names.iter().find(yes).map(|m| (*m).to_owned())
 }
@@ -286,7 +339,10 @@ fn plays_audio(t: &Target, codec: &str) -> bool {
         (_, c) if c.starts_with("pcm_s16") || c.starts_with("pcm_s24") => true,
         (Kind::Chromecast, "opus" | "vorbis") => true,
         (Kind::Dlna, "ac3" | "eac3" | "mp2") => true,
-        (Kind::Dlna, "vorbis") => t.sink.iter().any(|s| s.contains("ogg") || s.contains("vorbis")),
+        (Kind::Dlna, "vorbis") => t
+            .sink
+            .iter()
+            .any(|s| s.contains("ogg") || s.contains("vorbis")),
         (Kind::Dlna, c) if c.starts_with("wma") => t.sink.iter().any(|s| s.contains("wma")),
         _ => false,
     }
@@ -294,7 +350,14 @@ fn plays_audio(t: &Target, codec: &str) -> bool {
 
 /// How to send `src` to `t`. `attempt`: 0 first; 1 and 2 after the device
 /// refused the try before.
-pub fn plan(src: &Source, t: &Target, quality: Quality, burn_text: bool, attempt: u8, ffmpeg: bool) -> Result<Plan, String> {
+pub fn plan(
+    src: &Source,
+    t: &Target,
+    quality: Quality,
+    burn_text: bool,
+    attempt: u8,
+    ffmpeg: bool,
+) -> Result<Plan, String> {
     let place = src.place()?;
     if src.video.is_none() && src.audio.is_none() {
         return Err("There is nothing to cast in this file.".into());
@@ -305,21 +368,33 @@ pub fn plan(src: &Source, t: &Target, quality: Quality, burn_text: bool, attempt
     }
     let burn = video.is_some()
         && quality != Quality::Original
-        && src.sub.as_ref().is_some_and(|s| s.is_picture() || burn_text);
+        && src
+            .sub
+            .as_ref()
+            .is_some_and(|s| s.is_picture() || burn_text);
 
     // As it is?
     let whole = matches!(place, Place::File | Place::Web) && (src.video.is_none() || t.video);
     let mime = accepted(t, src.mimes());
     let codecs = video.is_none_or(|v| plays_video(t, v))
-        && src.audio.as_ref().is_none_or(|a| plays_audio(t, &a.codec) && a.first && a.file.is_none());
+        && src
+            .audio
+            .as_ref()
+            .is_none_or(|a| plays_audio(t, &a.codec) && a.first && a.file.is_none());
     if quality == Quality::Original {
         if !whole {
             return Err("This can't be sent as it is: choose Automatic.".into());
         }
         let mime = mime.or_else(|| src.mimes().first().map(|m| (*m).to_owned()));
-        return mime.map(direct).ok_or_else(|| "This can't be sent as it is: choose Automatic.".into());
+        return mime
+            .map(direct)
+            .ok_or_else(|| "This can't be sent as it is: choose Automatic.".into());
     }
-    if whole && quality == Quality::Auto && attempt == 0 && codecs && !burn
+    if whole
+        && quality == Quality::Auto
+        && attempt == 0
+        && codecs
+        && !burn
         && let Some(m) = mime
     {
         return Ok(direct(m));
@@ -329,15 +404,23 @@ pub fn plan(src: &Source, t: &Target, quality: Quality, burn_text: bool, attempt
     let mpv = burn || place == Place::Site || !ffmpeg;
     let untouched = !mpv
         && quality == Quality::Auto
-        && ["mkv", "matroska", "webm", "mp4", "mov", "mpegts", "flv", "hls"].iter().any(|f| src.format.contains(f));
+        && [
+            "mkv", "matroska", "webm", "mp4", "mov", "mpegts", "flv", "hls",
+        ]
+        .iter()
+        .any(|f| src.format.contains(f));
     let (container, mime) = match (video.is_some(), t.kind) {
         (true, Kind::Chromecast) => (Container::Mp4, Some("video/mp4".into())),
-        (true, Kind::Dlna) => match accepted(t, &["video/vnd.dlna.mpeg-tts", "video/mp2t", "video/mpeg"]) {
-            Some(m) => (Container::Ts, Some(m)),
-            None => (Container::Mp4, accepted(t, &["video/mp4"])),
-        },
+        (true, Kind::Dlna) => {
+            match accepted(t, &["video/vnd.dlna.mpeg-tts", "video/mp2t", "video/mpeg"]) {
+                Some(m) => (Container::Ts, Some(m)),
+                None => (Container::Mp4, accepted(t, &["video/mp4"])),
+            }
+        }
         (false, Kind::Chromecast) => (Container::Flac, Some("audio/flac".into())),
-        (false, Kind::Dlna) => match accepted(t, &["audio/flac", "audio/x-flac"]).filter(|_| !t.sink.is_empty() && attempt == 0) {
+        (false, Kind::Dlna) => match accepted(t, &["audio/flac", "audio/x-flac"])
+            .filter(|_| !t.sink.is_empty() && attempt == 0)
+        {
             Some(m) => (Container::Flac, Some(m)),
             None => (Container::Mp3, Some("audio/mpeg".into())),
         },
@@ -359,7 +442,13 @@ pub fn plan(src: &Source, t: &Target, quality: Quality, burn_text: bool, attempt
         (None, _) => AudioOut::None,
         (Some(_), Container::Flac) => AudioOut::Flac,
         (Some(_), Container::Mp3) => AudioOut::Mp3,
-        (Some(a), Container::Mp4) => if untouched && a.codec == "aac" && attempt < 2 { AudioOut::Copy } else { AudioOut::Aac },
+        (Some(a), Container::Mp4) => {
+            if untouched && a.codec == "aac" && attempt < 2 {
+                AudioOut::Copy
+            } else {
+                AudioOut::Aac
+            }
+        }
         (Some(a), Container::Ts) => match a.codec.as_str() {
             "ac3" | "aac" | "mp2" | "mp3" if untouched && attempt < 2 => AudioOut::Copy,
             // TVs take surround as AC-3.
@@ -411,18 +500,34 @@ pub struct Job {
 /// A program of FFmpeg's, where one is installed.
 pub fn program(name: &str) -> Option<PathBuf> {
     let dirs = std::env::var_os("PATH")?;
-    let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_owned() };
-    std::env::split_paths(&dirs).map(|d| d.join(&exe)).find(|p| p.is_file())
+    let exe = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_owned()
+    };
+    std::env::split_paths(&dirs)
+        .map(|d| d.join(&exe))
+        .find(|p| p.is_file())
 }
 
 /// How FFmpeg should open `path`: a file name must not look like a protocol.
 fn input(path: &str) -> String {
-    if path.contains("://") { path.to_owned() } else { format!("file:{path}") }
+    if path.contains("://") {
+        path.to_owned()
+    } else {
+        format!("file:{path}")
+    }
 }
 
 fn run_text(cmd: &mut Command) -> Option<String> {
-    let out = cmd.stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    let out = cmd
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Where a copied picture can start near `start`: it has to be a keyframe.
@@ -449,10 +554,18 @@ pub fn keyframe_near(src: &Source, start: f64, from: f64) -> Option<f64> {
 }
 
 fn pick_keyframe(keys: &[f64], start: f64, from: f64) -> Option<f64> {
-    let near = keys.iter().copied().min_by(|a, b| (a - start).abs().total_cmp(&(b - start).abs()))?;
+    let near = keys
+        .iter()
+        .copied()
+        .min_by(|a, b| (a - start).abs().total_cmp(&(b - start).abs()))?;
     // Forward, but the nearest is where it already is, or behind.
     let ahead = (start > from + 1.0 && near <= from + 0.5)
-        .then(|| keys.iter().copied().filter(|k| *k > start).min_by(f64::total_cmp))
+        .then(|| {
+            keys.iter()
+                .copied()
+                .filter(|k| *k > start)
+                .min_by(f64::total_cmp)
+        })
         .flatten();
     let k = ahead.unwrap_or(near);
     // Far off: the file's clock doesn't start at 0.
@@ -464,7 +577,9 @@ fn video_filter(src: &Source, small: bool) -> String {
     let (w, h) = if small { (1280, 720) } else { (1920, 1080) };
     let hdr = src.video.as_ref().is_some_and(|v| v.hdr);
     let mut f = String::from("yadif=deint=interlaced,scale=w='trunc(iw*sar/2)*2':h=ih,setsar=1,");
-    f += &format!("scale=w='min({w},iw)':h='min({h},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2");
+    f += &format!(
+        "scale=w='min({w},iw)':h='min({h},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
+    );
     if hdr {
         f += ",zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
     }
@@ -501,24 +616,42 @@ fn ffmpeg_args(job: &Job) -> Vec<String> {
         open(f);
     }
     if let Some(v) = src.video.as_ref().filter(|_| plan.video != VideoOut::None) {
-        add(&["-map", &v.index.map_or("0:v:0".into(), |i| format!("0:{i}"))]);
+        add(&[
+            "-map",
+            &v.index.map_or("0:v:0".into(), |i| format!("0:{i}")),
+        ]);
     }
     match (&src.audio, &outside) {
         (Some(_), Some(_)) => add(&["-map", "1:a:0"]),
-        (Some(x), None) => add(&["-map", &x.index.map_or("0:a:0".into(), |i| format!("0:{i}"))]),
+        (Some(x), None) => add(&[
+            "-map",
+            &x.index.map_or("0:a:0".into(), |i| format!("0:{i}")),
+        ]),
         (None, _) => {}
     }
     match plan.video {
         VideoOut::None => add(&["-vn"]),
         VideoOut::Copy => {
             add(&["-c:v", "copy"]);
-            if plan.container == Container::Mp4 && src.video.as_ref().is_some_and(|v| v.codec == "hevc") {
+            if plan.container == Container::Mp4
+                && src.video.as_ref().is_some_and(|v| v.codec == "hevc")
+            {
                 add(&["-tag:v", "hvc1"]);
             }
         }
         VideoOut::H264 => {
-            add(&["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-maxrate", "14M", "-bufsize", "28M"]);
-            add(&["-profile:v", "high", "-force_key_frames", "expr:gte(t,n_forced*2)", "-vf", &video_filter(src, plan.small)]);
+            add(&[
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-maxrate", "14M",
+                "-bufsize", "28M",
+            ]);
+            add(&[
+                "-profile:v",
+                "high",
+                "-force_key_frames",
+                "expr:gte(t,n_forced*2)",
+                "-vf",
+                &video_filter(src, plan.small),
+            ]);
         }
     }
     let rate = src.audio.as_ref().map_or(0, |x| x.rate);
@@ -540,9 +673,23 @@ fn ffmpeg_args(job: &Job) -> Vec<String> {
             }
         }
     }
-    add(&["-sn", "-dn", "-map_chapters", "-1", "-map_metadata", "-1", "-avoid_negative_ts", "make_zero"]);
+    add(&[
+        "-sn",
+        "-dn",
+        "-map_chapters",
+        "-1",
+        "-map_metadata",
+        "-1",
+        "-avoid_negative_ts",
+        "make_zero",
+    ]);
     match plan.container {
-        Container::Mp4 => add(&["-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4"]),
+        Container::Mp4 => add(&[
+            "-movflags",
+            "frag_keyframe+empty_moov+default_base_moof",
+            "-f",
+            "mp4",
+        ]),
         Container::Ts => add(&["-muxdelay", "0", "-muxpreload", "0", "-f", "mpegts"]),
         Container::Mp3 => add(&["-f", "mp3"]),
         Container::Flac => add(&["-f", "flac"]),
@@ -570,7 +717,15 @@ fn mpv_options(job: &Job, fd: i32) -> Vec<(String, String)> {
     }
     if let Some(a) = &src.audio {
         // The file's own tracks are numbered before the ones added.
-        o.push(("aid", if a.file.is_some() { a.embedded + 1 } else { a.id }.to_string()));
+        o.push((
+            "aid",
+            if a.file.is_some() {
+                a.embedded + 1
+            } else {
+                a.id
+            }
+            .to_string(),
+        ));
     }
     if plan.video == VideoOut::None {
         o.push(("vid", "no".into()));
@@ -579,12 +734,23 @@ fn mpv_options(job: &Job, fd: i32) -> Vec<(String, String)> {
             o.push(("vid", v.id.to_string()));
         }
         o.push(("ovc", "libx264".into()));
-        o.push(("ovcopts", "preset=veryfast,crf=20,maxrate=14000000,bufsize=28000000,g=100".into()));
+        o.push((
+            "ovcopts",
+            "preset=veryfast,crf=20,maxrate=14000000,bufsize=28000000,g=100".into(),
+        ));
         o.push(("vf", format!("lavfi=[{}]", video_filter(src, plan.small))));
     }
     match (&src.sub, plan.burn) {
         (Some(s), true) => {
-            o.push(("sid", if s.file.is_some() { s.embedded + 1 } else { s.id }.to_string()));
+            o.push((
+                "sid",
+                if s.file.is_some() {
+                    s.embedded + 1
+                } else {
+                    s.id
+                }
+                .to_string(),
+            ));
             if src.sub_delay != 0.0 {
                 o.push(("sub-delay", format!("{:.3}", src.sub_delay)));
             }
@@ -614,13 +780,19 @@ fn mpv_options(job: &Job, fd: i32) -> Vec<(String, String)> {
     match plan.container {
         Container::Mp4 => {
             o.push(("of", "mp4".into()));
-            o.push(("ofopts", "movflags=frag_keyframe+empty_moov+default_base_moof".into()));
+            o.push((
+                "ofopts",
+                "movflags=frag_keyframe+empty_moov+default_base_moof".into(),
+            ));
         }
         Container::Ts => o.push(("of", "mpegts".into())),
         Container::Mp3 => o.push(("of", "mp3".into())),
         Container::Flac => o.push(("of", "flac".into())),
     }
-    o.into_iter().map(|(k, v)| (k.to_owned(), v)).chain(src.site.iter().cloned()).collect()
+    o.into_iter()
+        .map(|(k, v)| (k.to_owned(), v))
+        .chain(src.site.iter().cloned())
+        .collect()
 }
 
 /// A conversion under way, read as it is made. Dropping it stops it.
@@ -632,7 +804,11 @@ pub struct Encoder {
 
 impl Encoder {
     pub fn start(job: &Job) -> Result<Self, String> {
-        if job.plan.mpv { Self::mpv(job) } else { Self::ffmpeg(job) }
+        if job.plan.mpv {
+            Self::mpv(job)
+        } else {
+            Self::ffmpeg(job)
+        }
     }
 
     fn ffmpeg(job: &Job) -> Result<Self, String> {
@@ -647,12 +823,19 @@ impl Encoder {
         let out = child.stdout.take().ok_or("no output")?;
         if let Some(err) = child.stderr.take() {
             std::thread::spawn(move || {
-                for l in std::io::BufRead::lines(std::io::BufReader::new(err)).map_while(Result::ok).take(50) {
+                for l in std::io::BufRead::lines(std::io::BufReader::new(err))
+                    .map_while(Result::ok)
+                    .take(50)
+                {
                     log::info!("cast: ffmpeg: {l}");
                 }
             });
         }
-        Ok(Self { out: Box::new(out), child: Some(child), stop: Arc::default() })
+        Ok(Self {
+            out: Box::new(out),
+            child: Some(child),
+            stop: Arc::default(),
+        })
     }
 
     #[cfg(unix)]
@@ -660,7 +843,9 @@ impl Encoder {
         use std::os::fd::AsRawFd;
         // A socket rather than a pipe: reads from it can time out.
         let (reader, writer) = std::os::unix::net::UnixStream::pair().map_err(|e| e.to_string())?;
-        reader.set_read_timeout(Some(Duration::from_millis(500))).map_err(|e| e.to_string())?;
+        reader
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .map_err(|e| e.to_string())?;
         let mut cfg = PlayerConfig::headless();
         // Encoding mode brings its own outputs.
         cfg.options.retain(|(k, _)| k != "vo" && k != "ao");
@@ -677,9 +862,21 @@ impl Encoder {
                 let _ = player.command(&["change-list", list, "append", f]);
             }
         };
-        add("audio-files", job.source.audio.as_ref().and_then(|a| a.file.as_ref()));
-        add("sub-files", job.source.sub.as_ref().and_then(|x| x.file.as_ref()).filter(|_| job.plan.burn));
-        player.load(&job.source.path, LoadMode::Replace).map_err(|e| e.to_string())?;
+        add(
+            "audio-files",
+            job.source.audio.as_ref().and_then(|a| a.file.as_ref()),
+        );
+        add(
+            "sub-files",
+            job.source
+                .sub
+                .as_ref()
+                .and_then(|x| x.file.as_ref())
+                .filter(|_| job.plan.burn),
+        );
+        player
+            .load(&job.source.path, LoadMode::Replace)
+            .map_err(|e| e.to_string())?;
         let stop = Arc::new(AtomicBool::new(false));
         let st = stop.clone();
         std::thread::spawn(move || {
@@ -695,7 +892,8 @@ impl Encoder {
                         }
                         break;
                     }
-                    Ok(PlayerEvent::Shutdown) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                    Ok(PlayerEvent::Shutdown)
+                    | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     _ => {}
                 }
             }
@@ -703,7 +901,11 @@ impl Encoder {
             drop(player);
             drop(writer);
         });
-        Ok(Self { out: Box::new(reader), child: None, stop })
+        Ok(Self {
+            out: Box::new(reader),
+            child: None,
+            stop,
+        })
     }
 
     #[cfg(not(unix))]
@@ -741,17 +943,36 @@ pub struct Cue {
 
 /// The cues of SRT or WebVTT text, without markup.
 pub fn parse_cues(text: &str) -> Vec<Cue> {
-    let text = text.trim_start_matches('\u{feff}').replace("\r\n", "\n").replace('\r', "\n");
+    let text = text
+        .trim_start_matches('\u{feff}')
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
     let mut out = Vec::new();
     for block in text.split("\n\n") {
         let mut lines = block.lines().map(str::trim).filter(|l| !l.is_empty());
-        let Some(timing) = lines.by_ref().find(|l| l.contains("-->")) else { continue };
-        let Some((a, b)) = timing.split_once("-->") else { continue };
+        let Some(timing) = lines.by_ref().find(|l| l.contains("-->")) else {
+            continue;
+        };
+        let Some((a, b)) = timing.split_once("-->") else {
+            continue;
+        };
         let b = b.split_whitespace().next().unwrap_or("");
-        let (Some(start), Some(end)) = (crate::transcribe::parse_time(a), crate::transcribe::parse_time(b)) else { continue };
-        let words: Vec<String> = lines.map(crate::transcribe::strip_markup).filter(|l| !l.is_empty()).collect();
+        let (Some(start), Some(end)) = (
+            crate::transcribe::parse_time(a),
+            crate::transcribe::parse_time(b),
+        ) else {
+            continue;
+        };
+        let words: Vec<String> = lines
+            .map(crate::transcribe::strip_markup)
+            .filter(|l| !l.is_empty())
+            .collect();
         if !words.is_empty() && end > start {
-            out.push(Cue { start, end, text: words.join("\n") });
+            out.push(Cue {
+                start,
+                end,
+                text: words.join("\n"),
+            });
         }
     }
     out
@@ -766,34 +987,58 @@ fn decode(bytes: &[u8]) -> String {
                 .as_chunks::<2>()
                 .0
                 .iter()
-                .map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) })
+                .map(|c| {
+                    if le {
+                        u16::from_le_bytes([c[0], c[1]])
+                    } else {
+                        u16::from_be_bytes([c[0], c[1]])
+                    }
+                })
                 .collect();
             String::from_utf16_lossy(&units)
         }
-        _ => String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| bytes.iter().map(|&b| b as char).collect()),
+        _ => String::from_utf8(bytes.to_vec())
+            .unwrap_or_else(|_| bytes.iter().map(|&b| b as char).collect()),
     }
 }
 
 /// Read the cues of the subtitles chosen. Blocks (the whole film is read
 /// when they are inside it).
 pub fn read_cues(src: &Source) -> Vec<Cue> {
-    let Some(sub) = src.sub.as_ref().filter(|s| !s.is_picture()) else { return Vec::new() };
+    let Some(sub) = src.sub.as_ref().filter(|s| !s.is_picture()) else {
+        return Vec::new();
+    };
     if let Some(f) = &sub.file {
-        let ext = Path::new(f).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let ext = Path::new(f)
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
         if ext == "srt" || ext == "vtt" {
-            return std::fs::read(f).map(|b| parse_cues(&decode(&b))).unwrap_or_default();
+            return std::fs::read(f)
+                .map(|b| parse_cues(&decode(&b)))
+                .unwrap_or_default();
         }
     }
-    let Some(exe) = program("ffmpeg") else { return Vec::new() };
+    let Some(exe) = program("ffmpeg") else {
+        return Vec::new();
+    };
     let (file, map) = match (&sub.file, sub.index) {
         (Some(f), _) => (f.as_str(), "0:s:0".to_owned()),
         (None, Some(i)) => (src.path.as_str(), format!("0:{i}")),
         _ => return Vec::new(),
     };
-    let text = run_text(
-        Command::new(exe)
-            .args(["-v", "error", "-nostdin", "-i", &input(file), "-map", &map, "-f", "srt", "pipe:1"]),
-    );
+    let text = run_text(Command::new(exe).args([
+        "-v",
+        "error",
+        "-nostdin",
+        "-i",
+        &input(file),
+        "-map",
+        &map,
+        "-f",
+        "srt",
+        "pipe:1",
+    ]));
     text.map(|t| parse_cues(&t)).unwrap_or_default()
 }
 
@@ -807,11 +1052,19 @@ pub fn write_cues(cues: &[Cue], shift: f64, vtt: bool) -> String {
     let mut out = String::from(if vtt { "WEBVTT\n\n" } else { "" });
     for (i, c) in cues.iter().filter(|c| c.end + shift > 0.0).enumerate() {
         let text = if vtt {
-            c.text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+            c.text
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
         } else {
             c.text.clone()
         };
-        out += &format!("{}\n{} --> {}\n{text}\n\n", i + 1, stamp((c.start + shift).max(0.0)), stamp(c.end + shift));
+        out += &format!(
+            "{}\n{} --> {}\n{text}\n\n",
+            i + 1,
+            stamp((c.start + shift).max(0.0)),
+            stamp(c.end + shift)
+        );
     }
     out
 }
@@ -820,15 +1073,34 @@ pub fn write_cues(cues: &[Cue], shift: f64, vtt: bool) -> String {
 mod tests {
     use super::*;
 
-    const CC: Target = Target { kind: Kind::Chromecast, video: true, sink: &[] };
+    const CC: Target = Target {
+        kind: Kind::Chromecast,
+        video: true,
+        sink: &[],
+    };
 
     fn film(v: &str, a: &str, format: &str) -> Source {
         Source {
             path: "/v/film.mkv".into(),
             format: format.into(),
             duration: 100.0,
-            video: Some(VideoTrack { id: 1, index: Some(0), codec: v.into(), width: 1920, height: 1080, ..Default::default() }),
-            audio: Some(AudioTrack { id: 1, index: Some(1), codec: a.into(), channels: 6, rate: 48000, first: true, ..Default::default() }),
+            video: Some(VideoTrack {
+                id: 1,
+                index: Some(0),
+                codec: v.into(),
+                width: 1920,
+                height: 1080,
+                ..Default::default()
+            }),
+            audio: Some(AudioTrack {
+                id: 1,
+                index: Some(1),
+                codec: a.into(),
+                channels: 6,
+                rate: 48000,
+                first: true,
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }
@@ -844,11 +1116,17 @@ mod tests {
         assert!(auto(&f, &CC, 0).direct);
         assert_eq!(auto(&f, &CC, 0).mime, "video/x-matroska");
         assert_eq!(auto(&f, &CC, 1).video, VideoOut::Copy);
-        assert_eq!((auto(&f, &CC, 2).video, auto(&f, &CC, 2).small), (VideoOut::H264, true));
+        assert_eq!(
+            (auto(&f, &CC, 2).video, auto(&f, &CC, 2).small),
+            (VideoOut::H264, true)
+        );
         // A Blu-ray rip: only the sound is converted.
         let f = film("h264", "truehd", "mkv");
         let p = auto(&f, &CC, 0);
-        assert_eq!((p.direct, p.video, p.audio, p.mime.as_str()), (false, VideoOut::Copy, AudioOut::Aac, "video/mp4"));
+        assert_eq!(
+            (p.direct, p.video, p.audio, p.mime.as_str()),
+            (false, VideoOut::Copy, AudioOut::Aac, "video/mp4")
+        );
         assert_eq!(p.summary(), "picture as it is, sound converted");
         // HEVC is tried, then converted.
         let f = film("hevc", "eac3", "mkv");
@@ -858,33 +1136,83 @@ mod tests {
         let mut f = film("h264", "flac", "mkv");
         f.video.as_mut().unwrap().ten_bit = true;
         assert_eq!(auto(&f, &CC, 0).video, VideoOut::H264);
-        assert_eq!(auto(&film("mpeg4", "mp3", "avi"), &CC, 0).video, VideoOut::H264);
+        assert_eq!(
+            auto(&film("mpeg4", "mp3", "avi"), &CC, 0).video,
+            VideoOut::H264
+        );
         // Another sound track than the first.
         let mut f = film("h264", "aac", "mkv");
         f.audio.as_mut().unwrap().first = false;
         let p = auto(&f, &CC, 0);
-        assert_eq!((p.direct, p.video, p.audio), (false, VideoOut::Copy, AudioOut::Copy));
+        assert_eq!(
+            (p.direct, p.video, p.audio),
+            (false, VideoOut::Copy, AudioOut::Copy)
+        );
         // Subtitles that are pictures are drawn in; text ones when asked.
         let mut f = film("h264", "aac", "mkv");
-        f.sub = Some(SubTrack { codec: "hdmv_pgs_subtitle".into(), ..Default::default() });
+        f.sub = Some(SubTrack {
+            codec: "hdmv_pgs_subtitle".into(),
+            ..Default::default()
+        });
         let p = auto(&f, &CC, 0);
         assert!(p.burn && p.mpv && p.video == VideoOut::H264);
         f.sub.as_mut().unwrap().codec = "subrip".into();
         assert!(auto(&f, &CC, 0).direct);
         assert!(plan(&f, &CC, Quality::Auto, true, 0, true).unwrap().burn);
         // Without the FFmpeg program mpv encodes.
-        assert!(plan(&film("h264", "dts", "mkv"), &CC, Quality::Auto, false, 0, false).unwrap().mpv);
+        assert!(
+            plan(
+                &film("h264", "dts", "mkv"),
+                &CC,
+                Quality::Auto,
+                false,
+                0,
+                false
+            )
+            .unwrap()
+            .mpv
+        );
         // As the user wants it.
-        assert!(plan(&film("mpeg4", "dts", "avi"), &CC, Quality::Original, false, 0, true).unwrap().direct);
-        assert_eq!(plan(&film("h264", "aac", "mkv"), &CC, Quality::Convert, false, 0, true).unwrap().video, VideoOut::H264);
+        assert!(
+            plan(
+                &film("mpeg4", "dts", "avi"),
+                &CC,
+                Quality::Original,
+                false,
+                0,
+                true
+            )
+            .unwrap()
+            .direct
+        );
+        assert_eq!(
+            plan(
+                &film("h264", "aac", "mkv"),
+                &CC,
+                Quality::Convert,
+                false,
+                0,
+                true
+            )
+            .unwrap()
+            .video,
+            VideoOut::H264
+        );
     }
 
     #[test]
     fn speakers_get_the_sound() {
         let t = Target { video: false, ..CC };
         let p = auto(&film("h264", "aac", "mkv"), &t, 0);
-        assert_eq!((p.video, p.audio, p.container), (VideoOut::None, AudioOut::Flac, Container::Flac));
-        let mut song = Source { path: "/m/a.flac".into(), format: "flac".into(), ..film("", "flac", "flac") };
+        assert_eq!(
+            (p.video, p.audio, p.container),
+            (VideoOut::None, AudioOut::Flac, Container::Flac)
+        );
+        let mut song = Source {
+            path: "/m/a.flac".into(),
+            format: "flac".into(),
+            ..film("", "flac", "flac")
+        };
         song.video = None;
         assert!(auto(&song, &t, 0).direct);
         song.path = "/m/a.wma".into();
@@ -897,15 +1225,27 @@ mod tests {
 
     #[test]
     fn dlna_plans() {
-        let sink: Vec<String> = ["video/mp4", "video/vnd.dlna.mpeg-tts", "audio/mpeg"].map(String::from).to_vec();
-        let t = Target { kind: Kind::Dlna, video: true, sink: &sink };
+        let sink: Vec<String> = ["video/mp4", "video/vnd.dlna.mpeg-tts", "audio/mpeg"]
+            .map(String::from)
+            .to_vec();
+        let t = Target {
+            kind: Kind::Dlna,
+            video: true,
+            sink: &sink,
+        };
         // Its list has no MKV: repackaged as MPEG-TS.
         let p = auto(&film("h264", "ac3", "mkv"), &t, 0);
-        assert_eq!((p.direct, p.container, p.mime.as_str()), (false, Container::Ts, "video/vnd.dlna.mpeg-tts"));
+        assert_eq!(
+            (p.direct, p.container, p.mime.as_str()),
+            (false, Container::Ts, "video/vnd.dlna.mpeg-tts")
+        );
         assert_eq!((p.video, p.audio), (VideoOut::Copy, AudioOut::Copy));
         assert_eq!(p.summary(), "repackaged, quality untouched");
         assert!(auto(&film("h264", "ac3", "mov,mp4,m4a"), &t, 0).direct);
-        assert_eq!(auto(&film("h264", "dts", "mkv"), &t, 0).audio, AudioOut::Ac3);
+        assert_eq!(
+            auto(&film("h264", "dts", "mkv"), &t, 0).audio,
+            AudioOut::Ac3
+        );
         // One that says nothing about itself.
         let t = Target { sink: &[], ..t };
         assert!(auto(&film("h264", "ac3", "mkv"), &t, 0).direct);
@@ -925,7 +1265,11 @@ mod tests {
         s.stream = "edl://!new_stream".into();
         assert!(auto(&s, &CC, 0).mpv);
         s.path = "bd://1".into();
-        assert!(plan(&s, &CC, Quality::Auto, false, 0, true).unwrap_err().contains("rip"));
+        assert!(
+            plan(&s, &CC, Quality::Auto, false, 0, true)
+                .unwrap_err()
+                .contains("rip")
+        );
     }
 
     #[test]
@@ -946,13 +1290,26 @@ mod tests {
         let srt = "\u{feff}1\r\n00:00:05,000 --> 00:00:08,500\r\n<i>Hi</i> & bye\r\nline 2\r\n\r\n2\r\n00:01:00,000 --> 00:01:02,000\r\n{\\an8}Up\r\n";
         let c = parse_cues(srt);
         assert_eq!(c.len(), 2);
-        assert_eq!(c[0], Cue { start: 5.0, end: 8.5, text: "Hi & bye\nline 2".into() });
+        assert_eq!(
+            c[0],
+            Cue {
+                start: 5.0,
+                end: 8.5,
+                text: "Hi & bye\nline 2".into()
+            }
+        );
         let vtt = write_cues(&c, 0.0, true);
-        assert!(vtt.starts_with("WEBVTT\n\n1\n00:00:05.000 --> 00:00:08.500\nHi &amp; bye\nline 2\n"), "{vtt}");
+        assert!(
+            vtt.starts_with("WEBVTT\n\n1\n00:00:05.000 --> 00:00:08.500\nHi &amp; bye\nline 2\n"),
+            "{vtt}"
+        );
         // Started in the middle: what is over is left out.
         let late = write_cues(&c, -30.0, false);
         assert_eq!(late, "1\n00:00:30,000 --> 00:00:32,000\nUp\n\n");
-        assert_eq!(write_cues(&c, -6.0, false).lines().nth(1), Some("00:00:00,000 --> 00:00:02,500"));
+        assert_eq!(
+            write_cues(&c, -6.0, false).lines().nth(1),
+            Some("00:00:00,000 --> 00:00:02,500")
+        );
         assert_eq!(decode(b"caf\xe9"), "café");
         assert_eq!(decode(&[0xFF, 0xFE, b'h', 0, b'i', 0]), "hi");
         assert_eq!(parse_cues(&write_cues(&c, 0.0, false)), c);
@@ -964,9 +1321,44 @@ mod tests {
         let srt = dir.join("film.srt");
         std::fs::write(&srt, "1\n00:00:02,000 --> 00:00:04,000\nHello\n").ok()?;
         let ok = Command::new(program("ffmpeg")?)
-            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=25", "-f", "lavfi", "-i", "sine=440"])
-            .args(["-i", srt.to_str()?, "-t", "24", "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-g", "100"])
-            .args(["-pix_fmt", "yuv420p", "-c:a", "ac3", "-c:s", "srt", f.to_str()?])
+            .args([
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=s=640x360:r=25",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=440",
+            ])
+            .args([
+                "-i",
+                srt.to_str()?,
+                "-t",
+                "24",
+                "-map",
+                "0",
+                "-map",
+                "1",
+                "-map",
+                "2",
+                "-c:v",
+                "libx264",
+                "-g",
+                "100",
+            ])
+            .args([
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "ac3",
+                "-c:s",
+                "srt",
+                f.to_str()?,
+            ])
             .status()
             .ok()?
             .success();
@@ -974,7 +1366,12 @@ mod tests {
         s.path = f.to_str()?.into();
         s.duration = 24.0;
         s.audio.as_mut()?.channels = 1;
-        s.sub = Some(SubTrack { id: 1, index: Some(2), codec: "subrip".into(), ..Default::default() });
+        s.sub = Some(SubTrack {
+            id: 1,
+            index: Some(2),
+            codec: "subrip".into(),
+            ..Default::default()
+        });
         ok.then_some(s)
     }
 
@@ -983,14 +1380,32 @@ mod tests {
         std::fs::write(&f, data).unwrap();
         // Decode all of it too: no errors.
         let out = Command::new(program("ffmpeg").unwrap())
-            .args(["-v", "error", "-nostdin", "-i", f.to_str().unwrap(), "-f", "null", "-"])
+            .args([
+                "-v",
+                "error",
+                "-nostdin",
+                "-i",
+                f.to_str().unwrap(),
+                "-f",
+                "null",
+                "-",
+            ])
             .output()
             .unwrap();
-        assert!(out.status.success() && out.stderr.is_empty(), "{name}: {}", String::from_utf8_lossy(&out.stderr));
-        run_text(
-            Command::new(program("ffprobe").unwrap())
-                .args(["-v", "error", "-show_entries", "stream=codec_name:format=duration", "-of", "csv=p=0", f.to_str().unwrap()]),
-        )
+        assert!(
+            out.status.success() && out.stderr.is_empty(),
+            "{name}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        run_text(Command::new(program("ffprobe").unwrap()).args([
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_name:format=duration",
+            "-of",
+            "csv=p=0",
+            f.to_str().unwrap(),
+        ]))
         .unwrap()
         .split_whitespace()
         // MPEG-TS lists its streams twice (per programme, too).
@@ -1010,13 +1425,24 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let src = sample(&dir).unwrap();
         let cues = read_cues(&src);
-        assert!(cues.len() == 1 && cues[0].text == "Hello" && (cues[0].start - 2.0).abs() < 0.05, "{cues:?}");
+        assert!(
+            cues.len() == 1 && cues[0].text == "Hello" && (cues[0].start - 2.0).abs() < 0.05,
+            "{cues:?}"
+        );
         let key = keyframe_near(&src, 13.0, 0.0).unwrap();
         assert!((key - 12.0).abs() < 0.1, "{key}");
         assert!((keyframe_near(&src, 13.0, 11.8).unwrap() - 16.0).abs() < 0.1);
         let sink = ["video/mpeg".to_owned(), "audio/mpeg".to_owned()];
-        let tv = Target { kind: Kind::Dlna, video: true, sink: &sink };
-        let speaker = Target { kind: Kind::Dlna, video: false, sink: &sink };
+        let tv = Target {
+            kind: Kind::Dlna,
+            video: true,
+            sink: &sink,
+        };
+        let speaker = Target {
+            kind: Kind::Dlna,
+            video: false,
+            sink: &sink,
+        };
         let mut burnt = src.clone();
         burnt.sub.as_mut().unwrap().codec = "hdmv_pgs".into();
         let mut alone = auto(&src, &CC, 0);
@@ -1033,7 +1459,11 @@ mod tests {
             ("mpv.mp3", alone_speaker, 4.0, "mp3 20"),
             ("burn.ts", auto(&burnt, &tv, 0), 0.0, "h264 aac 24"),
         ] {
-            let job = Job { source: src.clone(), plan, start };
+            let job = Job {
+                source: src.clone(),
+                plan,
+                start,
+            };
             let mut data = Vec::new();
             let mut enc = Encoder::start(&job).unwrap();
             let mut buf = [0u8; 8192];
@@ -1041,7 +1471,13 @@ mod tests {
                 match enc.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => data.extend_from_slice(&buf[..n]),
-                    Err(e) => assert!(matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut), "{e}"),
+                    Err(e) => assert!(
+                        matches!(
+                            e.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ),
+                        "{e}"
+                    ),
                 }
             }
             let got = probe(&data, &dir, name);
@@ -1049,15 +1485,27 @@ mod tests {
             let (codecs, secs) = got.trim().rsplit_once(' ').unwrap();
             let (want_codecs, want_secs) = want.rsplit_once(' ').unwrap();
             // mpv may put the sound first.
-            let set = |s: &str| s.split(' ').map(str::to_owned).collect::<std::collections::BTreeSet<_>>();
+            let set = |s: &str| {
+                s.split(' ')
+                    .map(str::to_owned)
+                    .collect::<std::collections::BTreeSet<_>>()
+            };
             assert_eq!(set(codecs), set(want_codecs), "{name}");
-            assert!((secs.parse::<f64>().unwrap() - want_secs.parse::<f64>().unwrap()).abs() < 0.6, "{name}: {secs}");
+            assert!(
+                (secs.parse::<f64>().unwrap() - want_secs.parse::<f64>().unwrap()).abs() < 0.6,
+                "{name}: {secs}"
+            );
         }
         // Called off in the middle: it ends at once.
         for mpv in [false, true] {
             let mut plan = auto(&src, &CC, 2);
             plan.mpv = mpv;
-            let mut enc = Encoder::start(&Job { source: src.clone(), plan, start: 0.0 }).unwrap();
+            let mut enc = Encoder::start(&Job {
+                source: src.clone(),
+                plan,
+                start: 0.0,
+            })
+            .unwrap();
             let mut one = [0u8; 100];
             while enc.read(&mut one).is_err() {}
             let t = std::time::Instant::now();

@@ -118,7 +118,11 @@ nav_functions! {
 fn lib() -> Option<&'static Lib> {
     static LIB: OnceLock<Option<Lib>> = OnceLock::new();
     LIB.get_or_init(|| {
-        let lib = crate::disc::open_bundled_library(&["libdvdnav.so.4", "libdvdnav-4.dll", "libdvdnav.4.dylib"])?;
+        let lib = crate::disc::open_bundled_library(&[
+            "libdvdnav.so.4",
+            "libdvdnav-4.dll",
+            "libdvdnav.4.dylib",
+        ])?;
         // SAFETY: the signatures are those of dvdnav.h and dvd_reader.h.
         let lib = unsafe { Lib::from_library(lib) };
         if lib.is_none() {
@@ -298,7 +302,11 @@ impl Machine {
             (lib.dvdnav_set_PGC_positioning_flag)(nav, 1);
             let region = 1 << allowed.trailing_zeros().min(7);
             (lib.dvdnav_set_region_mask)(nav, region);
-            for f in [lib.dvdnav_menu_language_select, lib.dvdnav_audio_language_select, lib.dvdnav_spu_language_select] {
+            for f in [
+                lib.dvdnav_menu_language_select,
+                lib.dvdnav_audio_language_select,
+                lib.dvdnav_spu_language_select,
+            ] {
                 let mut code = [0u8; 3];
                 code[..2].copy_from_slice(&language.as_bytes()[..2]);
                 f(nav, code.as_mut_ptr().cast());
@@ -334,11 +342,16 @@ impl Machine {
     pub fn name(&self) -> String {
         let mut p: *const c_char = std::ptr::null();
         // SAFETY: the string belongs to the handle and is copied at once.
-        let ok = unsafe { (self.lib.dvdnav_get_title_string)(self.nav, &mut p) } == DVDNAV_STATUS_OK;
+        let ok =
+            unsafe { (self.lib.dvdnav_get_title_string)(self.nav, &mut p) } == DVDNAV_STATUS_OK;
         if !ok || p.is_null() {
             return String::new();
         }
-        unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().replace(['_', ','], " ").trim().to_owned()
+        unsafe { std::ffi::CStr::from_ptr(p) }
+            .to_string_lossy()
+            .replace(['_', ','], " ")
+            .trim()
+            .to_owned()
     }
 
     /// Stand at title `title`, so that its title set's menu can be called.
@@ -349,7 +362,13 @@ impl Machine {
     fn error(&self) -> String {
         // SAFETY: the string belongs to the handle and is copied at once.
         let p = unsafe { (self.lib.dvdnav_err_to_string)(self.nav) };
-        if p.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().into_owned() }
+        if p.is_null() {
+            String::new()
+        } else {
+            unsafe { std::ffi::CStr::from_ptr(p) }
+                .to_string_lossy()
+                .into_owned()
+        }
     }
 
     fn in_title(&self) -> bool {
@@ -369,12 +388,16 @@ impl Machine {
         loop {
             let (mut event, mut len) = (0, 0);
             // SAFETY: the buffer holds a whole block, the largest event too.
-            let rc = unsafe { (self.lib.dvdnav_get_next_block)(self.nav, buf.as_mut_ptr(), &mut event, &mut len) };
+            let rc = unsafe {
+                (self.lib.dvdnav_get_next_block)(self.nav, buf.as_mut_ptr(), &mut event, &mut len)
+            };
             if rc != DVDNAV_STATUS_OK {
                 self.errors += 1;
                 log::debug!("dvdnav: {}", self.error());
                 // A scratch: go on after it. Too many: stop.
-                if self.errors > 20 || unsafe { (self.lib.dvdnav_next_pg_search)(self.nav) } != DVDNAV_STATUS_OK {
+                if self.errors > 20
+                    || unsafe { (self.lib.dvdnav_next_pg_search)(self.nav) } != DVDNAV_STATUS_OK
+                {
                     return Step::Halt(Halt::End);
                 }
                 continue;
@@ -385,13 +408,19 @@ impl Machine {
                     if let Some(d) = self.drain.as_mut() {
                         d.read += BLOCK as u64;
                         if d.read > MAX_DRAIN {
-                            log::warn!("DVD: no end of title {} in sight; calling its menu", d.title);
+                            log::warn!(
+                                "DVD: no end of title {} in sight; calling its menu",
+                                d.title
+                            );
                             self.drain = None;
                             self.call_menu(Menu::Root);
                         }
                         continue;
                     }
-                    if event == EV_NAV && std::mem::take(&mut self.new_cell) && let Some(t) = self.wants_title(&buf[..]) {
+                    if event == EV_NAV
+                        && std::mem::take(&mut self.new_cell)
+                        && let Some(t) = self.wants_title(&buf[..])
+                    {
                         self.handed_over = Some(t.title);
                         self.queue.push_back(buf);
                         return Step::Halt(Halt::Title(t));
@@ -404,18 +433,24 @@ impl Machine {
                         continue;
                     }
                     let secs = i32::from_ne_bytes([buf[0], buf[1], buf[2], buf[3]]);
-                    return Step::Halt(Halt::Still((0..0xff).contains(&secs).then_some(secs as u32)));
+                    return Step::Halt(Halt::Still(
+                        (0..0xff).contains(&secs).then_some(secs as u32),
+                    ));
                 }
                 EV_WAIT => {
                     unsafe { (self.lib.dvdnav_wait_skip)(self.nav) };
                 }
                 EV_CLUT => {
                     for (i, c) in self.clut.iter_mut().enumerate() {
-                        *c = u32::from_ne_bytes(buf[i * 4..i * 4 + 4].try_into().unwrap_or_default());
+                        *c = u32::from_ne_bytes(
+                            buf[i * 4..i * 4 + 4].try_into().unwrap_or_default(),
+                        );
                     }
                 }
                 EV_SPU_STREAM => {
-                    let n = |i: usize| i32::from_ne_bytes(buf[i * 4..i * 4 + 4].try_into().unwrap_or_default());
+                    let n = |i: usize| {
+                        i32::from_ne_bytes(buf[i * 4..i * 4 + 4].try_into().unwrap_or_default())
+                    };
                     let wide = unsafe { (self.lib.dvdnav_get_video_aspect)(self.nav) } == 3;
                     let stream = if wide { n(0) } else { n(1) };
                     self.spu_stream = stream & 0x1f;
@@ -426,13 +461,17 @@ impl Machine {
                     self.audio = (0..8).contains(&n).then_some(n);
                 }
                 EV_CELL => {
-                    let n = |at: usize| i64::from_ne_bytes(buf[at..at + 8].try_into().unwrap_or_default());
+                    let n = |at: usize| {
+                        i64::from_ne_bytes(buf[at..at + 8].try_into().unwrap_or_default())
+                    };
                     self.pgc_length = n(24);
                     self.new_cell = true;
                     let (in_title, (title, _)) = (self.in_title(), self.title());
                     if let Some(d) = self.drain.as_mut() {
                         let start = n(32);
-                        let left = !in_title || title != d.title || d.cell_start.is_some_and(|s| start <= s);
+                        let left = !in_title
+                            || title != d.title
+                            || d.cell_start.is_some_and(|s| start <= s);
                         d.cell_start = Some(start);
                         if left {
                             self.drain = None;
@@ -460,13 +499,20 @@ impl Machine {
         if title < 1 {
             return None;
         }
-        let buttons = spu::parse_nav(block).is_some_and(|n| matches!(n.highlight, Highlight::Buttons(_)));
+        let buttons =
+            spu::parse_nav(block).is_some_and(|n| matches!(n.highlight, Highlight::Buttons(_)));
         if buttons && self.pgc_length < INTERACTIVE_TITLE {
             return None;
         }
         let (mut angle, mut angles) = (1, 1);
         unsafe { (self.lib.dvdnav_get_angle_info)(self.nav, &mut angle, &mut angles) };
-        Some(TitleStart { title, chapter: chapter.max(1), audio: self.audio, subtitle: self.subtitle, angle })
+        Some(TitleStart {
+            title,
+            chapter: chapter.max(1),
+            audio: self.audio,
+            subtitle: self.subtitle,
+            angle,
+        })
     }
 
     fn call_menu(&mut self, menu: Menu) -> bool {
@@ -533,11 +579,17 @@ impl Machine {
                 (Action::Right, Some(p)) => (lib.dvdnav_right_button_select)(nav, p),
                 (Action::Select(n), Some(p)) => (lib.dvdnav_button_select)(nav, p, n),
                 (Action::Press(None), Some(p)) => (lib.dvdnav_button_activate)(nav, p),
-                (Action::Press(Some(n)), Some(p)) => (lib.dvdnav_button_select_and_activate)(nav, p, n),
+                (Action::Press(Some(n)), Some(p)) => {
+                    (lib.dvdnav_button_select_and_activate)(nav, p, n)
+                }
                 (Action::Menu(m), _) => {
                     self.drain = None;
                     // The other menu is better than none.
-                    let other = if m == Menu::Root { Menu::Title } else { Menu::Root };
+                    let other = if m == Menu::Root {
+                        Menu::Title
+                    } else {
+                        Menu::Root
+                    };
                     i32::from(self.call_menu(m) || self.call_menu(other))
                 }
                 (Action::StillOver, _) => (lib.dvdnav_still_skip)(nav),
@@ -572,7 +624,9 @@ impl Machine {
     fn title_done(&mut self) {
         // What comes next is a new stream, whatever it is.
         self.hopped = true;
-        let Some(title) = self.handed_over.take() else { return };
+        let Some(title) = self.handed_over.take() else {
+            return;
+        };
         self.queue.clear();
         let (mut pos, mut len) = (0u32, 0u32);
         // SAFETY: plain calls; SEEK_SET is 0.
@@ -580,12 +634,17 @@ impl Machine {
             (self.lib.dvdnav_get_position)(self.nav, &mut pos, &mut len);
             (self.lib.dvdnav_sector_search)(self.nav, i64::from(len.saturating_sub(64)), 0);
         }
-        self.drain = Some(Drain { title, cell_start: None, read: 0 });
+        self.drain = Some(Drain {
+            title,
+            cell_start: None,
+            read: 0,
+        });
     }
 
     fn note_button(&mut self) {
         let mut n = 0;
-        if unsafe { (self.lib.dvdnav_get_current_highlight)(self.nav, &mut n) } == DVDNAV_STATUS_OK {
+        if unsafe { (self.lib.dvdnav_get_current_highlight)(self.nav, &mut n) } == DVDNAV_STATUS_OK
+        {
             self.button = n;
         }
     }
@@ -655,7 +714,11 @@ impl Machine {
             m.pci = Arc::new(pci);
             return;
         }
-        self.moments.push_back(Moment { pts, buttons: Arc::new(buttons), pci: Arc::new(pci) });
+        self.moments.push_back(Moment {
+            pts,
+            buttons: Arc::new(buttons),
+            pci: Arc::new(pci),
+        });
         if self.moments.len() > 64 {
             self.moments.pop_front();
         }
@@ -664,7 +727,10 @@ impl Machine {
     fn subpicture(&mut self, stream: u8, pts: Option<i64>, data: &[u8]) {
         let a = self.assembling.entry(stream).or_default();
         if let Some(pts) = pts {
-            *a = Assembly { pts, data: Vec::new() };
+            *a = Assembly {
+                pts,
+                data: Vec::new(),
+            };
         }
         a.data.extend_from_slice(data);
         if a.data.len() < 4 {
@@ -685,10 +751,20 @@ impl Machine {
 
     /// The buttons and the subpicture on screen at `pts`.
     pub fn at(&self, pts: i64) -> (Option<Moment>, Option<Subpicture>) {
-        let moment = self.moments.iter().rev().find(|m| m.pts <= pts).or(self.moments.front()).cloned();
+        let moment = self
+            .moments
+            .iter()
+            .rev()
+            .find(|m| m.pts <= pts)
+            .or(self.moments.front())
+            .cloned();
         let shown = |any: bool| {
             let right = |s: &u8| any || i32::from(*s) == self.spu_stream;
-            self.pictures.iter().rev().find(|(s, p)| right(s) && p.pts <= pts).map(|(_, p)| p.clone())
+            self.pictures
+                .iter()
+                .rev()
+                .find(|(s, p)| right(s) && p.pts <= pts)
+                .map(|(_, p)| p.clone())
         };
         (moment, shown(false).or_else(|| shown(true)))
     }
@@ -729,14 +805,21 @@ pub struct Reader {
 
 impl Reader {
     pub fn new(machine: Shared, generation: u64, notify: Arc<dyn Fn() + Send + Sync>) -> Self {
-        Self { machine, generation, notify, rest: Vec::new() }
+        Self {
+            machine,
+            generation,
+            notify,
+            rest: Vec::new(),
+        }
     }
 }
 
 impl StreamSource for Reader {
     fn read(&mut self, buf: &mut [u8]) -> usize {
         if self.rest.is_empty() {
-            let Ok(mut m) = self.machine.lock() else { return 0 };
+            let Ok(mut m) = self.machine.lock() else {
+                return 0;
+            };
             if m.generation != self.generation || m.halt.is_some() || m.hopped && m.sent > 0 {
                 return 0;
             }
@@ -780,7 +863,9 @@ mod tests {
     #[test]
     #[ignore = "needs a DVD: SMP_TEST_DVD"]
     fn walk_a_disc() {
-        let Ok(device) = std::env::var("SMP_TEST_DVD") else { return };
+        let Ok(device) = std::env::var("SMP_TEST_DVD") else {
+            return;
+        };
         let machine: Shared = Arc::new(Mutex::new(Machine::open(&device, "en").expect("open")));
         let mut outcome = machine.lock().unwrap().advance();
         println!("{:?}", machine.lock().unwrap().name());
@@ -807,7 +892,10 @@ mod tests {
                     let m = machine.lock().unwrap();
                     let buttons = found.as_ref().map_or(0, |f| f.buttons.len());
                     let pictures = m.pictures.len();
-                    println!("   {total} bytes, {buttons} buttons, chosen {}, {pictures} subpictures, {:?}", m.button, m.halt);
+                    println!(
+                        "   {total} bytes, {buttons} buttons, chosen {}, {pictures} subpictures, {:?}",
+                        m.button, m.halt
+                    );
                     action = match (&m.halt, found) {
                         (_, Some(_)) => Action::Press(Some((round % buttons.max(1)) as i32 + 1)),
                         (Some(Halt::Still(_)), _) => Action::StillOver,

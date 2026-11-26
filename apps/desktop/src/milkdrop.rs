@@ -79,7 +79,10 @@ fn preset_dirs() -> Vec<PathBuf> {
     if let Some(p) = std::env::var_os("SMP_MILKDROP_PRESETS") {
         d.push(PathBuf::from(p));
     }
-    if let Some(exe) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+    if let Some(exe) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    {
         d.push(exe.join("milkdrop"));
     }
     if let Some(data) = crate::settings::data_dir() {
@@ -96,7 +99,9 @@ fn presets() -> &'static [PathBuf] {
         for dir in preset_dirs() {
             let mut stack = vec![dir];
             while let Some(d) = stack.pop() {
-                let Ok(rd) = std::fs::read_dir(&d) else { continue };
+                let Ok(rd) = std::fs::read_dir(&d) else {
+                    continue;
+                };
                 for e in rd.flatten() {
                     let p = e.path();
                     let name = e.file_name().to_string_lossy().to_lowercase();
@@ -336,7 +341,9 @@ impl Renderer {
             return;
         }
         let secs = SECONDS.with(Cell::get);
-        if NEXT.with(|n| n.replace(false)) || self.changed.elapsed() >= Duration::from_secs(u64::from(secs)) {
+        if NEXT.with(|n| n.replace(false))
+            || self.changed.elapsed() >= Duration::from_secs(u64::from(secs))
+        {
             self.pick_preset(true);
         }
         // Sound since the last frame.
@@ -389,9 +396,25 @@ impl Renderer {
                     (g.gen_tex)(1, &mut self.tex);
                 }
                 (g.bind_tex)(GL_TEXTURE_2D, self.tex);
-                (g.tex_image)(GL_TEXTURE_2D, 0, GL_RGBA8 as i32, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, std::ptr::null());
+                (g.tex_image)(
+                    GL_TEXTURE_2D,
+                    0,
+                    GL_RGBA8 as i32,
+                    w,
+                    h,
+                    0,
+                    GL_RGBA,
+                    GL_UNSIGNED_BYTE,
+                    std::ptr::null(),
+                );
                 (g.bind_fb)(GL_FRAMEBUFFER, self.fbo);
-                (g.fb_tex)(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, self.tex, 0);
+                (g.fb_tex)(
+                    GL_FRAMEBUFFER,
+                    GL_COLOR_ATTACHMENT0,
+                    GL_TEXTURE_2D,
+                    self.tex,
+                    0,
+                );
                 self.tex_size = (w, h);
             }
             (g.bind_fb)(GL_READ_FRAMEBUFFER, 0);
@@ -406,7 +429,18 @@ impl Renderer {
             (g.disable)(GL_SCISSOR_TEST);
             (g.bind_fb)(GL_READ_FRAMEBUFFER, self.fbo);
             (g.bind_fb)(GL_DRAW_FRAMEBUFFER, target);
-            (g.blit)(0, 0, w, h, x, y, x + w, y + h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            (g.blit)(
+                0,
+                0,
+                w,
+                h,
+                x,
+                y,
+                x + w,
+                y + h,
+                GL_COLOR_BUFFER_BIT,
+                GL_NEAREST,
+            );
         }
     }
 }

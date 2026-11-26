@@ -53,7 +53,9 @@ fn classify(lib: &Path, exe: Option<&Path>) -> Source {
     let beside_exe = exe
         .and_then(Path::parent)
         .is_some_and(|dir| lib.starts_with(dir.join("lib")));
-    let system = ["/usr/", "/lib/", "/lib64/"].iter().any(|d| lib.starts_with(d));
+    let system = ["/usr/", "/lib/", "/lib64/"]
+        .iter()
+        .any(|d| lib.starts_with(d));
     if beside_exe || !system {
         Source::Bundled(lib.to_owned())
     } else {
@@ -90,7 +92,11 @@ fn parse_upgradable(out: &str) -> Vec<Upgrade> {
                 .trim_end_matches(']')
                 .trim()
                 .to_owned();
-            Some(Upgrade { package: name.to_owned(), installed, available })
+            Some(Upgrade {
+                package: name.to_owned(),
+                installed,
+                available,
+            })
         })
         .collect()
 }
@@ -149,8 +155,8 @@ pub fn update_system() -> Result<bool, String> {
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("could not ask for the administrator password (pkexec): {e}"))?;
-    let text = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     match out.status.code() {
         Some(0) => {
             // apt prints "N upgraded, M newly installed, ...".
@@ -166,7 +172,11 @@ pub fn update_system() -> Result<bool, String> {
         // pkexec: 126 = the password dialog was dismissed, 127 = not authorized.
         Some(126) | Some(127) => Err("The update was cancelled (no administrator password)".into()),
         _ => {
-            let last = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("failed");
+            let last = text
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("failed");
             Err(format!("The update failed: {}", last.trim()))
         }
     }
@@ -199,18 +209,26 @@ mod tests {
     fn bundled_or_system() {
         let exe = Path::new("/opt/super-media-player/super-media-player");
         assert!(matches!(
-            classify(Path::new("/opt/super-media-player/lib/libavcodec.so.60"), Some(exe)),
+            classify(
+                Path::new("/opt/super-media-player/lib/libavcodec.so.60"),
+                Some(exe)
+            ),
             Source::Bundled(_)
         ));
         assert!(matches!(
-            classify(Path::new("/usr/lib/x86_64-linux-gnu/libavcodec.so.60"), Some(exe)),
+            classify(
+                Path::new("/usr/lib/x86_64-linux-gnu/libavcodec.so.60"),
+                Some(exe)
+            ),
             Source::System(_)
         ));
         // Built from source by scripts/build-engine.sh: apt can't update it.
         assert!(matches!(
             classify(
                 Path::new("/home/u/media_player/.devlibs/engine/lib/libavcodec.so.62"),
-                Some(Path::new("/home/u/media_player/target/debug/super-media-player"))
+                Some(Path::new(
+                    "/home/u/media_player/target/debug/super-media-player"
+                ))
             ),
             Source::Bundled(_)
         ));

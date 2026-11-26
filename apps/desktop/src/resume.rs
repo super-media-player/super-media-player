@@ -39,11 +39,17 @@ impl Positions {
             .and_then(|p| std::fs::read_to_string(p).ok())
             .map(|t| parse(&t))
             .unwrap_or_default();
-        Self { entries, ..Default::default() }
+        Self {
+            entries,
+            ..Default::default()
+        }
     }
 
     fn get(&self, path: &str) -> Option<f64> {
-        self.entries.iter().find(|(_, p)| p == path).map(|(t, _)| *t)
+        self.entries
+            .iter()
+            .find(|(_, p)| p == path)
+            .map(|(t, _)| *t)
     }
 
     fn set(&mut self, path: &str, pos: Option<f64>) {
@@ -54,7 +60,9 @@ impl Positions {
             self.entries.insert(0, (t, path.to_owned()));
             self.entries.truncate(MAX_ENTRIES);
         }
-        if old.map(|o| (o - pos.unwrap_or(-1.0)).abs() > 0.5).unwrap_or(pos.is_some())
+        if old
+            .map(|o| (o - pos.unwrap_or(-1.0)).abs() > 0.5)
+            .unwrap_or(pos.is_some())
             || before != self.entries.len()
         {
             self.dirty = true;
@@ -63,7 +71,9 @@ impl Positions {
 
     /// Write when changed, at most every 10 s unless `now`.
     fn save(&mut self, now: bool) {
-        let due = self.last_save.is_none_or(|t| t.elapsed() > Duration::from_secs(10));
+        let due = self
+            .last_save
+            .is_none_or(|t| t.elapsed() > Duration::from_secs(10));
         if !self.dirty || !(now || due) {
             return;
         }
@@ -112,7 +122,10 @@ fn parse(text: &str) -> Vec<(f64, String)> {
     text.lines()
         .filter_map(|l| {
             let (t, p) = l.split_once('\t')?;
-            Some((t.parse::<f64>().ok().filter(|t| t.is_finite())?, p.to_owned()))
+            Some((
+                t.parse::<f64>().ok().filter(|t| t.is_finite())?,
+                p.to_owned(),
+            ))
         })
         .filter(|(_, p)| !p.is_empty())
         .take(MAX_ENTRIES)
@@ -125,7 +138,13 @@ fn eligible(path: &str, duration: f64, video: bool) -> bool {
     let disc = ["dvd://", "dvdnav://", "bd://", "cdda://"]
         .iter()
         .any(|p| path.starts_with(p));
-    !disc && duration >= if video { MIN_VIDEO_SECS } else { MIN_AUDIO_SECS }
+    !disc
+        && duration
+            >= if video {
+                MIN_VIDEO_SECS
+            } else {
+                MIN_AUDIO_SECS
+            }
 }
 
 /// The position to keep for `pos` in a file of `duration`: `None` (forget
@@ -153,45 +172,49 @@ pub fn start(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Settings>
         });
     }
     let timer = slint::Timer::default();
-    timer.start(slint::TimerMode::Repeated, Duration::from_secs(1), move || {
-        let Some(ui) = weak.upgrade() else { return };
-        let mut pos_store = positions.borrow_mut();
-        let path = player.get_string("path").unwrap_or_default();
-        if ui.get_media_playing() != path.as_str() {
-            ui.set_media_playing(path.as_str().into());
-        }
-        let duration = player.get_double("duration").unwrap_or(0.0);
-        let pos = player.get_double("time-pos");
-        let video = ui.get_has_video();
-        if path.is_empty() || duration <= 0.0 || ui.get_idle() {
-            if path.is_empty() {
-                handled = None;
+    timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_secs(1),
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut pos_store = positions.borrow_mut();
+            let path = player.get_string("path").unwrap_or_default();
+            if ui.get_media_playing() != path.as_str() {
+                ui.set_media_playing(path.as_str().into());
             }
-            pos_store.save(true);
-            return;
-        }
-        if !settings.borrow().resume || !eligible(&path, duration, video) {
-            handled = Some(path);
-            return;
-        }
-        if handled.as_deref() != Some(path.as_str()) {
-            handled = Some(path.clone());
-            if let Some(t) = pos_store.get(&path).and_then(|t| keep(t, duration)) {
-                // Only when it really just opened (not after a manual seek).
-                if pos.unwrap_or(0.0) < 10.0 {
-                    let _ = player.command(&["seek", &format!("{t:.1}"), "absolute"]);
-                    ui.set_toast(
-                        format!("Resumed at {}. Press Home to start over.", clock(t)).into(),
-                    );
+            let duration = player.get_double("duration").unwrap_or(0.0);
+            let pos = player.get_double("time-pos");
+            let video = ui.get_has_video();
+            if path.is_empty() || duration <= 0.0 || ui.get_idle() {
+                if path.is_empty() {
+                    handled = None;
                 }
+                pos_store.save(true);
+                return;
             }
-            return;
-        }
-        if let Some(p) = crate::cast::position(&player) {
-            pos_store.set(&path, keep(p, duration));
-            pos_store.save(false);
-        }
-    });
+            if !settings.borrow().resume || !eligible(&path, duration, video) {
+                handled = Some(path);
+                return;
+            }
+            if handled.as_deref() != Some(path.as_str()) {
+                handled = Some(path.clone());
+                if let Some(t) = pos_store.get(&path).and_then(|t| keep(t, duration)) {
+                    // Only when it really just opened (not after a manual seek).
+                    if pos.unwrap_or(0.0) < 10.0 {
+                        let _ = player.command(&["seek", &format!("{t:.1}"), "absolute"]);
+                        ui.set_toast(
+                            format!("Resumed at {}. Press Home to start over.", clock(t)).into(),
+                        );
+                    }
+                }
+                return;
+            }
+            if let Some(p) = crate::cast::position(&player) {
+                pos_store.set(&path, keep(p, duration));
+                pos_store.save(false);
+            }
+        },
+    );
     std::mem::forget(timer);
 }
 
@@ -232,8 +255,15 @@ mod tests {
         assert_eq!(p.entries.len(), 2);
         p.set("/b", None);
         assert_eq!(p.get("/b"), None);
-        let text: String = p.entries.iter().map(|(t, f)| format!("{t:.1}\t{f}\n")).collect();
+        let text: String = p
+            .entries
+            .iter()
+            .map(|(t, f)| format!("{t:.1}\t{f}\n"))
+            .collect();
         assert_eq!(parse(&text), p.entries);
-        assert_eq!(parse("junk\nnan\t/x\n12.5\t/ok\n"), vec![(12.5, "/ok".to_owned())]);
+        assert_eq!(
+            parse("junk\nnan\t/x\n12.5\t/ok\n"),
+            vec![(12.5, "/ok".to_owned())]
+        );
     }
 }

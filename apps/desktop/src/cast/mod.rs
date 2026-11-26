@@ -11,8 +11,8 @@
 //!   (a converted stream is restarted at the new place);
 //! - what the device says → the window's position, pause and volume.
 
-pub mod convert;
 mod chromecast;
+pub mod convert;
 pub mod discovery;
 mod dlna;
 mod server;
@@ -110,7 +110,9 @@ pub fn active() -> bool {
 
 /// Where playback is, here or on the device.
 pub fn position(p: &Player) -> Option<f64> {
-    ACTIVE.with_borrow(|a| a.as_ref().map(|a| a.position)).or_else(|| p.get_double("time-pos"))
+    ACTIVE
+        .with_borrow(|a| a.as_ref().map(|a| a.position))
+        .or_else(|| p.get_double("time-pos"))
 }
 
 fn with<R>(f: impl FnOnce(&mut Active) -> R) -> Option<R> {
@@ -254,7 +256,8 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         let Some(ui) = weak.upgrade() else { return };
         {
             let mut s = st.borrow_mut();
-            s.cast_quality = settings::CAST_QUALITY[(ui.get_cast_quality().max(0) as usize).min(2)].to_owned();
+            s.cast_quality =
+                settings::CAST_QUALITY[(ui.get_cast_quality().max(0) as usize).min(2)].to_owned();
             s.cast_burn_subs = ui.get_cast_burn_subs();
             s.save();
         }
@@ -267,13 +270,20 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     });
     {
         let s = settings.borrow();
-        ui.set_cast_quality(settings::CAST_QUALITY.iter().position(|q| *q == s.cast_quality).unwrap_or(0) as i32);
+        ui.set_cast_quality(
+            settings::CAST_QUALITY
+                .iter()
+                .position(|q| *q == s.cast_quality)
+                .unwrap_or(0) as i32,
+        );
         ui.set_cast_burn_subs(s.cast_burn_subs);
         ui.set_cast_address(s.cast_address.as_str().into());
     }
     let (weak, p) = (ui.as_weak(), player.clone());
     crate::features::every(ui, Duration::from_millis(250), move || {
-        if active() && let Some(ui) = weak.upgrade() {
+        if active()
+            && let Some(ui) = weak.upgrade()
+        {
             tick(&ui, &p, &settings);
         }
     });
@@ -302,7 +312,10 @@ fn search(ui: &AppWindow) {
 fn add_device(ui: &AppWindow, d: Device) {
     DEVICES.with_borrow_mut(|list| {
         // The same Chromecast found by search and by address.
-        if !list.iter().any(|x| x.id == d.id || (x.kind == d.kind && x.addr == d.addr)) {
+        if !list
+            .iter()
+            .any(|x| x.id == d.id || (x.kind == d.kind && x.addr == d.addr))
+        {
             list.push(d);
             list.sort_by_key(|d| d.name.to_lowercase());
         }
@@ -338,7 +351,9 @@ fn start(ui: &AppWindow, p: &Rc<Player>, device: Device) {
             return;
         }
     };
-    let here = resume_at.or_else(|| p.get_double("time-pos")).unwrap_or(0.0);
+    let here = resume_at
+        .or_else(|| p.get_double("time-pos"))
+        .unwrap_or(0.0);
     let _ = p.set_pause(true);
     let session = Session::start(&device);
     ui.set_cast_name(device.name.as_str().into());
@@ -381,7 +396,9 @@ fn end() {
 
 /// Stop casting: the player here goes to where the device was, paused.
 fn stop(ui: &AppWindow, p: &Player, message: &str) {
-    let Some(at) = with(|a| (a.position, a.loaded.is_some())) else { return };
+    let Some(at) = with(|a| (a.position, a.loaded.is_some())) else {
+        return;
+    };
     end();
     if at.1 && !ui.get_idle() {
         let _ = p.seek(Seek::Absolute(at.0));
@@ -416,7 +433,11 @@ fn tick(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>) {
         None => return,
     };
     if let Phase::Closed(why) = &status.phase {
-        let message = if why.is_empty() { "Casting ended".into() } else { format!("Casting ended: {why}") };
+        let message = if why.is_empty() {
+            "Casting ended".into()
+        } else {
+            format!("Casting ended: {why}")
+        };
         stop(ui, p, &message);
         return;
     }
@@ -429,7 +450,9 @@ fn tick(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>) {
     }
     show_volume(ui, &status);
 
-    let path = p.get_string("path").filter(|s| !s.is_empty() && !ui.get_idle());
+    let path = p
+        .get_string("path")
+        .filter(|s| !s.is_empty() && !ui.get_idle());
     let here = p.get_double("time-pos");
     let Some(path) = path else {
         // Nothing open here: nothing plays there either.
@@ -452,18 +475,30 @@ fn tick(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>) {
         return;
     }
     let here = here.unwrap_or(0.0);
-    let tracks = (p.get_string("aid").unwrap_or_default(), p.get_string("sid").unwrap_or_default());
+    let tracks = (
+        p.get_string("aid").unwrap_or_default(),
+        p.get_string("sid").unwrap_or_default(),
+    );
 
     let pos = p.get_double("playlist-pos").unwrap_or(0.0).max(0.0);
     let entry = p.get_double(&format!("playlist/{pos}/id")).unwrap_or(pos) as i64;
 
-    let same = with(|a| a.loaded.as_ref().map(|l| (l.path == path && l.entry == entry, l.tracks == tracks))).flatten();
+    let same = with(|a| {
+        a.loaded
+            .as_ref()
+            .map(|l| (l.path == path && l.entry == entry, l.tracks == tracks))
+    })
+    .flatten();
     match same {
         Some((true, true)) => {}
         Some((true, false)) => {
             let (at, paused, attempt) = with(|a| {
                 a.not_ours = Some(Instant::now());
-                (a.position, a.paused, a.loaded.as_ref().map_or(0, |l| l.attempt))
+                (
+                    a.position,
+                    a.paused,
+                    a.loaded.as_ref().map_or(0, |l| l.attempt),
+                )
             })
             .unwrap_or_default();
             send(ui, p, settings, (path, entry), tracks, at, paused, attempt);
@@ -487,14 +522,21 @@ fn tick(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>) {
 
     // A seek.
     let seek = with(|a| {
-        if std::mem::take(&mut a.sought) && a.not_ours.is_none_or(|t| t.elapsed() > Duration::from_secs(2)) {
+        if std::mem::take(&mut a.sought)
+            && a.not_ours
+                .is_none_or(|t| t.elapsed() > Duration::from_secs(2))
+        {
             a.moved = Some((here, Instant::now()));
         }
         match a.moved {
             Some((t, at)) if at.elapsed() >= SETTLE => {
                 a.moved = None;
                 a.position = t;
-                Some((t, a.loaded.as_ref().is_some_and(|l| l.plan.direct), a.paused))
+                Some((
+                    t,
+                    a.loaded.as_ref().is_some_and(|l| l.plan.direct),
+                    a.paused,
+                ))
             }
             Some((t, _)) => {
                 a.position = t;
@@ -540,7 +582,9 @@ fn follow(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>, status: 
                 t = t.min(duration);
             }
             let moving = with(|a| {
-                let old = a.hold.is_some_and(|(to, at)| at.elapsed() < ECHO && (to - t).abs() > 4.0);
+                let old = a
+                    .hold
+                    .is_some_and(|(to, at)| at.elapsed() < ECHO && (to - t).abs() > 4.0);
                 if !old {
                     a.hold = None;
                 }
@@ -555,7 +599,9 @@ fn follow(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>, status: 
                 }
                 (wait, a.paused)
             });
-            let Some((moving, paused)) = moving else { return };
+            let Some((moving, paused)) = moving else {
+                return;
+            };
             if !moving {
                 ui.set_position(t as f32);
                 crate::state::show_lyric_line(ui, t);
@@ -563,11 +609,14 @@ fn follow(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>, status: 
             if ui.get_paused() != paused {
                 ui.set_paused(paused);
             }
-            show_state(ui, match status.phase {
-                Phase::Paused => "Paused",
-                Phase::Buffering => "Loading",
-                _ => "Playing",
-            });
+            show_state(
+                ui,
+                match status.phase {
+                    Phase::Paused => "Paused",
+                    Phase::Buffering => "Loading",
+                    _ => "Playing",
+                },
+            );
         }
         Phase::Loading => {
             show_state(ui, "Loading");
@@ -588,21 +637,34 @@ fn follow(ui: &AppWindow, p: &Rc<Player>, settings: &RefCell<Settings>, status: 
         Phase::Ended => ended(ui, p),
         Phase::Stopped => {
             // A DLNA renderer doesn't say why it stopped: at the end it ended.
-            let (at, dlna) = with(|a| (a.position, a.device.kind == Kind::Dlna)).unwrap_or_default();
+            let (at, dlna) =
+                with(|a| (a.position, a.device.kind == Kind::Dlna)).unwrap_or_default();
             if dlna && duration > 0.0 && at > (duration * 0.97).min(duration - 10.0) {
                 ended(ui, p);
             } else {
-                stop(ui, p, "Playback was stopped on the device. Press play to go on here.");
+                stop(
+                    ui,
+                    p,
+                    "Playback was stopped on the device. Press play to go on here.",
+                );
             }
         }
         Phase::Failed(why) => {
             let again = with(|a| {
                 let (at, paused) = (a.position, a.paused);
                 let l = a.loaded.as_mut()?;
-                Some((l.attempt, (l.path.clone(), l.entry), l.tracks.clone(), at, paused))
+                Some((
+                    l.attempt,
+                    (l.path.clone(), l.entry),
+                    l.tracks.clone(),
+                    at,
+                    paused,
+                ))
             })
             .flatten();
-            let Some((attempt, path, tracks, at, paused)) = again else { return };
+            let Some((attempt, path, tracks, at, paused)) = again else {
+                return;
+            };
             // Some report a failure for the last moments of a stream.
             if duration > 0.0 && at > duration - 3.0 {
                 ended(ui, p);
@@ -634,7 +696,9 @@ fn fail(ui: &AppWindow, why: String) {
 }
 
 fn show_state(ui: &AppWindow, what: &str) {
-    let how = with(|a| a.loaded.as_ref().map(|l| l.plan.summary())).flatten().unwrap_or_default();
+    let how = with(|a| a.loaded.as_ref().map(|l| l.plan.summary()))
+        .flatten()
+        .unwrap_or_default();
     let text = format!("{what}, {how}");
     if ui.get_cast_state() != text.as_str() {
         ui.set_cast_state(text.into());
@@ -721,9 +785,17 @@ fn send(
         if a.device.kind == Kind::Dlna && !sink.is_empty() {
             a.device.video = sink.iter().any(|s| s.starts_with("video/") || s == "*");
         }
-        let target = Target { kind: a.device.kind, video: a.device.video, sink: &sink };
+        let target = Target {
+            kind: a.device.kind,
+            video: a.device.video,
+            sink: &sink,
+        };
         // The same plan as the one refused: try the one after.
-        let before = a.loaded.as_ref().filter(|l| l.path == path && l.attempt < attempt).map(|l| l.plan.clone());
+        let before = a
+            .loaded
+            .as_ref()
+            .filter(|l| l.path == path && l.attempt < attempt)
+            .map(|l| l.plan.clone());
         let mut attempt = attempt;
         loop {
             let plan = convert::plan(&source, &target, quality, burn, attempt, ffmpeg);
@@ -771,9 +843,16 @@ fn send(
     };
     let duration = source.duration;
     // A stream without an end can't be started in the middle.
-    let start = if duration > 0.0 { start.clamp(0.0, (duration - 1.0).max(0.0)) } else { 0.0 };
+    let start = if duration > 0.0 {
+        start.clamp(0.0, (duration - 1.0).max(0.0))
+    } else {
+        0.0
+    };
     let start = if start < 0.5 { 0.0 } else { start };
-    log::info!("cast: {} (attempt {attempt}, from {start:.1} s)", plan.summary());
+    log::info!(
+        "cast: {} (attempt {attempt}, from {start:.1} s)",
+        plan.summary()
+    );
     with(|a| {
         a.server.clear();
         a.paused = paused;
@@ -814,7 +893,9 @@ fn send(
 /// `base`: where the stream begins in the file; `start`: where to play from.
 fn hand_over(id: u64, base: f64, start: f64, paused: bool) {
     with(|a| {
-        let Some(l) = a.loaded.as_mut().filter(|l| l.id == id && !l.sent) else { return };
+        let Some(l) = a.loaded.as_mut().filter(|l| l.id == id && !l.sent) else {
+            return;
+        };
         l.sent = true;
         l.base = base;
         l.at = Instant::now();
@@ -826,7 +907,11 @@ fn hand_over(id: u64, base: f64, start: f64, paused: bool) {
                 Content::File(src.path.clone().into())
             }
         } else {
-            Content::Live(Arc::new(Job { source: src.clone(), plan: plan.clone(), start: base }))
+            Content::Live(Arc::new(Job {
+                source: src.clone(),
+                plan: plan.clone(),
+                start: base,
+            }))
         };
         // Text subtitles go along; the device draws them.
         let has_text = plan.video != VideoOut::None
@@ -846,8 +931,14 @@ fn hand_over(id: u64, base: f64, start: f64, paused: bool) {
                 }
             };
             let (v, s) = (Lazy::default(), Lazy::default());
-            vtt = Some(a.server.add(&format!("{id}/subtitles.vtt"), Item::new(Content::Text(v.clone()), "text/vtt; charset=utf-8")));
-            srt = Some(a.server.add(&format!("{id}/subtitles.srt"), Item::new(Content::Text(s.clone()), "text/srt; charset=utf-8")));
+            vtt = Some(a.server.add(
+                &format!("{id}/subtitles.vtt"),
+                Item::new(Content::Text(v.clone()), "text/vtt; charset=utf-8"),
+            ));
+            srt = Some(a.server.add(
+                &format!("{id}/subtitles.srt"),
+                Item::new(Content::Text(s.clone()), "text/srt; charset=utf-8"),
+            ));
             let (src, shift) = (src.clone(), src.sub_delay - base);
             std::thread::spawn(move || {
                 let list = cues.get_or_init(|| convert::read_cues(&src));
@@ -864,8 +955,15 @@ fn hand_over(id: u64, base: f64, start: f64, paused: bool) {
         let url = a.server.add(&format!("{id}/media.{ext}"), item);
         let art = src.art.as_ref().map(|f| {
             let png = f.extension().is_some_and(|e| e.eq_ignore_ascii_case("png"));
-            let (name, mime) = if png { ("cover.png", "image/png") } else { ("cover.jpg", "image/jpeg") };
-            a.server.add(&format!("{id}/{name}"), Item::new(Content::File(f.clone()), mime))
+            let (name, mime) = if png {
+                ("cover.png", "image/png")
+            } else {
+                ("cover.jpg", "image/jpeg")
+            };
+            a.server.add(
+                &format!("{id}/{name}"),
+                Item::new(Content::File(f.clone()), mime),
+            )
         });
         a.session.send(Cmd::Load(Box::new(Media {
             id,
@@ -910,41 +1008,61 @@ fn gather(ui: &AppWindow, p: &Player, s: &Settings, path: &str) -> Source {
     let text = |t: &Value, k: &str| t.get(k).and_then(Value::as_str).unwrap_or("").to_owned();
     let int = |t: &Value, k: &str| t.get(k).and_then(Value::as_i64);
     let flag = |t: &Value, k: &str| t.get(k).and_then(Value::as_bool).unwrap_or(false);
-    let of = |kind: &'static str| tracks.iter().filter(move |t| t.get("type").and_then(Value::as_str) == Some(kind));
+    let of = |kind: &'static str| {
+        tracks
+            .iter()
+            .filter(move |t| t.get("type").and_then(Value::as_str) == Some(kind))
+    };
     let embedded = |kind| of(kind).filter(|t| !flag(t, "external")).count() as i64;
-    let outside = |t: &Value| flag(t, "external").then(|| text(t, "external-filename")).filter(|f| !f.is_empty());
+    let outside = |t: &Value| {
+        flag(t, "external")
+            .then(|| text(t, "external-filename"))
+            .filter(|f| !f.is_empty())
+    };
     let gamma = p.get_string("video-params/gamma").unwrap_or_default();
-    let format = ["video-params/hw-pixelformat", "video-params/pixelformat", "video-dec-params/pixelformat"]
-        .iter()
-        .filter_map(|n| p.get_string(n))
-        .collect::<String>();
-    let video = of("video").find(|t| flag(t, "selected") && !flag(t, "albumart")).map(|t| VideoTrack {
-        id: int(t, "id").unwrap_or(1),
-        index: int(t, "ff-index"),
-        codec: text(t, "codec"),
-        width: int(t, "demux-w").unwrap_or(0),
-        height: int(t, "demux-h").unwrap_or(0),
-        ten_bit: ["p010", "p10", "p012", "p12", "p016"].iter().any(|f| format.contains(f)),
-        hdr: gamma == "pq" || gamma == "hlg",
-    });
+    let format = [
+        "video-params/hw-pixelformat",
+        "video-params/pixelformat",
+        "video-dec-params/pixelformat",
+    ]
+    .iter()
+    .filter_map(|n| p.get_string(n))
+    .collect::<String>();
+    let video = of("video")
+        .find(|t| flag(t, "selected") && !flag(t, "albumart"))
+        .map(|t| VideoTrack {
+            id: int(t, "id").unwrap_or(1),
+            index: int(t, "ff-index"),
+            codec: text(t, "codec"),
+            width: int(t, "demux-w").unwrap_or(0),
+            height: int(t, "demux-h").unwrap_or(0),
+            ten_bit: ["p010", "p10", "p012", "p12", "p016"]
+                .iter()
+                .any(|f| format.contains(f)),
+            hdr: gamma == "pq" || gamma == "hlg",
+        });
     let first = of("audio").next().and_then(|t| int(t, "id"));
-    let audio = of("audio").find(|t| flag(t, "selected")).map(|t| AudioTrack {
-        id: int(t, "id").unwrap_or(1),
-        index: int(t, "ff-index"),
-        codec: text(t, "codec"),
-        channels: int(t, "demux-channel-count").unwrap_or(2),
-        rate: int(t, "demux-samplerate").unwrap_or(0),
-        first: int(t, "id") == first,
-        file: outside(t),
-        embedded: embedded("audio"),
-    });
-    let sub = of("sub").find(|t| flag(t, "selected") && int(t, "main-selection").unwrap_or(0) == 0).map(|t| SubTrack {
-        id: int(t, "id").unwrap_or(1),
-        index: int(t, "ff-index"),
-        codec: text(t, "codec"),
-        file: outside(t),
-        embedded: embedded("sub"),
-    });
+    let audio = of("audio")
+        .find(|t| flag(t, "selected"))
+        .map(|t| AudioTrack {
+            id: int(t, "id").unwrap_or(1),
+            index: int(t, "ff-index"),
+            codec: text(t, "codec"),
+            channels: int(t, "demux-channel-count").unwrap_or(2),
+            rate: int(t, "demux-samplerate").unwrap_or(0),
+            first: int(t, "id") == first,
+            file: outside(t),
+            embedded: embedded("audio"),
+        });
+    let sub = of("sub")
+        .find(|t| flag(t, "selected") && int(t, "main-selection").unwrap_or(0) == 0)
+        .map(|t| SubTrack {
+            id: int(t, "id").unwrap_or(1),
+            index: int(t, "ff-index"),
+            codec: text(t, "codec"),
+            file: outside(t),
+            embedded: embedded("sub"),
+        });
     let mut site = Vec::new();
     if path.starts_with("http") {
         site.push(("ytdl".to_owned(), "yes".to_owned()));

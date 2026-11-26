@@ -163,9 +163,11 @@ pub fn gather(settings: &Settings, engine: String) -> Facts {
     facts.drives = disc::drive_reports();
     for d in &facts.drives {
         let wants = d.blu_ray
-            && matches!(d.state, DriveState::Refuses | DriveState::Disc { uhd: true, .. });
-        if wants
-            && let Some(info) = libredrive_info(&facts.makemkv, facts.makemkv_snap, &d.device)
+            && matches!(
+                d.state,
+                DriveState::Refuses | DriveState::Disc { uhd: true, .. }
+            );
+        if wants && let Some(info) = libredrive_info(&facts.makemkv, facts.makemkv_snap, &d.device)
         {
             facts.libredrive.push((d.device.clone(), info));
         }
@@ -209,7 +211,10 @@ fn makemkv_state() -> MakeMkv {
         use std::io::Read;
         let _ = e.read_to_string(&mut err);
     }
-    match err.lines().find(|l| l.contains("error while loading shared libraries")) {
+    match err
+        .lines()
+        .find(|l| l.contains("error while loading shared libraries"))
+    {
         Some(line) => MakeMkv::Broken(line.trim().to_owned()),
         None => MakeMkv::Works,
     }
@@ -263,7 +268,11 @@ impl LibreDrive {
 /// guess from the model that may say "Possible, not yet enabled" for the
 /// same drive. The drive-specific block wins when present.
 fn parse_libredrive(out: &str) -> Option<LibreDrive> {
-    let all: Vec<&str> = out.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let all: Vec<&str> = out
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     let specific = all
         .iter()
         .position(|l| l.starts_with("[Drive Specific SDF] Embedded Info Strings"));
@@ -347,7 +356,11 @@ fn uhd_steps(
         })
     });
     let use_snap = snap && *makemkv != MakeMkv::Works;
-    let tool = if use_snap { "/snap/bin/makemkvcon" } else { "makemkvcon" };
+    let tool = if use_snap {
+        "/snap/bin/makemkvcon"
+    } else {
+        "makemkvcon"
+    };
 
     // Already LibreDrive-capable: nothing to flash.
     if let Some(i) = info.filter(|i| i.enabled()) {
@@ -363,8 +376,16 @@ fn uhd_steps(
              MakeMKV reads discs only while registered: its free beta key is posted publicly in \
              \"MakeMKV is free while in beta\" on forum.makemkv.com (no account or payment); \
              paste it in Tools → MakeMKV (key & help), which also walks you through installing MakeMKV.",
-            if i.platform.is_empty() { "unknown platform" } else { &i.platform },
-            if i.firmware_type.is_empty() { "unknown" } else { &i.firmware_type },
+            if i.platform.is_empty() {
+                "unknown platform"
+            } else {
+                &i.platform
+            },
+            if i.firmware_type.is_empty() {
+                "unknown"
+            } else {
+                &i.firmware_type
+            },
         );
         return (steps, String::new());
     }
@@ -418,9 +439,8 @@ fn uhd_steps(
          means this drive can't read UHD discs: use a drive from the UHD-friendly list instead."
             .to_owned(),
     );
-    steps.push(
-        "Back up the drive's current firmware, and keep the file somewhere safe.".to_owned(),
-    );
+    steps
+        .push("Back up the drive's current firmware, and keep the file somewhere safe.".to_owned());
     match known {
         Some((_, platform, name, file)) => steps.push(format!(
             "Download the {name} firmware ({file}) into the same folder. {UHD_GUIDE} currently names \
@@ -515,7 +535,11 @@ pub fn findings(f: &Facts) -> Vec<Finding> {
 
     // ---- DVD ----
     out.push(if f.dvdcss {
-        Finding::new(Ok, "DVD decryption (libdvdcss)", "Installed: copy-protected DVDs can play.")
+        Finding::new(
+            Ok,
+            "DVD decryption (libdvdcss)",
+            "Installed: copy-protected DVDs can play.",
+        )
     } else {
         Finding::new(
             Warning,
@@ -639,7 +663,11 @@ pub fn findings(f: &Facts) -> Vec<Finding> {
 
     // ---- drives ----
     if f.drives.is_empty() && cfg!(target_os = "linux") {
-        out.push(Finding::new(Info, "No disc drive found", "Discs need an optical drive (USB ones work too)."));
+        out.push(Finding::new(
+            Info,
+            "No disc drive found",
+            "Discs need an optical drive (USB ones work too).",
+        ));
     }
     for d in &f.drives {
         let name = match &d.firmware {
@@ -830,8 +858,16 @@ mod tests {
         assert!(items[0].detail.contains("Ultra HD"), "{}", items[0].detail);
         assert!(items[0].detail.contains("firmware 1.00"));
         // Step-by-step, for this drive and device.
-        assert!(items[0].detail.contains("2. Check the drive"), "{}", items[0].detail);
-        assert!(items[0].command.contains("makemkvcon f -d /dev/sr1 -f sdf.bin --info"));
+        assert!(
+            items[0].detail.contains("2. Check the drive"),
+            "{}",
+            items[0].detail
+        );
+        assert!(
+            items[0]
+                .command
+                .contains("makemkvcon f -d /dev/sr1 -f sdf.bin --info")
+        );
         // No firmware file is named before the check has shown the platform.
         assert!(!items[0].detail.contains("WH16NS60"), "{}", items[0].detail);
         assert!(items[0].command.contains("<firmware file>.bin"));
@@ -842,7 +878,10 @@ mod tests {
         let mut d = drive(DriveState::Refuses);
         let (steps, cmds) = uhd_steps(&d, &MakeMkv::Broken("x".into()), false, None);
         assert!(steps.starts_with("1. Fix MakeMKV first"), "{steps}");
-        assert!(cmds.contains("makemkvcon f -d /dev/sr1 -f sdf.bin --info"), "{cmds}");
+        assert!(
+            cmds.contains("makemkvcon f -d /dev/sr1 -f sdf.bin --info"),
+            "{cmds}"
+        );
         // An unknown drive gets the generic firmware step and a placeholder.
         d.model = "SOME OTHER DRIVE".into();
         let (steps, cmds) = uhd_steps(&d, &MakeMkv::Works, false, None);
@@ -854,7 +893,10 @@ mod tests {
     fn broken_makemkv_with_snap_uses_the_snap() {
         let d = drive(DriveState::Refuses);
         let (steps, cmds) = uhd_steps(&d, &MakeMkv::Broken("x".into()), true, None);
-        assert!(steps.starts_with("1. Get the MakeMKV snap ready"), "{steps}");
+        assert!(
+            steps.starts_with("1. Get the MakeMKV snap ready"),
+            "{steps}"
+        );
         assert!(cmds.starts_with("# Let the MakeMKV snap write"), "{cmds}");
         assert!(cmds.contains("sudo snap connect makemkv:optical-write"));
         assert!(cmds.contains("cd ~/uhd-flash && wget -N https://www.makemkv.com/sdf.bin"));
@@ -869,7 +911,10 @@ mod tests {
             let (_, cmds) = uhd_steps(&drive(DriveState::Refuses), &mk, snap, None);
             assert!(cmds.contains("rawflash"));
             for line in cmds.lines().filter(|l| l.contains("rawflash")) {
-                assert!(line.trim_start().starts_with('#'), "runnable flash line: {line}");
+                assert!(
+                    line.trim_start().starts_with('#'),
+                    "runnable flash line: {line}"
+                );
             }
         }
     }
@@ -896,7 +941,10 @@ mod tests {
         let mut f = healthy();
         f.ffmpeg_updates = Some(3);
         let items = findings(&f);
-        let item = items.iter().find(|i| i.title.contains("FFmpeg updates")).unwrap();
+        let item = items
+            .iter()
+            .find(|i| i.title.contains("FFmpeg updates"))
+            .unwrap();
         assert_eq!(item.action, Action::UpdateFfmpeg);
         assert_eq!(item.level, Level::Warning);
     }
@@ -906,7 +954,10 @@ mod tests {
         let mut f = healthy();
         f.keydb = Some(("/k".into(), 1 << 20, 200));
         let items = findings(&f);
-        let item = items.iter().find(|i| i.title.contains("getting old")).unwrap();
+        let item = items
+            .iter()
+            .find(|i| i.title.contains("getting old"))
+            .unwrap();
         assert_eq!(item.action, Action::DownloadKeydb);
     }
 
@@ -923,7 +974,13 @@ mod tests {
     fn this_machine() {
         let facts = gather(&Settings::load(), String::new());
         for f in findings(&facts) {
-            println!("[{:?}] {}\n    {}\n    {}", f.level, f.title, f.detail, f.command.replace('\n', "\n    $ "));
+            println!(
+                "[{:?}] {}\n    {}\n    {}",
+                f.level,
+                f.title,
+                f.detail,
+                f.command.replace('\n', "\n    $ ")
+            );
         }
     }
 
@@ -949,8 +1006,14 @@ mod tests {
         assert_eq!(i.status, "Enabled");
         assert_eq!(i.firmware_type, "Original (unpatched)");
         // Without the drive-specific block, the generic one is all there is.
-        let generic = MT1939_FULL.split("Identification SDF present").nth(1).unwrap();
-        assert_eq!(parse_libredrive(generic).unwrap().status, "Possible, not yet enabled");
+        let generic = MT1939_FULL
+            .split("Identification SDF present")
+            .nth(1)
+            .unwrap();
+        assert_eq!(
+            parse_libredrive(generic).unwrap().status,
+            "Possible, not yet enabled"
+        );
     }
 
     #[test]

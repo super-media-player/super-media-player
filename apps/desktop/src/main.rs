@@ -3,6 +3,7 @@
 
 mod art;
 mod artist;
+mod autocrop;
 mod basics;
 mod bluray;
 mod cast;
@@ -12,8 +13,8 @@ mod collection;
 mod disc;
 mod discrip;
 mod doctor;
-mod engine;
 mod dvdmenu;
+mod engine;
 mod enhance;
 mod features;
 mod frame;
@@ -26,9 +27,10 @@ mod milkdrop;
 #[cfg(target_os = "linux")]
 mod mpris;
 mod musicinfo;
-mod network;
 mod navigation;
+mod network;
 mod opensubs;
+mod pace;
 mod palette;
 mod party;
 mod pcm;
@@ -41,16 +43,14 @@ mod scripts;
 mod settings;
 mod shortcuts;
 mod signal;
+mod silence;
 mod skins;
 mod sponsor;
-mod autocrop;
-mod silence;
-mod pace;
 mod state;
 mod subsync;
 mod thumbs;
-mod transcribe;
 mod tools;
+mod transcribe;
 mod video;
 mod visual;
 
@@ -115,11 +115,18 @@ thread_local! {
 /// While a skin shows its playlist docked, remember how tall the user made
 /// it, so closing and reopening the playlist keeps that height.
 fn note_playlist_height(ui: &AppWindow, mode: &str) {
-    let Some((_, skin_h, _)) = skin_size(mode) else { return };
+    let Some((_, skin_h, _)) = skin_size(mode) else {
+        return;
+    };
     if !ui.get_playlist_open() || playlist_in_own_window(ui, mode) || ui.get_panel_open() {
         return;
     }
-    let h = ui.window().size().to_logical(ui.window().scale_factor()).height - skin_h;
+    let h = ui
+        .window()
+        .size()
+        .to_logical(ui.window().scale_factor())
+        .height
+        - skin_h;
     if h >= 120.0 {
         PLAYLIST_HEIGHT.with(|p| p.set(h));
     }
@@ -140,7 +147,8 @@ fn fit_panel(ui: &AppWindow) -> bool {
     match (ui.get_panel_open(), BEFORE_PANEL.get()) {
         (true, None) => {
             let now = window.size().to_logical(window.scale_factor());
-            let grown = slint::LogicalSize::new(now.width.max(PANEL_SIZE.0), now.height.max(PANEL_SIZE.1));
+            let grown =
+                slint::LogicalSize::new(now.width.max(PANEL_SIZE.0), now.height.max(PANEL_SIZE.1));
             if grown == now {
                 return false;
             }
@@ -218,7 +226,10 @@ fn open_folder(dir: &Path) -> std::io::Result<()> {
     } else {
         "xdg-open"
     };
-    std::process::Command::new(opener).arg(dir).spawn().map(|_| ())
+    std::process::Command::new(opener)
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
 }
 
 thread_local! {
@@ -298,7 +309,13 @@ fn parse_args() -> Args {
 fn self_test() -> i32 {
     let mut failed = 0;
     let mut line = |ok: bool, needed: bool, what: &str, detail: String| {
-        let mark = if ok { "ok  " } else if needed { "FAIL" } else { "--  " };
+        let mark = if ok {
+            "ok  "
+        } else if needed {
+            "FAIL"
+        } else {
+            "--  "
+        };
         println!("{mark} {what}: {detail}");
         if !ok && needed {
             failed += 1;
@@ -312,29 +329,88 @@ fn self_test() -> i32 {
         }
     };
     let get = |p: &str| player.get_string(p).unwrap_or_default();
-    line(true, true, "libmpv", format!("{} with FFmpeg {}", get("mpv-version"), get("ffmpeg-version")));
+    line(
+        true,
+        true,
+        "libmpv",
+        format!(
+            "{} with FFmpeg {}",
+            get("mpv-version"),
+            get("ffmpeg-version")
+        ),
+    );
     let encoders = get("encoder-list");
-    for (enc, what) in [("libx264", "MP4 clips"), ("libmp3lame", "MP3 clips"), ("libopus", "Opus clips"), ("flac", "FLAC")] {
-        line(encoders.contains(&format!("\"{enc}\"")), true, &format!("encoder {enc}"), what.into());
+    for (enc, what) in [
+        ("libx264", "MP4 clips"),
+        ("libmp3lame", "MP3 clips"),
+        ("libopus", "Opus clips"),
+        ("flac", "FLAC"),
+    ] {
+        line(
+            encoders.contains(&format!("\"{enc}\"")),
+            true,
+            &format!("encoder {enc}"),
+            what.into(),
+        );
     }
     // "cdda,rtmp,…,dvd,…" (the encoders are JSON).
     let protocols = get("protocol-list");
     let linux = cfg!(target_os = "linux");
     for (proto, what) in [("dvd", "DVDs"), ("bd", "Blu-rays"), ("cdda", "audio CDs")] {
-        line(protocols.split(',').any(|p| p == proto), linux, &format!("{proto}://"), what.into());
+        line(
+            protocols.split(',').any(|p| p == proto),
+            linux,
+            &format!("{proto}://"),
+            what.into(),
+        );
     }
     let libs: &[(&[&str], &str, bool)] = &[
-        (&["libcdio_paranoia.so.2"], "exact CD ripping (libcdio-paranoia)", linux),
-        (&["libchromaprint.so.1", "libchromaprint.dylib", "chromaprint.dll"], "finding intros (chromaprint)", false),
-        (&["libaacs.so.0", "libaacs.dylib", "libaacs.dll"], "Blu-ray decryption (libaacs)", false),
-        (&["libdvdcss.so.2", "libdvdcss.2.dylib", "libdvdcss-2.dll"], "DVD decryption (libdvdcss)", false),
-        (&["libprojectM-4.so.4", "libprojectM-4.dylib", "projectM-4.dll"], "MilkDrop (libprojectM)", false),
+        (
+            &["libcdio_paranoia.so.2"],
+            "exact CD ripping (libcdio-paranoia)",
+            linux,
+        ),
+        (
+            &[
+                "libchromaprint.so.1",
+                "libchromaprint.dylib",
+                "chromaprint.dll",
+            ],
+            "finding intros (chromaprint)",
+            false,
+        ),
+        (
+            &["libaacs.so.0", "libaacs.dylib", "libaacs.dll"],
+            "Blu-ray decryption (libaacs)",
+            false,
+        ),
+        (
+            &["libdvdcss.so.2", "libdvdcss.2.dylib", "libdvdcss-2.dll"],
+            "DVD decryption (libdvdcss)",
+            false,
+        ),
+        (
+            &[
+                "libprojectM-4.so.4",
+                "libprojectM-4.dylib",
+                "projectM-4.dll",
+            ],
+            "MilkDrop (libprojectM)",
+            false,
+        ),
     ];
     for (names, what, needed) in libs {
         line(disc::library_present(names), *needed, what, names[0].into());
     }
     let ytdlp = tools::find_ytdlp();
-    line(ytdlp.is_some(), false, "yt-dlp", ytdlp.map(|p| p.display().to_string()).unwrap_or_else(|| "not found".into()));
+    line(
+        ytdlp.is_some(),
+        false,
+        "yt-dlp",
+        ytdlp
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "not found".into()),
+    );
     if failed == 0 {
         println!("all needed parts are there");
         0
@@ -434,7 +510,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
     let settings = Rc::new(RefCell::new(Settings::load()));
     // One player window: hand the files to the running player and leave.
-    if settings.borrow().single_instance && !args.inputs.is_empty() && instance::forward(&args.inputs) {
+    if settings.borrow().single_instance
+        && !args.inputs.is_empty()
+        && instance::forward(&args.inputs)
+    {
         log::info!("sent {} item(s) to the running player", args.inputs.len());
         return Ok(());
     }
@@ -468,10 +547,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_toast(match warnings.as_slice() {
                 [] => format!("{count} skins loaded").into(),
                 [w] => format!("{count} skins loaded. Skipped: {w}").into(),
-                [w, rest @ ..] => {
-                    format!("{count} skins loaded. Skipped: {w} (and {} more, see the log)", rest.len())
-                        .into()
-                }
+                [w, rest @ ..] => format!(
+                    "{count} skins loaded. Skipped: {w} (and {} more, see the log)",
+                    rest.len()
+                )
+                .into(),
             });
         });
         let weak = ui.as_weak();
@@ -479,7 +559,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             match skins::prepare_user_dir(&ui).and_then(|dir| open_folder(&dir).map(|()| dir)) {
                 Ok(dir) => ui.set_toast(
-                    format!("Skins folder: {} (README.txt there shows how)", dir.display()).into(),
+                    format!(
+                        "Skins folder: {} (README.txt there shows how)",
+                        dir.display()
+                    )
+                    .into(),
                 ),
                 Err(e) => ui.set_toast(format!("Couldn't open the skins folder: {e}").into()),
             }
@@ -621,7 +705,9 @@ fn watch_rips(player: &Player) {
     let done: Vec<PathBuf> = RIP_FILES.with_borrow_mut(|files| {
         let mut done = Vec::new();
         files.retain_mut(|(file, seen)| {
-            let playing = current.as_deref().is_some_and(|c| Path::new(c) == file.as_path());
+            let playing = current
+                .as_deref()
+                .is_some_and(|c| Path::new(c) == file.as_path());
             if playing {
                 *seen = true;
                 true
@@ -692,16 +778,40 @@ fn audio_options(s: &Settings) -> [(&'static str, &'static str); 6] {
 /// Equalizer presets: name and gains (dB) for `settings::EQ_BANDS`.
 const EQ_PRESETS: &[(&str, [f64; 10])] = &[
     ("Flat", [0.0; 10]),
-    ("Bass boost", [6.0, 5.0, 4.0, 2.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0]),
-    ("Treble boost", [0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 2.0, 4.0, 5.0, 6.0]),
-    ("Loudness", [5.0, 4.0, 2.0, 0.0, -1.0, -1.0, 0.0, 2.0, 4.0, 5.0]),
-    ("Rock", [4.0, 3.0, 1.5, -0.5, -1.5, -0.5, 1.5, 3.0, 3.5, 4.0]),
+    (
+        "Bass boost",
+        [6.0, 5.0, 4.0, 2.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0],
+    ),
+    (
+        "Treble boost",
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 2.0, 4.0, 5.0, 6.0],
+    ),
+    (
+        "Loudness",
+        [5.0, 4.0, 2.0, 0.0, -1.0, -1.0, 0.0, 2.0, 4.0, 5.0],
+    ),
+    (
+        "Rock",
+        [4.0, 3.0, 1.5, -0.5, -1.5, -0.5, 1.5, 3.0, 3.5, 4.0],
+    ),
     ("Pop", [-1.0, 0.0, 1.5, 3.0, 3.5, 2.5, 1.0, 0.0, -0.5, -1.0]),
     ("Jazz", [3.0, 2.0, 1.0, 1.5, -1.0, -1.0, 0.0, 1.5, 2.5, 3.0]),
-    ("Classical", [3.5, 2.5, 1.5, 1.0, -0.5, -0.5, 0.0, 1.5, 2.5, 3.0]),
-    ("Electronic", [5.0, 4.0, 1.5, 0.0, -1.5, 1.0, 0.5, 1.5, 4.0, 4.5]),
-    ("Vocal", [-2.0, -1.5, -0.5, 1.5, 3.5, 3.5, 2.5, 1.0, 0.0, -1.0]),
-    ("Small speakers", [-3.0, 1.0, 4.0, 3.0, 1.0, 0.0, 0.5, 1.5, 1.0, 0.0]),
+    (
+        "Classical",
+        [3.5, 2.5, 1.5, 1.0, -0.5, -0.5, 0.0, 1.5, 2.5, 3.0],
+    ),
+    (
+        "Electronic",
+        [5.0, 4.0, 1.5, 0.0, -1.5, 1.0, 0.5, 1.5, 4.0, 4.5],
+    ),
+    (
+        "Vocal",
+        [-2.0, -1.5, -0.5, 1.5, 3.5, 3.5, 2.5, 1.0, 0.0, -1.0],
+    ),
+    (
+        "Small speakers",
+        [-3.0, 1.0, 4.0, 3.0, 1.0, 0.0, 0.5, 1.5, 1.0, 0.0],
+    ),
 ];
 
 /// Create the player, wire up the UI and hide the startup splash. On failure
@@ -935,7 +1045,8 @@ fn settings_from_ui(ui: &AppWindow, old: &Settings) -> Settings {
         nav_pitch: old.nav_pitch,
         nav_jog_sound: old.nav_jog_sound,
         nav_step_sound: old.nav_step_sound,
-        audio_device: basics::device_name(ui.get_s_audio_device()).unwrap_or_else(|| old.audio_device.clone()),
+        audio_device: basics::device_name(ui.get_s_audio_device())
+            .unwrap_or_else(|| old.audio_device.clone()),
         always_on_top: ui.get_s_always_on_top(),
         title_bar: pick(settings::TITLE_BARS, ui.get_s_title_bar()),
         single_instance: ui.get_s_single_instance(),
@@ -1136,7 +1247,9 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
         let t = |x: f64| fmt_clock(x);
         ui.set_toast(
             match (a, b) {
-                (Some(a), Some(b)) => format!("Repeating {} – {}. Press A again to stop.", t(a), t(b)),
+                (Some(a), Some(b)) => {
+                    format!("Repeating {} – {}. Press A again to stop.", t(a), t(b))
+                }
                 (Some(a), None) => format!("Loop start set at {}. Press A again at the end.", t(a)),
                 _ => "A-B repeat off.".to_owned(),
             }
@@ -1148,12 +1261,24 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
         if cast::refuses(&ui, "Stepping by frame") {
             return;
         }
-        let cmd = if forward { "frame-step" } else { "frame-back-step" };
+        let cmd = if forward {
+            "frame-step"
+        } else {
+            "frame-back-step"
+        };
         report(&ui, p.command(&[cmd]));
     });
     // On a DVD's menu and clips these skip within the disc.
-    on!(on_next, |ui, p| if dvdmenu::menu_active() { ui.invoke_dvd("skip".into()) } else { report(&ui, p.next()) });
-    on!(on_prev, |ui, p| if dvdmenu::menu_active() { ui.invoke_dvd("back".into()) } else { report(&ui, p.prev()) });
+    on!(on_next, |ui, p| if dvdmenu::menu_active() {
+        ui.invoke_dvd("skip".into())
+    } else {
+        report(&ui, p.next())
+    });
+    on!(on_prev, |ui, p| if dvdmenu::menu_active() {
+        ui.invoke_dvd("back".into())
+    } else {
+        report(&ui, p.prev())
+    });
     on!(on_seek, |ui, p, t| {
         if !cast::seek_to(&ui, t as f64) {
             report(&ui, p.seek(Seek::Absolute(t as f64)))
@@ -1161,7 +1286,10 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
     });
     on!(on_scrub, |ui, p, t| {
         if !cast::seek_to(&ui, t as f64) {
-            report(&ui, p.command(&["seek", &t.to_string(), "absolute+keyframes"]))
+            report(
+                &ui,
+                p.command(&["seek", &t.to_string(), "absolute+keyframes"]),
+            )
         }
     });
     on!(on_seek_relative, |ui, p, t| {
@@ -1251,7 +1379,10 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
             report(&ui, p.add_subtitle(&file.to_string_lossy()));
         }
     });
-    on!(on_load_subtitle_path, |ui, p, path| report(&ui, p.add_subtitle(&path)));
+    on!(on_load_subtitle_path, |ui, p, path| report(
+        &ui,
+        p.add_subtitle(&path)
+    ));
     on!(on_open_disc, |ui, p, kind| open_disc(&ui, &kind));
     on!(on_quit, |ui, p| {
         let _ = ui.hide();
@@ -1448,10 +1579,8 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
                             pos.x,
                             pos.y + size.height + 4.0,
                         ));
-                        pw.window().set_size(slint::LogicalSize::new(
-                            size.width,
-                            SKIN_PLAYLIST_HEIGHT,
-                        ));
+                        pw.window()
+                            .set_size(slint::LogicalSize::new(size.width, SKIN_PLAYLIST_HEIGHT));
                         let _ = pw.show();
                     }
                 } else if pw.window().is_visible() {
@@ -1540,12 +1669,20 @@ fn start_meter(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     // The equalizer: gains live in the settings (saved at once), and the
     // playing song hears a change immediately.
     let eq_model = Rc::new(slint::VecModel::from(
-        settings.borrow().eq_gains.iter().map(|g| *g as f32).collect::<Vec<_>>(),
+        settings
+            .borrow()
+            .eq_gains
+            .iter()
+            .map(|g| *g as f32)
+            .collect::<Vec<_>>(),
     ));
     ui.set_eq_gains(eq_model.clone().into());
     ui.set_eq_preset_names(
         Rc::new(slint::VecModel::from(
-            EQ_PRESETS.iter().map(|(n, _)| slint::SharedString::from(*n)).collect::<Vec<_>>(),
+            EQ_PRESETS
+                .iter()
+                .map(|(n, _)| slint::SharedString::from(*n))
+                .collect::<Vec<_>>(),
         ))
         .into(),
     );
@@ -1566,7 +1703,9 @@ fn start_meter(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         let (st, p, m) = (settings.clone(), player.clone(), eq_model.clone());
         let weak = ui.as_weak();
         ui.on_eq_preset(move |i| {
-            let Some((_, gains)) = EQ_PRESETS.get(i.max(0) as usize) else { return };
+            let Some((_, gains)) = EQ_PRESETS.get(i.max(0) as usize) else {
+                return;
+            };
             let mut s = st.borrow_mut();
             s.eq_gains = *gains;
             // Picking a preset means wanting to hear it.
@@ -1610,7 +1749,8 @@ fn start_meter(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
             // Clock in theme.slint), at this timer's 30 Hz.
             let now = std::time::Instant::now();
             if !idle && !paused {
-                clock_ms = (clock_ms + now.duration_since(last_tick).as_secs_f64() * 1000.0) % 3_600_000.0;
+                clock_ms =
+                    (clock_ms + now.duration_since(last_tick).as_secs_f64() * 1000.0) % 3_600_000.0;
                 ui.global::<Clock>().set_ms(clock_ms as f32);
             }
             last_tick = now;
@@ -1631,7 +1771,10 @@ fn start_meter(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
                     && ui.get_duration() > 0.0
                     && silence::obstacle(&ui, s.bit_perfect).is_none();
                 meter.tone.set(t);
-                (if s.bit_perfect { 0.0 } else { s.crossfade }, ui.get_has_video())
+                (
+                    if s.bit_perfect { 0.0 } else { s.crossfade },
+                    ui.get_has_video(),
+                )
             };
             // Fades between songs (music only: a film's ending isn't faded).
             let gain = if crossfade > 0.0 && !has_video && !idle {
@@ -1936,13 +2079,18 @@ fn attach_drop_handler(window: &slint::Window, weak: slint::Weak<AppWindow>, alw
         match event {
             WindowEvent::CursorMoved { position, .. } if !always_add => {
                 let scale = f64::from(ui.window().scale_factor());
-                mouse.set(slint::LogicalPosition::new((position.x / scale) as f32, (position.y / scale) as f32));
+                mouse.set(slint::LogicalPosition::new(
+                    (position.x / scale) as f32,
+                    (position.y / scale) as f32,
+                ));
             }
             // The skins' menu. Slint would open it at the mouse, where its
             // sub-menus may have no room (see show-skin-menu).
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Right, .. }
-                if !always_add && ui.get_skin_alone() =>
-            {
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } if !always_add && ui.get_skin_alone() => {
                 ui.invoke_show_skin_menu(mouse.get().x, mouse.get().y);
                 return EventResult::PreventDefault;
             }
@@ -2051,10 +2199,13 @@ fn open_inputs(ui: &AppWindow, inputs: Vec<Input>, append: bool) {
             mode = LoadMode::Append;
         }
         if items.len() > 1 || (append && !was_idle) {
-            ui.set_toast(match items.len() {
-                1 => "Added to the playlist".to_string(),
-                n => format!("{n} items added to the playlist"),
-            }.into());
+            ui.set_toast(
+                match items.len() {
+                    1 => "Added to the playlist".to_string(),
+                    n => format!("{n} items added to the playlist"),
+                }
+                .into(),
+            );
         }
     });
 }
@@ -2185,12 +2336,19 @@ fn play_disc(ui: &AppWindow, player: &Player, plan: DiscPlan) {
 /// Play the Blu-ray in [`LAST_BLURAY`], once the drive's reading mode is
 /// known (bluray.rs; it takes a few seconds).
 fn play_bluray(ui: &AppWindow, busy: &str) {
-    let Some(mut plan) = LAST_BLURAY.with_borrow(|p| p.clone()) else { return };
+    let Some(mut plan) = LAST_BLURAY.with_borrow(|p| p.clone()) else {
+        return;
+    };
     let device = plan.device.clone();
-    run_busy(ui, busy, move || bluray::source(&device), move |ui, source| {
-        plan.device = source;
-        with_player(|p| start_disc(ui, p, &plan));
-    });
+    run_busy(
+        ui,
+        busy,
+        move || bluray::source(&device),
+        move |ui, source| {
+            plan.device = source;
+            with_player(|p| start_disc(ui, p, &plan));
+        },
+    );
 }
 
 /// A disc that didn't open gets one more try: the Blu-ray drive may have
@@ -2235,7 +2393,14 @@ fn start_disc(ui: &AppWindow, player: &Player, plan: &DiscPlan) {
         }
         // Which drive, for computers with more than one.
         if !plan.drive.is_empty() {
-            ui.set_toast(format!("Playing {} from the {}", plan.kind.with_article(), plan.drive).into());
+            ui.set_toast(
+                format!(
+                    "Playing {} from the {}",
+                    plan.kind.with_article(),
+                    plan.drive
+                )
+                .into(),
+            );
         }
     }
 }
@@ -2285,7 +2450,13 @@ fn open_disc(ui: &AppWindow, kind: &str) {
     let scan = RIP_SCAN.get() + 1;
     RIP_SCAN.set(scan);
     ui.set_busy_text("Reading the disc…".into());
-    show_disc_card(ui, "READING THE DISC", "Looking for the disc…", "", "Checking your drives…");
+    show_disc_card(
+        ui,
+        "READING THE DISC",
+        "Looking for the disc…",
+        "",
+        "Checking your drives…",
+    );
     let weak = ui.as_weak();
     let cd_online = ui.get_s_cd_online();
     std::thread::spawn(move || {
@@ -2313,11 +2484,17 @@ fn open_disc(ui: &AppWindow, kind: &str) {
         });
         // Only MakeMKV can read a disc the drive refuses: offer it, on that
         // drive, if MakeMKV is installed.
-        let refused = plan.as_ref().err().is_some_and(|e| disc::is_refused_error(e));
+        let refused = plan
+            .as_ref()
+            .err()
+            .is_some_and(|e| disc::is_refused_error(e));
         let refusing = (refused && ripper::tool().is_some())
             .then(|| {
                 disc::drive_reports().into_iter().find(|d| {
-                    matches!(d.state, disc::DriveState::Refuses | disc::DriveState::NotReady)
+                    matches!(
+                        d.state,
+                        disc::DriveState::Refuses | disc::DriveState::NotReady
+                    )
                 })
             })
             .flatten();
@@ -2380,13 +2557,23 @@ fn confirm_cd_rip(ui: &AppWindow, plan: DiscPlan) {
     let id = cd::disc_id(&cd.toc);
     let dir = cd::rip_folder(&cd::music_dir(), cd.album.as_ref(), id.as_deref());
     let secs: u64 = cd.tracks.iter().map(|t| u64::from(t.frames) / 75).sum();
-    let songs = format!("{} songs, {}", cd.tracks.len(), ripper::format_duration(secs));
+    let songs = format!(
+        "{} songs, {}",
+        cd.tracks.len(),
+        ripper::format_duration(secs)
+    );
     let what = match &cd.album {
-        Some(a) if !a.title.is_empty() && !a.artist.is_empty() => format!("\"{}\" by {} ({songs})", a.title, a.artist),
+        Some(a) if !a.title.is_empty() && !a.artist.is_empty() => {
+            format!("\"{}\" by {} ({songs})", a.title, a.artist)
+        }
         Some(a) if !a.title.is_empty() => format!("\"{}\" ({songs})", a.title),
         _ => format!("this CD ({songs}; no song names were found, so they are numbered)"),
     };
-    let drive = if plan.drive.is_empty() { "drive".to_owned() } else { plan.drive.clone() };
+    let drive = if plan.drive.is_empty() {
+        "drive".to_owned()
+    } else {
+        plan.drive.clone()
+    };
     let mut text = format!(
         "Rip {what} from the {drive} to FLAC files (lossless) in\n{}\n\nEach song is read with full \
          error correction: a CD takes about 5 to 15 minutes, a scratched one longer. You can cancel \
@@ -2396,11 +2583,24 @@ fn confirm_cd_rip(ui: &AppWindow, plan: DiscPlan) {
     if dir.is_dir() {
         text += "\n\nThat folder already exists: songs with the same names are replaced.";
     }
-    ask(ui, "Rip audio CD", &text, "Rip", "Cancel", move |ui, yes| {
-        if yes {
-            start_cd_rip(ui, plan.device.clone(), drive.clone(), cd.clone(), dir.clone());
-        }
-    });
+    ask(
+        ui,
+        "Rip audio CD",
+        &text,
+        "Rip",
+        "Cancel",
+        move |ui, yes| {
+            if yes {
+                start_cd_rip(
+                    ui,
+                    plan.device.clone(),
+                    drive.clone(),
+                    cd.clone(),
+                    dir.clone(),
+                );
+            }
+        },
+    );
 }
 
 fn start_cd_rip(ui: &AppWindow, device: String, drive: String, cd: disc::CdDisc, dir: PathBuf) {
@@ -2410,7 +2610,9 @@ fn start_cd_rip(ui: &AppWindow, device: String, drive: String, cd: disc::CdDisc,
     }
     // Playing the CD while ripping it would make the drive seek back and forth.
     with_player(|p| {
-        if p.get_string("path").is_some_and(|path| path.contains("cdda://")) {
+        if p.get_string("path")
+            .is_some_and(|path| path.contains("cdda://"))
+        {
             let _ = p.stop();
         }
     });
@@ -2434,27 +2636,41 @@ fn start_cd_rip(ui: &AppWindow, device: String, drive: String, cd: disc::CdDisc,
             .tracks
             .iter()
             .enumerate()
-            .map(|(i, t)| cd.album.as_ref().map(|a| a.track_title(i, t.number)).unwrap_or_else(|| format!("Track {}", t.number)))
+            .map(|(i, t)| {
+                cd.album
+                    .as_ref()
+                    .map(|a| a.track_title(i, t.number))
+                    .unwrap_or_else(|| format!("Track {}", t.number))
+            })
             .collect();
         let started = std::time::Instant::now();
         let progress_ui = weak.clone();
         let first_lba = cd.toc.iter().find(|e| !e.2).map_or(0, |e| e.1);
-        let result = cd::rip(&device, &cd.tracks, first_lba, cd.album.as_ref(), cd.cover.as_deref(), &dir, cancel.flag(), |i, f| {
-            let done = frames[..i].iter().sum::<u64>() as f64 + f64::from(f) * frames[i] as f64;
-            let part = (done / total as f64).clamp(0.0, 1.0);
-            let elapsed = started.elapsed().as_secs_f64();
-            let eta = if part > 0.02 {
-                time_left((elapsed * (1.0 - part) / part) as u64)
-            } else {
-                "working out the time left…".to_owned()
-            };
-            let stage = format!("Song {} of {}: {}", i + 1, frames.len(), names[i]);
-            let _ = progress_ui.upgrade_in_event_loop(move |ui| {
-                ui.set_rip_percent(part as f32);
-                ui.set_rip_stage(stage.into());
-                ui.set_rip_eta(eta.into());
-            });
-        });
+        let result = cd::rip(
+            &device,
+            &cd.tracks,
+            first_lba,
+            cd.album.as_ref(),
+            cd.cover.as_deref(),
+            &dir,
+            cancel.flag(),
+            |i, f| {
+                let done = frames[..i].iter().sum::<u64>() as f64 + f64::from(f) * frames[i] as f64;
+                let part = (done / total as f64).clamp(0.0, 1.0);
+                let elapsed = started.elapsed().as_secs_f64();
+                let eta = if part > 0.02 {
+                    time_left((elapsed * (1.0 - part) / part) as u64)
+                } else {
+                    "working out the time left…".to_owned()
+                };
+                let stage = format!("Song {} of {}: {}", i + 1, frames.len(), names[i]);
+                let _ = progress_ui.upgrade_in_event_loop(move |ui| {
+                    ui.set_rip_percent(part as f32);
+                    ui.set_rip_stage(stage.into());
+                    ui.set_rip_eta(eta.into());
+                });
+            },
+        );
         let _ = weak.upgrade_in_event_loop(move |ui| {
             RIP_CANCEL.with_borrow_mut(|c| *c = None);
             ui.set_busy_text("".into());
@@ -2506,7 +2722,12 @@ fn pick_disc(ui: &AppWindow, plans: Vec<DiscPlan>) {
             };
             DriveChoice {
                 device: p.device.clone().into(),
-                name: if p.drive.is_empty() { p.device.clone() } else { p.drive.clone() }.into(),
+                name: if p.drive.is_empty() {
+                    p.device.clone()
+                } else {
+                    p.drive.clone()
+                }
+                .into(),
                 detail: format!("Holds {what}").into(),
             }
         })
@@ -2571,9 +2792,18 @@ fn drive_contents(state: &disc::DriveState) -> &'static str {
         disc::DriveState::Refuses => "a disc it can't read by itself (MakeMKV may)",
         disc::DriveState::NotReady => "a disc it isn't ready to read yet",
         disc::DriveState::Disc { uhd: true, .. } => "an Ultra HD Blu-ray",
-        disc::DriveState::Disc { kind: Some(DiscKind::Bluray), .. } => "a Blu-ray",
-        disc::DriveState::Disc { kind: Some(DiscKind::Dvd), .. } => "a DVD",
-        disc::DriveState::Disc { kind: Some(DiscKind::AudioCd), .. } => "an audio CD",
+        disc::DriveState::Disc {
+            kind: Some(DiscKind::Bluray),
+            ..
+        } => "a Blu-ray",
+        disc::DriveState::Disc {
+            kind: Some(DiscKind::Dvd),
+            ..
+        } => "a DVD",
+        disc::DriveState::Disc {
+            kind: Some(DiscKind::AudioCd),
+            ..
+        } => "an audio CD",
         disc::DriveState::Disc { .. } => "a disc",
         _ => "no disc",
     }
@@ -2607,8 +2837,17 @@ fn find_rip_drive(ui: &AppWindow) {
                 .filter(|d| {
                     matches!(
                         d.state,
-                        disc::DriveState::Refuses | disc::DriveState::NotReady | disc::DriveState::Disc { .. }
-                    ) && !(files && matches!(d.state, disc::DriveState::Disc { kind: Some(DiscKind::AudioCd), .. }))
+                        disc::DriveState::Refuses
+                            | disc::DriveState::NotReady
+                            | disc::DriveState::Disc { .. }
+                    ) && !(files
+                        && matches!(
+                            d.state,
+                            disc::DriveState::Disc {
+                                kind: Some(DiscKind::AudioCd),
+                                ..
+                            }
+                        ))
                 })
                 .collect::<Vec<_>>()
         },
@@ -2725,7 +2964,14 @@ fn rip_from(ui: &AppWindow, device: String, drive: String) {
                     log::warn!("MakeMKV couldn't read the disc: {m}");
                     // MakeMKV's messages name the device ("/dev/sr1"): say which drive.
                     let m = m.replace(device.as_str(), &format!("the {drive}"));
-                    ask(&ui, "MakeMKV couldn't read the disc", &m, "OK", "", |_, _| {});
+                    ask(
+                        &ui,
+                        "MakeMKV couldn't read the disc",
+                        &m,
+                        "OK",
+                        "",
+                        |_, _| {},
+                    );
                 }
             }
         });
@@ -2736,7 +2982,13 @@ fn rip_from(ui: &AppWindow, device: String, drive: String) {
 
 /// Open the Rip-to-files panel for the disc MakeMKV just read. A series'
 /// episode names are looked up (when online lookups are on) while it shows.
-fn open_rip_files(ui: &AppWindow, tool: ripper::Tool, device: String, drive: String, info: ripper::DiscInfo) {
+fn open_rip_files(
+    ui: &AppWindow,
+    tool: ripper::Tool,
+    device: String,
+    drive: String,
+    info: ripper::DiscInfo,
+) {
     if info.titles.is_empty() {
         ui.set_toast("MakeMKV found no titles on the disc".into());
         return;
@@ -2745,7 +2997,15 @@ fn open_rip_files(ui: &AppWindow, tool: ripper::Tool, device: String, drive: Str
     let plan = discrip::Plan::new(&info, &label, None);
     let series = plan.series;
     let name = plan.name.clone();
-    RIP_PLAN.with_borrow_mut(|p| *p = Some(RipFiles { tool, device, drive, plan, base: discrip::videos_dir() }));
+    RIP_PLAN.with_borrow_mut(|p| {
+        *p = Some(RipFiles {
+            tool,
+            device,
+            drive,
+            plan,
+            base: discrip::videos_dir(),
+        })
+    });
     ui.set_ripfiles_name(name.into());
     refresh_rip_files(ui);
     ui.set_ripfiles_open(true);
@@ -2862,12 +3122,16 @@ fn setup_rip_files(ui: &AppWindow) {
     let weak = ui.as_weak();
     ui.on_ripfiles_season_by(move |d| {
         let Some(ui) = weak.upgrade() else { return };
-        edit(&ui, &|r| r.plan.season = (r.plan.season as i32 + d).clamp(1, 99) as u32);
+        edit(&ui, &|r| {
+            r.plan.season = (r.plan.season as i32 + d).clamp(1, 99) as u32
+        });
     });
     let weak = ui.as_weak();
     ui.on_ripfiles_first_by(move |d| {
         let Some(ui) = weak.upgrade() else { return };
-        edit(&ui, &|r| r.plan.first = (r.plan.first as i32 + d).clamp(1, 999) as u32);
+        edit(&ui, &|r| {
+            r.plan.first = (r.plan.first as i32 + d).clamp(1, 999) as u32
+        });
     });
     let weak = ui.as_weak();
     ui.on_ripfiles_lookup(move || {
@@ -2887,15 +3151,23 @@ fn setup_rip_files(ui: &AppWindow) {
     let weak = ui.as_weak();
     ui.on_ripfiles_choose_folder(move || {
         let Some(ui) = weak.upgrade() else { return };
-        let start = RIP_PLAN.with_borrow(|r| r.as_ref().map(|r| r.base.clone())).unwrap_or_else(discrip::videos_dir);
-        if let Some(dir) = rfd::FileDialog::new().set_title("Rip into which folder?").set_directory(&start).pick_folder() {
+        let start = RIP_PLAN
+            .with_borrow(|r| r.as_ref().map(|r| r.base.clone()))
+            .unwrap_or_else(discrip::videos_dir);
+        if let Some(dir) = rfd::FileDialog::new()
+            .set_title("Rip into which folder?")
+            .set_directory(&start)
+            .pick_folder()
+        {
             edit(&ui, &|r| r.base = dir.clone());
         }
     });
     let weak = ui.as_weak();
     ui.on_ripfiles_start(move || {
         let Some(ui) = weak.upgrade() else { return };
-        let Some(r) = RIP_PLAN.with_borrow_mut(Option::take) else { return };
+        let Some(r) = RIP_PLAN.with_borrow_mut(Option::take) else {
+            return;
+        };
         ui.set_ripfiles_open(false);
         start_rip_files(&ui, r);
     });
@@ -2912,9 +3184,20 @@ fn start_rip_files(ui: &AppWindow, r: RipFiles) {
     let cancel = ripper::Cancel::default();
     RIP_CANCEL.with_borrow_mut(|c| *c = Some(cancel.clone()));
     ui.set_busy_text("Ripping with MakeMKV…".into());
-    show_disc_card(ui, "RIPPING WITH MAKEMKV", &r.plan.name, &r.drive, "Starting MakeMKV…");
+    show_disc_card(
+        ui,
+        "RIPPING WITH MAKEMKV",
+        &r.plan.name,
+        &r.drive,
+        "Starting MakeMKV…",
+    );
     ui.set_rip_percent(0.0);
-    log::info!("ripping {} titles from {} to {}", items.len(), r.device, folder.display());
+    log::info!(
+        "ripping {} titles from {} to {}",
+        items.len(),
+        r.device,
+        folder.display()
+    );
     let weak = ui.as_weak();
     std::thread::spawn(move || {
         let total: u64 = items.iter().map(|i| i.title.bytes.max(1)).sum();
@@ -2935,25 +3218,41 @@ fn start_rip_files(ui: &AppWindow, r: RipFiles) {
             let progress_ui = weak.clone();
             let size = item.title.bytes.max(1);
             let before = done_bytes;
-            let result = ripper::rip(&r.tool, &r.device, &item.title, &folder, &cancel, move |p| {
-                let part = (before as f64 + size as f64 * f64::from(p.percent) / 100.0) / total as f64;
-                let elapsed = started.elapsed().as_secs_f64();
-                let eta = if part > 0.02 { time_left((elapsed * (1.0 - part) / part) as u64) } else { "working out the time left…".to_owned() };
-                let _ = progress_ui.upgrade_in_event_loop(move |ui| {
-                    ui.set_rip_percent(part as f32);
-                    if !p.stage.is_empty() {
-                        ui.set_rip_stage(p.stage.into());
-                    }
-                    ui.set_rip_eta(eta.into());
-                });
-            });
+            let result = ripper::rip(
+                &r.tool,
+                &r.device,
+                &item.title,
+                &folder,
+                &cancel,
+                move |p| {
+                    let part =
+                        (before as f64 + size as f64 * f64::from(p.percent) / 100.0) / total as f64;
+                    let elapsed = started.elapsed().as_secs_f64();
+                    let eta = if part > 0.02 {
+                        time_left((elapsed * (1.0 - part) / part) as u64)
+                    } else {
+                        "working out the time left…".to_owned()
+                    };
+                    let _ = progress_ui.upgrade_in_event_loop(move |ui| {
+                        ui.set_rip_percent(part as f32);
+                        if !p.stage.is_empty() {
+                            ui.set_rip_stage(p.stage.into());
+                        }
+                        ui.set_rip_eta(eta.into());
+                    });
+                },
+            );
             match result {
                 Ok(file) => {
                     let target = free_path(&folder.join(&item.file));
                     let named = match std::fs::rename(&file, &target) {
                         Ok(()) => target,
                         Err(e) => {
-                            log::warn!("couldn't rename {} to {}: {e}", file.display(), target.display());
+                            log::warn!(
+                                "couldn't rename {} to {}: {e}",
+                                file.display(),
+                                target.display()
+                            );
                             file
                         }
                     };
@@ -2971,18 +3270,36 @@ fn start_rip_files(ui: &AppWindow, r: RipFiles) {
             RIP_CANCEL.with_borrow_mut(|c| *c = None);
             ui.set_busy_text("".into());
             ui.set_rip_active(false);
-            let what = |n: usize| if n == 1 { "1 file".to_owned() } else { format!("{n} files") };
+            let what = |n: usize| {
+                if n == 1 {
+                    "1 file".to_owned()
+                } else {
+                    format!("{n} files")
+                }
+            };
             match failure {
                 None => {
                     let text = format!("{} saved in\n{}", what(saved.len()), folder.display());
-                    ask(&ui, "Disc ripped", &text, "Open folder", "Close", move |ui, yes| {
-                        if yes && let Err(e) = open_folder(&folder) {
-                            ui.set_toast(format!("Couldn't open the folder: {e}").into());
-                        }
-                    });
+                    ask(
+                        &ui,
+                        "Disc ripped",
+                        &text,
+                        "Open folder",
+                        "Close",
+                        move |ui, yes| {
+                            if yes && let Err(e) = open_folder(&folder) {
+                                ui.set_toast(format!("Couldn't open the folder: {e}").into());
+                            }
+                        },
+                    );
                 }
                 Some(ripper::RipError::Cancelled) => ui.set_toast(
-                    format!("Rip cancelled; {} already done are in {}", what(saved.len()), folder.display()).into(),
+                    format!(
+                        "Rip cancelled; {} already done are in {}",
+                        what(saved.len()),
+                        folder.display()
+                    )
+                    .into(),
                 ),
                 Some(ripper::RipError::NeedsKey) => {
                     ui.set_toast("MakeMKV needs its free beta key before it reads discs".into());
@@ -2991,7 +3308,11 @@ fn start_rip_files(ui: &AppWindow, r: RipFiles) {
                 Some(e) => {
                     let mut text = e.to_string();
                     if !saved.is_empty() {
-                        text += &format!("\n\n{} done before that are in {}.", what(saved.len()), folder.display());
+                        text += &format!(
+                            "\n\n{} done before that are in {}.",
+                            what(saved.len()),
+                            folder.display()
+                        );
                     }
                     ask(&ui, "The rip didn't finish", &text, "OK", "", |_, _| {});
                 }
@@ -3005,8 +3326,14 @@ fn free_path(path: &Path) -> PathBuf {
     if !path.exists() {
         return path.to_owned();
     }
-    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ext = path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
     (2..)
         .map(|n| path.with_file_name(format!("{stem} ({n}){ext}")))
         .find(|p| !p.exists())
@@ -3033,7 +3360,11 @@ fn confirm_rip(
         ui.set_toast("MakeMKV found no titles on the disc".into());
         return;
     };
-    let name = if title.name.is_empty() { info.name.clone() } else { title.name.clone() };
+    let name = if title.name.is_empty() {
+        info.name.clone()
+    } else {
+        title.name.clone()
+    };
     let Some(dest) = ripper::destination(&info.name) else {
         ui.set_toast("No home folder to save the copy in".into());
         return;
@@ -3064,13 +3395,20 @@ fn confirm_rip(
         ripper::format_size(title.bytes),
         dest.display()
     );
-    ask(ui, "Rip & play", &text, "Rip & play", "Cancel", move |ui, yes| {
-        if yes {
-            start_rip(ui, tool, device, drive, name, title, dest);
-        } else {
-            log::info!("rip of \"{name}\" not started");
-        }
-    });
+    ask(
+        ui,
+        "Rip & play",
+        &text,
+        "Rip & play",
+        "Cancel",
+        move |ui, yes| {
+            if yes {
+                start_rip(ui, tool, device, drive, name, title, dest);
+            } else {
+                log::info!("rip of \"{name}\" not started");
+            }
+        },
+    );
 }
 
 fn start_rip(
@@ -3097,7 +3435,11 @@ fn start_rip(
     ui.set_rip_stage("Starting MakeMKV…".into());
     ui.set_rip_eta("".into());
     ui.set_rip_active(true);
-    log::info!("ripping title {} from the {drive} ({device}) to {}", title.id, dest.display());
+    log::info!(
+        "ripping title {} from the {drive} ({device}) to {}",
+        title.id,
+        dest.display()
+    );
     RIP_DEST.with_borrow_mut(|d| *d = Some(dest.clone()));
     let weak = ui.as_weak();
     std::thread::spawn(move || {
@@ -3136,7 +3478,9 @@ fn start_rip(
                     open_inputs(&ui, vec![Input::Path(file.clone())], false);
                     ui.set_toast("Playing the copy. It is deleted when playback ends.".into());
                 }
-                Err(ripper::RipError::Cancelled) => ui.set_toast("Rip cancelled; the partial copy was deleted".into()),
+                Err(ripper::RipError::Cancelled) => {
+                    ui.set_toast("Rip cancelled; the partial copy was deleted".into())
+                }
                 Err(ripper::RipError::NeedsKey) => {
                     RIP_AFTER_KEY.with_borrow_mut(|r| *r = Some((device, drive)));
                     ui.set_toast("MakeMKV needs its free beta key before it reads discs".into());
@@ -3144,7 +3488,14 @@ fn start_rip(
                 }
                 Err(e) => {
                     log::warn!("rip failed: {e}");
-                    ask(&ui, "The rip didn't finish", &e.to_string(), "OK", "", |_, _| {});
+                    ask(
+                        &ui,
+                        "The rip didn't finish",
+                        &e.to_string(),
+                        "OK",
+                        "",
+                        |_, _| {},
+                    );
                 }
             }
         });
@@ -3173,7 +3524,9 @@ fn update_ffmpeg(ui: &AppWindow) {
             let major = short.split('.').next().unwrap_or_default().to_owned();
             match source {
                 engine::Source::Unknown => {
-                    ui.set_toast("The playback engine isn't running yet: try again in a moment".into());
+                    ui.set_toast(
+                        "The playback engine isn't running yet: try again in a moment".into(),
+                    );
                 }
                 engine::Source::Bundled(lib) => ask(
                     ui,
@@ -3182,7 +3535,9 @@ fn update_ffmpeg(ui: &AppWindow) {
                         "This copy of Super Media Player carries its own FFmpeg {short} ({}). It is \
                          updated together with the player: install a newer release to get a newer \
                          FFmpeg.",
-                        lib.parent().map(|d| d.display().to_string()).unwrap_or_default()
+                        lib.parent()
+                            .map(|d| d.display().to_string())
+                            .unwrap_or_default()
                     ),
                     "OK",
                     "",
@@ -3229,31 +3584,38 @@ fn update_ffmpeg(ui: &AppWindow) {
                          newer FFmpeg needs a libmpv built for it, which comes with a newer player \
                          release."
                     );
-                    ask(ui, "FFmpeg updates", &text, "Check & update", "Close", |ui, yes| {
-                        if yes {
-                            run_busy(
-                                ui,
-                                "Updating FFmpeg (enter your password when asked)…",
-                                engine::update_system,
-                                |ui, result| match result {
-                                    Ok(true) => ask(
-                                        ui,
-                                        "FFmpeg updated",
-                                        "The new FFmpeg is used after a restart of the player.",
-                                        "Restart now",
-                                        "Later",
-                                        |_, yes| {
-                                            if yes {
-                                                restart_player();
-                                            }
-                                        },
-                                    ),
-                                    Ok(false) => ui.set_toast("FFmpeg is up to date".into()),
-                                    Err(e) => ask(ui, "FFmpeg update", &e, "OK", "", |_, _| {}),
-                                },
-                            );
-                        }
-                    });
+                    ask(
+                        ui,
+                        "FFmpeg updates",
+                        &text,
+                        "Check & update",
+                        "Close",
+                        |ui, yes| {
+                            if yes {
+                                run_busy(
+                                    ui,
+                                    "Updating FFmpeg (enter your password when asked)…",
+                                    engine::update_system,
+                                    |ui, result| match result {
+                                        Ok(true) => ask(
+                                            ui,
+                                            "FFmpeg updated",
+                                            "The new FFmpeg is used after a restart of the player.",
+                                            "Restart now",
+                                            "Later",
+                                            |_, yes| {
+                                                if yes {
+                                                    restart_player();
+                                                }
+                                            },
+                                        ),
+                                        Ok(false) => ui.set_toast("FFmpeg is up to date".into()),
+                                        Err(e) => ask(ui, "FFmpeg update", &e, "OK", "", |_, _| {}),
+                                    },
+                                );
+                            }
+                        },
+                    );
                 }
             }
         },
@@ -3264,7 +3626,10 @@ fn update_ffmpeg(ui: &AppWindow) {
 /// quit this one.
 fn restart_player() {
     match std::env::current_exe() {
-        Ok(exe) => match std::process::Command::new(exe).args(std::env::args().skip(1)).spawn() {
+        Ok(exe) => match std::process::Command::new(exe)
+            .args(std::env::args().skip(1))
+            .spawn()
+        {
             Ok(_) => {
                 let _ = slint::quit_event_loop();
             }
@@ -3431,10 +3796,17 @@ mod menu_tests {
             }
         }
         let bar = normalize(&ui[bar_start..end]);
-        let a = ui.find("// ---- skin menu entries ----").expect("skin menu start");
-        let b = ui.find("// ---- end of skin menu entries ----").expect("skin menu end");
+        let a = ui
+            .find("// ---- skin menu entries ----")
+            .expect("skin menu start");
+        let b = ui
+            .find("// ---- end of skin menu entries ----")
+            .expect("skin menu end");
         let skin = normalize(&ui[a + "// ---- skin menu entries ----".len()..b]);
-        assert_eq!(bar, skin, "update the skin menu in app.slint to match the menu bar");
+        assert_eq!(
+            bar, skin,
+            "update the skin menu in app.slint to match the menu bar"
+        );
     }
 }
 

@@ -49,14 +49,21 @@ pub fn message(inputs: &[String], cwd: &Path) -> String {
 /// Parse a message; None when it isn't one.
 pub fn parse(msg: &str) -> Option<Vec<String>> {
     let mut lines = msg.lines();
-    (lines.next()? == HELLO).then(|| lines.filter(|l| !l.trim().is_empty()).map(String::from).collect())
+    (lines.next()? == HELLO).then(|| {
+        lines
+            .filter(|l| !l.trim().is_empty())
+            .map(String::from)
+            .collect()
+    })
 }
 
 /// Hand `inputs` to a player that is already running. True when one took them.
 #[cfg(unix)]
 pub fn forward(inputs: &[String]) -> bool {
     use std::os::unix::net::UnixStream;
-    let Ok(mut s) = UnixStream::connect(socket_path()) else { return false };
+    let Ok(mut s) = UnixStream::connect(socket_path()) else {
+        return false;
+    };
     let _ = s.set_write_timeout(Some(std::time::Duration::from_secs(2)));
     let cwd = std::env::current_dir().unwrap_or_default();
     s.write_all(message(inputs, &cwd).as_bytes()).is_ok()
@@ -70,16 +77,25 @@ fn port_file() -> Option<PathBuf> {
 
 #[cfg(not(unix))]
 pub fn forward(inputs: &[String]) -> bool {
-    let Some(text) = port_file().and_then(|f| std::fs::read_to_string(f).ok()) else { return false };
-    let Some((port, secret)) = text.trim().split_once(' ') else { return false };
-    let Ok(port) = port.parse::<u16>() else { return false };
+    let Some(text) = port_file().and_then(|f| std::fs::read_to_string(f).ok()) else {
+        return false;
+    };
+    let Some((port, secret)) = text.trim().split_once(' ') else {
+        return false;
+    };
+    let Ok(port) = port.parse::<u16>() else {
+        return false;
+    };
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let Ok(mut s) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)) else {
+    let Ok(mut s) =
+        std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500))
+    else {
         return false;
     };
     let _ = s.set_write_timeout(Some(std::time::Duration::from_secs(2)));
     let cwd = std::env::current_dir().unwrap_or_default();
-    s.write_all(format!("{secret}\n{}", message(inputs, &cwd)).as_bytes()).is_ok()
+    s.write_all(format!("{secret}\n{}", message(inputs, &cwd)).as_bytes())
+        .is_ok()
 }
 
 /// Listen for files sent by later starts; `on_open` runs on a worker thread.
@@ -132,7 +148,9 @@ pub fn listen(on_open: impl Fn(Vec<String>) + Send + 'static) {
             return;
         }
     };
-    let Ok(port) = listener.local_addr().map(|a| a.port()) else { return };
+    let Ok(port) = listener.local_addr().map(|a| a.port()) else {
+        return;
+    };
     let mut bytes = [0u8; 16];
     if getrandom(&mut bytes).is_err() {
         return;
@@ -151,7 +169,11 @@ pub fn listen(on_open: impl Fn(Vec<String>) + Send + 'static) {
                 if lines.next().and_then(Result::ok).as_deref() != Some(secret.as_str()) {
                     continue;
                 }
-                let text: String = lines.take(10_000).map_while(Result::ok).map(|l| l + "\n").collect();
+                let text: String = lines
+                    .take(10_000)
+                    .map_while(Result::ok)
+                    .map(|l| l + "\n")
+                    .collect();
                 if let Some(inputs) = parse(&text) {
                     on_open(inputs);
                 }
@@ -164,7 +186,10 @@ pub fn listen(on_open: impl Fn(Vec<String>) + Send + 'static) {
 /// the port file).
 #[cfg(not(unix))]
 fn getrandom(buf: &mut [u8]) -> Result<(), ()> {
-    rustls::crypto::ring::default_provider().secure_random.fill(buf).map_err(|_| ())
+    rustls::crypto::ring::default_provider()
+        .secure_random
+        .fill(buf)
+        .map_err(|_| ())
 }
 
 /// Remove the socket at exit, so the next start doesn't try it.
@@ -186,7 +211,12 @@ mod tests {
     #[test]
     fn round_trip_makes_paths_absolute() {
         let msg = message(
-            &["song.mp3".into(), "/abs/film.mkv".into(), "https://x.y/v".into(), "".into()],
+            &[
+                "song.mp3".into(),
+                "/abs/film.mkv".into(),
+                "https://x.y/v".into(),
+                "".into(),
+            ],
             Path::new("/home/me"),
         );
         assert_eq!(

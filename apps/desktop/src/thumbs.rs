@@ -74,8 +74,25 @@ impl Thumbnailer {
 }
 
 /// Files the previews can come from: a local video file.
+///
+/// Asked several times a second by the UI's timers, so the answer for the
+/// last path is remembered: on a network share (gvfs, NFS) every check is a
+/// round trip, and while the server stalls the window would freeze.
 pub fn previewable(path: &str) -> bool {
-    !path.contains("://") && std::path::Path::new(path).is_file()
+    thread_local! {
+        static LAST: std::cell::RefCell<Option<(String, bool)>> = const { std::cell::RefCell::new(None) };
+    }
+    if path.contains("://") || path.is_empty() {
+        return false;
+    }
+    if let Some(known) =
+        LAST.with_borrow(|l| l.as_ref().filter(|(p, _)| p == path).map(|(_, k)| *k))
+    {
+        return known;
+    }
+    let file = std::path::Path::new(path).is_file();
+    LAST.set(Some((path.to_owned(), file)));
+    file
 }
 
 /// The time a picture is kept under: pictures closer than this are the same
@@ -127,7 +144,11 @@ impl Hidden {
         .map_err(|e| log::debug!("thumbnails: {e}"))
         .ok()?;
         player.load(path, LoadMode::Replace).ok()?;
-        let mut h = Self { player, events, ready: false };
+        let mut h = Self {
+            player,
+            events,
+            ready: false,
+        };
         h.ready = h.wait_restart(Duration::from_secs(5));
         h.ready.then_some(h)
     }
@@ -150,7 +171,10 @@ impl Hidden {
     pub(crate) fn seek(&self, time: f64, mode: &str) -> bool {
         // Events of earlier seeks still queued would answer this one.
         while self.events.try_recv().is_ok() {}
-        self.player.command(&["seek", &format!("{time:.2}"), mode]).is_ok() && self.wait_restart(Duration::from_secs(3))
+        self.player
+            .command(&["seek", &format!("{time:.2}"), mode])
+            .is_ok()
+            && self.wait_restart(Duration::from_secs(3))
     }
 
     pub(crate) fn grab(&self, time: f64) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
@@ -170,7 +194,12 @@ impl Hidden {
 }
 
 /// mpv's `bgr0` rows (with `stride` bytes each) to RGBA.
-fn to_rgba(data: &[u8], w: usize, h: usize, stride: usize) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
+fn to_rgba(
+    data: &[u8],
+    w: usize,
+    h: usize,
+    stride: usize,
+) -> Option<SharedPixelBuffer<Rgba8Pixel>> {
     if stride < w * 4 || data.len() < stride * (h - 1) + w * 4 {
         return None;
     }
@@ -179,7 +208,12 @@ fn to_rgba(data: &[u8], w: usize, h: usize, stride: usize) -> Option<SharedPixel
     for y in 0..h {
         let row = &data[y * stride..y * stride + w * 4];
         for (x, px) in row.as_chunks::<4>().0.iter().enumerate() {
-            out[y * w + x] = Rgba8Pixel { r: px[2], g: px[1], b: px[0], a: 255 };
+            out[y * w + x] = Rgba8Pixel {
+                r: px[2],
+                g: px[1],
+                b: px[0],
+                a: 255,
+            };
         }
     }
     Some(buf)
@@ -216,9 +250,14 @@ fn worker(rx: Receiver<Request>, deliver: impl Fn(Thumb)) {
                 Request::At(t) => want = Some(t),
             }
         }
-        let (Some(t), Some(p)) = (want, path.as_deref()) else { continue };
+        let (Some(t), Some(p)) = (want, path.as_deref()) else {
+            continue;
+        };
         if let Some(pixels) = cache.get(&bucket(t)) {
-            deliver(Thumb { time: t, pixels: pixels.clone() });
+            deliver(Thumb {
+                time: t,
+                pixels: pixels.clone(),
+            });
             continue;
         }
         if hidden.is_none() && !failed {

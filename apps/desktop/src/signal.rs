@@ -19,7 +19,11 @@ pub struct Stage {
 }
 
 fn stage(title: &str, detail: impl Into<String>, level: i32) -> Stage {
-    Stage { title: title.into(), detail: detail.into(), level }
+    Stage {
+        title: title.into(),
+        detail: detail.into(),
+        level,
+    }
 }
 
 /// What the path adds up to: the text and its level.
@@ -32,7 +36,8 @@ pub struct Report {
 }
 
 const LOSSLESS: &[&str] = &[
-    "flac", "alac", "wavpack", "ape", "tta", "truehd", "mlp", "dsd", "pcm", "wav", "aiff", "shorten",
+    "flac", "alac", "wavpack", "ape", "tta", "truehd", "mlp", "dsd", "pcm", "wav", "aiff",
+    "shorten",
 ];
 
 /// "s16" → "16-bit integer", "floatp" → "32-bit float"…
@@ -63,7 +68,10 @@ fn params(p: &Player, name: &str) -> Option<Params> {
     Some(Params {
         format: v.str_field("format")?,
         rate: v.get("samplerate")?.as_i64()?,
-        channels: v.str_field("hr-channels").or_else(|| v.str_field("channels")).unwrap_or_default(),
+        channels: v
+            .str_field("hr-channels")
+            .or_else(|| v.str_field("channels"))
+            .unwrap_or_default(),
     })
 }
 
@@ -92,7 +100,9 @@ fn parse_hw_params(text: &str) -> Option<(String, i64)> {
 /// Playback devices open right now, from `/proc/asound`.
 pub fn running_hardware() -> Vec<Hardware> {
     let mut out = Vec::new();
-    let Ok(cards) = std::fs::read_dir("/proc/asound") else { return out };
+    let Ok(cards) = std::fs::read_dir("/proc/asound") else {
+        return out;
+    };
     for card in cards.flatten() {
         let name = card.file_name().to_string_lossy().into_owned();
         if !name.starts_with("card") {
@@ -101,19 +111,29 @@ pub fn running_hardware() -> Vec<Hardware> {
         let id = std::fs::read_to_string(card.path().join("id"))
             .map(|s| s.trim().to_owned())
             .unwrap_or_else(|_| name.clone());
-        let Ok(pcms) = std::fs::read_dir(card.path()) else { continue };
+        let Ok(pcms) = std::fs::read_dir(card.path()) else {
+            continue;
+        };
         for pcm in pcms.flatten() {
             let pn = pcm.file_name().to_string_lossy().into_owned();
             if !(pn.starts_with("pcm") && pn.ends_with('p')) {
                 continue;
             }
-            let Ok(subs) = std::fs::read_dir(pcm.path()) else { continue };
+            let Ok(subs) = std::fs::read_dir(pcm.path()) else {
+                continue;
+            };
             for sub in subs.flatten() {
                 let hw = sub.path().join("hw_params");
-                if let Some((format, rate)) =
-                    std::fs::read_to_string(&hw).ok().as_deref().and_then(parse_hw_params)
+                if let Some((format, rate)) = std::fs::read_to_string(&hw)
+                    .ok()
+                    .as_deref()
+                    .and_then(parse_hw_params)
                 {
-                    out.push(Hardware { card: id.clone(), format, rate });
+                    out.push(Hardware {
+                        card: id.clone(),
+                        format,
+                        rate,
+                    });
                 }
             }
         }
@@ -149,7 +169,10 @@ fn parse_pw_metadata(text: &str) -> Option<PwClock> {
 }
 
 fn pipewire_clock() -> Option<PwClock> {
-    let out = std::process::Command::new("pw-metadata").args(["-n", "settings"]).output().ok()?;
+    let out = std::process::Command::new("pw-metadata")
+        .args(["-n", "settings"])
+        .output()
+        .ok()?;
     parse_pw_metadata(&String::from_utf8_lossy(&out.stdout))
 }
 
@@ -159,9 +182,19 @@ const RATES: &[i64] = &[44_100, 48_000, 88_200, 96_000, 176_400, 192_000];
 /// Let PipeWire follow each file's rate: now (`pw-metadata`) and from the
 /// next login (a drop-in config file). Returns what was done.
 pub fn allow_rates() -> Result<String, String> {
-    let list = RATES.iter().map(i64::to_string).collect::<Vec<_>>().join(" ");
+    let list = RATES
+        .iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join(" ");
     let live = std::process::Command::new("pw-metadata")
-        .args(["-n", "settings", "0", "clock.allowed-rates", &format!("[ {list} ]")])
+        .args([
+            "-n",
+            "settings",
+            "0",
+            "clock.allowed-rates",
+            &format!("[ {list} ]"),
+        ])
         .output()
         .map_err(|e| format!("pw-metadata: {e}"))?;
     if !live.status.success() {
@@ -188,7 +221,9 @@ fn config_home() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config"))
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config")
+        })
 }
 
 /// Everything mpv and the system say about the path now. Blocking (runs
@@ -234,7 +269,11 @@ pub fn gather(p: &Player, bit_perfect_setting: bool) -> Facts {
         mute: p.get_string("mute").as_deref() == Some("yes"),
         speed: p.get_double("speed").unwrap_or(1.0),
         replaygain: p.get_string("replaygain").unwrap_or_else(|| "no".into()),
-        pipewire: if ao == "pipewire" || ao == "pulse" { pipewire_clock() } else { None },
+        pipewire: if ao == "pipewire" || ao == "pulse" {
+            pipewire_clock()
+        } else {
+            None
+        },
         ao,
         device: p.get_string("audio-device").unwrap_or_default(),
         exclusive: p.get_string("audio-exclusive").as_deref() == Some("yes"),
@@ -254,7 +293,9 @@ pub fn report(f: &Facts) -> Report {
             can_fix_rates: false,
         };
     };
-    let lossless = LOSSLESS.iter().any(|c| f.codec.to_lowercase().starts_with(c));
+    let lossless = LOSSLESS
+        .iter()
+        .any(|c| f.codec.to_lowercase().starts_with(c));
     stages.push(stage(
         "Source",
         format!(
@@ -263,14 +304,22 @@ pub fn report(f: &Facts) -> Report {
             describe_format(&input.format),
             input.rate,
             input.channels,
-            if lossless { " · lossless" } else { " · lossy (decoded to the format shown)" }
+            if lossless {
+                " · lossless"
+            } else {
+                " · lossy (decoded to the format shown)"
+            }
         ),
         0,
     ));
 
     let ours: Vec<&str> = f.filters.iter().map(String::as_str).collect();
     if ours.is_empty() {
-        stages.push(stage("Filters", "None: the decoded samples pass straight on", 0));
+        stages.push(stage(
+            "Filters",
+            "None: the decoded samples pass straight on",
+            0,
+        ));
     } else {
         let names: Vec<&str> = ours
             .iter()
@@ -293,7 +342,10 @@ pub fn report(f: &Facts) -> Report {
 
     let mut gain = Vec::new();
     if (f.volume - 100.0).abs() > 0.01 {
-        gain.push(format!("player volume at {:.0}% (scales every sample)", f.volume));
+        gain.push(format!(
+            "player volume at {:.0}% (scales every sample)",
+            f.volume
+        ));
     }
     if f.mute {
         gain.push("muted".into());
@@ -305,7 +357,11 @@ pub fn report(f: &Facts) -> Report {
         gain.push(format!("speed {:.2}× (time-stretched)", f.speed));
     }
     if gain.is_empty() {
-        stages.push(stage("Volume", "100%: untouched (use the sound card's or amplifier's volume)", 0));
+        stages.push(stage(
+            "Volume",
+            "100%: untouched (use the sound card's or amplifier's volume)",
+            0,
+        ));
     } else {
         stages.push(stage("Volume", gain.join("; "), 2));
     }
@@ -330,10 +386,18 @@ pub fn report(f: &Facts) -> Report {
                 describe_format(&out.format),
                 out.rate,
                 out.channels,
-                if f.device.is_empty() || f.device == "auto" { String::new() } else { format!(" · {}", f.device) }
+                if f.device.is_empty() || f.device == "auto" {
+                    String::new()
+                } else {
+                    format!(" · {}", f.device)
+                }
             );
             let level = if changes.is_empty() { 0 } else { 1 };
-            let detail = if changes.is_empty() { detail } else { format!("{detail} ({})", changes.join(", ")) };
+            let detail = if changes.is_empty() {
+                detail
+            } else {
+                format!("{detail} ({})", changes.join(", "))
+            };
             stages.push(stage("Player output", detail, level));
         }
         None => stages.push(stage("Player output", "not open yet", 1)),
@@ -347,7 +411,11 @@ pub fn report(f: &Facts) -> Report {
             if pw.allowed.is_empty() {
                 "—".to_owned()
             } else {
-                pw.allowed.iter().map(i64::to_string).collect::<Vec<_>>().join(", ")
+                pw.allowed
+                    .iter()
+                    .map(i64::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
             }
         );
         if pw.rate == input.rate {
@@ -361,7 +429,11 @@ pub fn report(f: &Facts) -> Report {
             ));
         }
     } else if f.exclusive {
-        stages.push(stage("Sound server", "Bypassed: the player has the sound card to itself", 0));
+        stages.push(stage(
+            "Sound server",
+            "Bypassed: the player has the sound card to itself",
+            0,
+        ));
     }
 
     for hw in &f.hardware {
@@ -380,7 +452,12 @@ pub fn report(f: &Facts) -> Report {
         _ if !f.bit_perfect_setting => "Processed: effects or volume change the samples".to_owned(),
         _ => "Processed: the volume or speed changes the samples".to_owned(),
     };
-    Report { stages, verdict, level, can_fix_rates }
+    Report {
+        stages,
+        verdict,
+        level,
+        can_fix_rates,
+    }
 }
 
 #[cfg(test)]
@@ -394,11 +471,21 @@ mod tests {
         assert_eq!(parse_hw_params("closed\n"), None);
         let pw = "Found \"settings\" metadata 31\nupdate: id:0 key:'clock.rate' value:'48000' type:''\n\
                   update: id:0 key:'clock.allowed-rates' value:'[ 44100 48000 ]' type:''\n";
-        assert_eq!(parse_pw_metadata(pw), Some(PwClock { rate: 48_000, allowed: vec![44_100, 48_000] }));
+        assert_eq!(
+            parse_pw_metadata(pw),
+            Some(PwClock {
+                rate: 48_000,
+                allowed: vec![44_100, 48_000]
+            })
+        );
     }
 
     fn facts() -> Facts {
-        let p = |f: &str, r| Params { format: f.into(), rate: r, channels: "stereo".into() };
+        let p = |f: &str, r| Params {
+            format: f.into(),
+            rate: r,
+            channels: "stereo".into(),
+        };
         Facts {
             codec: "flac".into(),
             input: Some(p("s16", 44_100)),
@@ -412,8 +499,15 @@ mod tests {
             device: "auto".into(),
             exclusive: false,
             bit_perfect_setting: true,
-            hardware: vec![Hardware { card: "DAC".into(), format: "S16_LE".into(), rate: 44_100 }],
-            pipewire: Some(PwClock { rate: 44_100, allowed: vec![44_100, 48_000] }),
+            hardware: vec![Hardware {
+                card: "DAC".into(),
+                format: "S16_LE".into(),
+                rate: 44_100,
+            }],
+            pipewire: Some(PwClock {
+                rate: 44_100,
+                allowed: vec![44_100, 48_000],
+            }),
         }
     }
 
@@ -422,7 +516,10 @@ mod tests {
         assert_eq!(report(&facts()).level, 0);
         // The server converting 44.1 kHz to 48 kHz: clean but converted, and fixable.
         let mut f = facts();
-        f.pipewire = Some(PwClock { rate: 48_000, allowed: vec![48_000] });
+        f.pipewire = Some(PwClock {
+            rate: 48_000,
+            allowed: vec![48_000],
+        });
         f.hardware[0].rate = 48_000;
         let r = report(&f);
         assert_eq!(r.level, 1);

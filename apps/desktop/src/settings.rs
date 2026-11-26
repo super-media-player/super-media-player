@@ -333,7 +333,9 @@ impl Settings {
                 "hdr_peak_detect" => s.hdr_peak_detect = v != "false",
                 "cast_quality" => choice(CAST_QUALITY, &mut s.cast_quality),
                 "cast_burn_subs" => s.cast_burn_subs = v == "true",
-                "cast_address" => s.cast_address = v.chars().filter(|c| !c.is_control()).take(200).collect(),
+                "cast_address" => {
+                    s.cast_address = v.chars().filter(|c| !c.is_control()).take(200).collect()
+                }
                 "cd_online" => s.cd_online = v != "false",
                 "whisper_model" => choice(WHISPER_MODELS, &mut s.whisper_model),
                 "milkdrop_seconds" => {
@@ -374,7 +376,9 @@ impl Settings {
                 "passthrough" => choice(PASSTHROUGH, &mut s.passthrough),
                 "sub_auto_sync" => s.sub_auto_sync = v != "false",
                 "scripts" => s.scripts = v != "false",
-                "scripts_off" => s.scripts_off = v.chars().filter(|c| !c.is_control()).take(8000).collect(),
+                "scripts_off" => {
+                    s.scripts_off = v.chars().filter(|c| !c.is_control()).take(8000).collect()
+                }
                 "dvd_menus" => s.dvd_menus = v != "false",
                 "mouse_wheel" => choice(MOUSE_WHEEL, &mut s.mouse_wheel),
                 "mouse_double" => choice(MOUSE_DOUBLE, &mut s.mouse_double),
@@ -382,7 +386,11 @@ impl Settings {
                 "radio_country" if v.len() == 2 && v.chars().all(|c| c.is_ascii_alphabetic()) => {
                     s.radio_country = v.to_uppercase();
                 }
-                "sub_languages" if v.len() < 100 && v.chars().all(|c| c.is_ascii_alphabetic() || ",- ".contains(c)) => {
+                "sub_languages"
+                    if v.len() < 100
+                        && v.chars()
+                            .all(|c| c.is_ascii_alphabetic() || ",- ".contains(c)) =>
+                {
                     s.sub_languages = v.to_owned();
                 }
                 "bluray_decryption" => {

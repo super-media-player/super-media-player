@@ -41,7 +41,11 @@ mod tests {
         assert!(g.ends_with("[vo]"));
         for k in crate::settings::VISUALIZERS {
             let has = graph(k, 1).is_some();
-            assert_eq!(has, !matches!(*k, "disc" | "particles" | "milkdrop" | "none"), "{k}");
+            assert_eq!(
+                has,
+                !matches!(*k, "disc" | "particles" | "milkdrop" | "none"),
+                "{k}"
+            );
         }
     }
 }
