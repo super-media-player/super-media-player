@@ -5,9 +5,11 @@
 # libmpv, the engine and other libraries fetched or built by scripts/
 /.devlibs
 
-# Settings of this computer and the build VM (addresses, notification topic)
+# Settings of this computer and the build VM (addresses, notification topic,
+# the GitHub token for releases)
 /notify.conf
 /vm-build.conf
+/github.conf
 /engine-versions.conf*
 .env
 .env.*
@@ -49,8 +51,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 .directory
-.claude/settings.local.json
-.claude/worktrees/
 
 # Video, music and disc images lying about from tests (docs use gif, jpg, png)
 *.iso
@@ -65,3 +65,7 @@ Thumbs.db
 *.mp3
 *.opus
 *.wav
+
+# Claude Code: project instructions, skills and settings (kept private)
+/CLAUDE.md
+/.claude/

@@ -1,8 +1,9 @@
 # Super Media Player (SMP)
 
-A fast media player for Linux that plays almost anything: files, folders, internet
+A fast media player for Linux, Windows and macOS that plays almost anything: files, folders, internet
 radio, podcasts, network shares, YouTube and similar sites, **audio CDs, DVDs (with
-their menus) and Blu-rays**. It can also send what you play to a TV.
+their menus) and Blu-rays**. It can also send what you play to a TV, and copy CDs and
+series DVDs to properly named files.
 
 ![Big Buck Bunny playing in Super Media Player](docs/images/video.png)
 
@@ -30,24 +31,23 @@ And more: [network shares and NAS](docs/guide/network.md),
 ## Install
 
 Super Media Player comes as a package with everything inside (FFmpeg, codecs, yt-dlp).
-Linux on a 64-bit PC; Windows, macOS and Android are planned.
+Pick the file for your computer:
 
-**Ubuntu, Debian, Mint**
+| Your computer | File | Then |
+|---|---|---|
+| **Ubuntu, Debian, Linux Mint** (22.04 / 12 / 21 or newer) | `…_amd64.deb` | `sudo apt install ./super-media-player_<version>_amd64.deb` |
+| **Fedora, openSUSE** | `…x86_64.rpm` | `sudo dnf install ./super-media-player-<version>-1.x86_64.rpm` |
+| **Any other Linux** | `…x86_64.AppImage` | `chmod +x super-media-player-*.AppImage`, then run it |
+| **Linux, without administrator rights** | `…linux-x86_64.tar.gz` | unpack it and run `./install.sh` (`./install.sh --uninstall` removes it) |
+| **Windows 10 or 11** (64-bit) | `…windows-x64-setup.exe` | run it; or unpack the portable `…windows-x64.zip` anywhere |
+| **macOS 12 or newer** | `…macos-arm64.dmg` (Apple silicon) or `…macos-x86_64.dmg` (Intel) | drag the app to Applications; the first time, right-click it → Open |
 
-```sh
-sudo apt install ./super-media-player_<version>_amd64.deb
-```
+The Windows and macOS versions aren't signed yet, so Windows may say *"Windows protected
+your PC"* (*More info → Run anyway*) and macOS asks before the first start. Audio CDs,
+copy-protected DVDs and Blu-rays work on Linux; on Windows and macOS DVDs and Blu-rays
+without copy protection play.
 
-**Any other distribution**, or without administrator rights:
-
-```sh
-tar xf super-media-player-<version>-linux-x86_64.tar.gz
-cd super-media-player-<version>-linux-x86_64
-./install.sh                # adds it to your applications menu
-./install.sh --uninstall    # removes it again
-```
-
-Then start **Super Media Player** from your applications menu, and continue with
+Then start **Super Media Player** and continue with
 [Getting started](docs/guide/getting-started.md).
 
 ## Is something wrong?

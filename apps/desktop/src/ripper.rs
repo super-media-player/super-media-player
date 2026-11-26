@@ -227,6 +227,9 @@ pub struct Title {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DiscInfo {
     pub name: String,
+    /// The disc's volume label ("Reacher: Season Three Disc 2"), which can
+    /// say more than its name ("Reacher: Season Three").
+    pub volume: String,
     pub titles: Vec<Title>,
 }
 
@@ -297,6 +300,9 @@ fn parse_info(out: &str, device: &str) -> Result<DiscInfo, RipError> {
                 let attr: u32 = f[0].parse().unwrap_or(0);
                 if attr == AP_NAME || (attr == AP_VOLUME_NAME && info.name.is_empty()) {
                     info.name = f[2].clone();
+                }
+                if attr == AP_VOLUME_NAME {
+                    info.volume = f[2].clone();
                 }
             }
             "TINFO" if f.len() >= 4 => {

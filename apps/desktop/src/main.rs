@@ -1,3 +1,6 @@
+// A release build on Windows is a window program: no console window.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod art;
 mod artist;
 mod basics;
@@ -7,6 +10,7 @@ mod cd;
 mod clip;
 mod collection;
 mod disc;
+mod discrip;
 mod doctor;
 mod engine;
 mod dvdmenu;
@@ -205,7 +209,7 @@ fn apply_skin(ui: &AppWindow) {
     });
 }
 
-/// Show a folder in the desktop's file manager.
+/// Show a folder in the desktop's file manager (or a web page in its browser).
 fn open_folder(dir: &Path) -> std::io::Result<()> {
     let opener = if cfg!(windows) {
         "explorer"
@@ -268,10 +272,12 @@ fn parse_args() -> Args {
             "--settings" => show_settings = true,
             "-h" | "--help" => {
                 println!(
-                    "Usage: super-media-player [--playlist] [--about] [--settings] [FILE|FOLDER|URL]..."
+                    "Usage: super-media-player [--playlist] [--about] [--settings] [FILE|FOLDER|URL]...\n       \
+                     super-media-player --self-test    check the playback engine and libraries, without a window"
                 );
                 std::process::exit(0);
             }
+            "--self-test" => std::process::exit(self_test()),
             // Everything after "--" is an input, even if it starts with "-".
             "--" => inputs.extend(it.by_ref()),
             _ => inputs.push(a),
@@ -283,6 +289,58 @@ fn parse_args() -> Args {
         show_about,
         show_settings,
         snapshot,
+    }
+}
+
+/// `--self-test`: start the playback engine without a window and check that
+/// what the player relies on is there (the package tests run it in bare
+/// containers). Prints one line per check; 0 when everything needed is.
+fn self_test() -> i32 {
+    let mut failed = 0;
+    let mut line = |ok: bool, needed: bool, what: &str, detail: String| {
+        let mark = if ok { "ok  " } else if needed { "FAIL" } else { "--  " };
+        println!("{mark} {what}: {detail}");
+        if !ok && needed {
+            failed += 1;
+        }
+    };
+    let player = match player_core::Player::new(&player_core::PlayerConfig::headless(), |_| {}) {
+        Ok(p) => p,
+        Err(e) => {
+            line(false, true, "libmpv", e.to_string());
+            return 1;
+        }
+    };
+    let get = |p: &str| player.get_string(p).unwrap_or_default();
+    line(true, true, "libmpv", format!("{} with FFmpeg {}", get("mpv-version"), get("ffmpeg-version")));
+    let encoders = get("encoder-list");
+    for (enc, what) in [("libx264", "MP4 clips"), ("libmp3lame", "MP3 clips"), ("libopus", "Opus clips"), ("flac", "FLAC")] {
+        line(encoders.contains(&format!("\"{enc}\"")), true, &format!("encoder {enc}"), what.into());
+    }
+    // "cdda,rtmp,…,dvd,…" (the encoders are JSON).
+    let protocols = get("protocol-list");
+    let linux = cfg!(target_os = "linux");
+    for (proto, what) in [("dvd", "DVDs"), ("bd", "Blu-rays"), ("cdda", "audio CDs")] {
+        line(protocols.split(',').any(|p| p == proto), linux, &format!("{proto}://"), what.into());
+    }
+    let libs: &[(&[&str], &str, bool)] = &[
+        (&["libcdio_paranoia.so.2"], "exact CD ripping (libcdio-paranoia)", linux),
+        (&["libchromaprint.so.1", "libchromaprint.dylib", "chromaprint.dll"], "finding intros (chromaprint)", false),
+        (&["libaacs.so.0", "libaacs.dylib", "libaacs.dll"], "Blu-ray decryption (libaacs)", false),
+        (&["libdvdcss.so.2", "libdvdcss.2.dylib", "libdvdcss-2.dll"], "DVD decryption (libdvdcss)", false),
+        (&["libprojectM-4.so.4", "libprojectM-4.dylib", "projectM-4.dll"], "MilkDrop (libprojectM)", false),
+    ];
+    for (names, what, needed) in libs {
+        line(disc::library_present(names), *needed, what, names[0].into());
+    }
+    let ytdlp = tools::find_ytdlp();
+    line(ytdlp.is_some(), false, "yt-dlp", ytdlp.map(|p| p.display().to_string()).unwrap_or_else(|| "not found".into()));
+    if failed == 0 {
+        println!("all needed parts are there");
+        0
+    } else {
+        println!("{failed} needed part(s) missing");
+        1
     }
 }
 
@@ -1271,12 +1329,19 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
         ui.on_open_url(|url| {
             // Only web pages: this hands the address to the desktop's browser.
             if url.starts_with("https://")
-                && let Err(e) = std::process::Command::new("xdg-open").arg(url.as_str()).spawn()
+                && let Err(e) = open_folder(Path::new(url.as_str()))
             {
                 log::warn!("could not open {url}: {e}");
             }
         });
         let weak = ui.as_weak();
+        let weak_rf = ui.as_weak();
+        ui.on_rip_files(move || {
+            if let Some(ui) = weak_rf.upgrade() {
+                rip_files(&ui);
+            }
+        });
+        setup_rip_files(ui);
         ui.on_rip_from_drive(move |device, name| {
             if let Some(ui) = weak.upgrade() {
                 rip_from(&ui, device.to_string(), name.to_string());
@@ -2373,7 +2438,8 @@ fn start_cd_rip(ui: &AppWindow, device: String, drive: String, cd: disc::CdDisc,
             .collect();
         let started = std::time::Instant::now();
         let progress_ui = weak.clone();
-        let result = cd::rip(&device, &cd.tracks, cd.album.as_ref(), cd.cover.as_deref(), &dir, cancel.flag(), |i, f| {
+        let first_lba = cd.toc.iter().find(|e| !e.2).map_or(0, |e| e.1);
+        let result = cd::rip(&device, &cd.tracks, first_lba, cd.album.as_ref(), cd.cover.as_deref(), &dir, cancel.flag(), |i, f| {
             let done = frames[..i].iter().sum::<u64>() as f64 + f64::from(f) * frames[i] as f64;
             let part = (done / total as f64).clamp(0.0, 1.0);
             let elapsed = started.elapsed().as_secs_f64();
@@ -2394,8 +2460,20 @@ fn start_cd_rip(ui: &AppWindow, device: String, drive: String, cd: disc::CdDisc,
             ui.set_busy_text("".into());
             ui.set_rip_active(false);
             match result {
-                Ok(files) => {
-                    let text = format!("{} songs saved as FLAC in\n{}", files.len(), dir.display());
+                Ok(report) => {
+                    log::info!("CD ripped: {} songs, {} sectors corrected, {} skipped", report.files.len(), report.corrected, report.skipped);
+                    let mut text = format!("{} songs saved as FLAC in\n{}", report.files.len(), dir.display());
+                    if report.skipped > 0 {
+                        text += &format!(
+                            "\n\nThe drive couldn't read every part of these songs, even after many tries, so they may \
+                             have a short click or gap: {}. Cleaning the disc and ripping them again can help.",
+                            report.damaged.join(", ")
+                        );
+                    } else if report.corrected > 0 {
+                        text += "\n\nSome sectors needed reading again (a worn disc), but every song came out exact.";
+                    } else {
+                        text += "\n\nEvery sector read cleanly: the files hold exactly the CD's sound.";
+                    }
                     ask(&ui, "CD ripped", &text, "Open folder", "Close", move |ui, yes| {
                         if yes && let Err(e) = open_folder(&dir) {
                             ui.set_toast(format!("Couldn't open the folder: {e}").into());
@@ -2450,6 +2528,29 @@ fn show_disc_card(ui: &AppWindow, heading: &str, title: &str, drive: &str, stage
     ui.set_rip_active(true);
 }
 
+/// What a MakeMKV disc scan is for: Rip & play (a temporary copy of the
+/// main title) or Rip disc to video files (named files to keep).
+#[derive(Clone, Copy, PartialEq)]
+enum RipMode {
+    Play,
+    Files,
+}
+
+thread_local! {
+    static RIP_MODE: Cell<RipMode> = const { Cell::new(RipMode::Play) };
+    /// The Rip-to-files panel's plan and what it needs to start.
+    static RIP_PLAN: RefCell<Option<RipFiles>> = const { RefCell::new(None) };
+}
+
+struct RipFiles {
+    tool: ripper::Tool,
+    device: String,
+    drive: String,
+    plan: discrip::Plan,
+    /// Where the show's or film's folder goes (Videos unless changed).
+    base: PathBuf,
+}
+
 thread_local! {
     /// Stops the running rip (Cancel on the rip card).
     static RIP_CANCEL: RefCell<Option<ripper::Cancel>> = const { RefCell::new(None) };
@@ -2482,17 +2583,32 @@ fn drive_contents(state: &disc::DriveState) -> &'static str {
 /// disc, rip from it; with several, ask which (the picker calls
 /// [`rip_from`]).
 fn rip_disc(ui: &AppWindow) {
+    RIP_MODE.set(RipMode::Play);
+    find_rip_drive(ui);
+}
+
+/// File → Play disc → Rip disc to video files: as [`rip_disc`], then the
+/// Rip-to-files panel instead of Rip & play.
+fn rip_files(ui: &AppWindow) {
+    RIP_MODE.set(RipMode::Files);
+    find_rip_drive(ui);
+}
+
+fn find_rip_drive(ui: &AppWindow) {
+    // Audio CDs have their own ripper (to FLAC), not MakeMKV. (Read here:
+    // the search runs on another thread.)
+    let files = RIP_MODE.get() == RipMode::Files;
     run_busy(
         ui,
         "Looking for discs…",
-        || {
+        move || {
             disc::drive_reports()
                 .into_iter()
                 .filter(|d| {
                     matches!(
                         d.state,
                         disc::DriveState::Refuses | disc::DriveState::NotReady | disc::DriveState::Disc { .. }
-                    )
+                    ) && !(files && matches!(d.state, disc::DriveState::Disc { kind: Some(DiscKind::AudioCd), .. }))
                 })
                 .collect::<Vec<_>>()
         },
@@ -2594,7 +2710,10 @@ fn rip_from(ui: &AppWindow, device: String, drive: String) {
                         info.titles.len(),
                         info.name
                     );
-                    confirm_rip(&ui, tool, device, drive, info);
+                    match RIP_MODE.get() {
+                        RipMode::Play => confirm_rip(&ui, tool, device, drive, info),
+                        RipMode::Files => open_rip_files(&ui, tool, device, drive, info),
+                    }
                 }
                 Err(RipStart::NeedsKey) => {
                     log::info!("MakeMKV needs its key");
@@ -2611,6 +2730,287 @@ fn rip_from(ui: &AppWindow, device: String, drive: String) {
             }
         });
     });
+}
+
+// ---- Rip disc to video files (discrip.rs) ----
+
+/// Open the Rip-to-files panel for the disc MakeMKV just read. A series'
+/// episode names are looked up (when online lookups are on) while it shows.
+fn open_rip_files(ui: &AppWindow, tool: ripper::Tool, device: String, drive: String, info: ripper::DiscInfo) {
+    if info.titles.is_empty() {
+        ui.set_toast("MakeMKV found no titles on the disc".into());
+        return;
+    }
+    let label = discrip::disc_label(&info);
+    let plan = discrip::Plan::new(&info, &label, None);
+    let series = plan.series;
+    let name = plan.name.clone();
+    RIP_PLAN.with_borrow_mut(|p| *p = Some(RipFiles { tool, device, drive, plan, base: discrip::videos_dir() }));
+    ui.set_ripfiles_name(name.into());
+    refresh_rip_files(ui);
+    ui.set_ripfiles_open(true);
+    if series && ui.get_s_cd_online() {
+        lookup_rip_names(ui);
+    }
+}
+
+/// Show the plan in the panel (all but the name field, which the user may
+/// be typing in).
+fn refresh_rip_files(ui: &AppWindow) {
+    RIP_PLAN.with_borrow(|r| {
+        let Some(r) = r else { return };
+        let p = &r.plan;
+        let rows: Vec<RipRow> = p
+            .items
+            .iter()
+            .map(|i| RipRow {
+                rip: i.rip,
+                file: i.file.clone().into(),
+                detail: format!(
+                    "Title {} · {} · {} · {} chapters",
+                    i.title.id + 1,
+                    ripper::format_duration(i.title.seconds),
+                    ripper::format_size(i.title.bytes),
+                    i.title.chapters
+                )
+                .into(),
+            })
+            .collect();
+        ui.set_ripfiles_rows(Rc::new(slint::VecModel::from(rows)).into());
+        ui.set_ripfiles_series(p.series);
+        ui.set_ripfiles_season(p.season as i32);
+        ui.set_ripfiles_first(p.first as i32);
+        ui.set_ripfiles_summary(p.summary().into());
+        let folder = p.folder(&r.base);
+        ui.set_ripfiles_folder(folder.display().to_string().into());
+        let chosen: Vec<&discrip::Item> = p.items.iter().filter(|i| i.rip).collect();
+        let bytes: u64 = chosen.iter().map(|i| i.title.bytes).sum();
+        let free = ripper::free_bytes(&folder);
+        let room = free.is_none_or(|f| f > bytes + bytes / 50);
+        let mut total = match chosen.len() {
+            0 => "Choose the titles to rip.".to_owned(),
+            1 => format!("1 title, {}", ripper::format_size(bytes)),
+            n => format!("{n} titles, {}", ripper::format_size(bytes)),
+        };
+        if let Some(f) = free {
+            total += &format!(" · {} free there", ripper::format_size(f));
+        }
+        if !room {
+            total += ": not enough space";
+        }
+        total += ". MakeMKV copies them as they are (every audio track, subtitle and chapter).";
+        ui.set_ripfiles_total(total.into());
+        ui.set_ripfiles_can_start(!chosen.is_empty() && room);
+    });
+}
+
+/// Ask TVmaze for the show in the name field, then name the episodes.
+fn lookup_rip_names(ui: &AppWindow) {
+    let name = ui.get_ripfiles_name().to_string();
+    if name.trim().is_empty() {
+        return;
+    }
+    ui.set_ripfiles_summary(format!("Looking up \"{name}\" on TVmaze…").into());
+    let weak = ui.as_weak();
+    std::thread::spawn(move || {
+        let show = discrip::lookup(&name);
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            let found = RIP_PLAN.with_borrow_mut(|r| {
+                let r = r.as_mut()?;
+                match show {
+                    Ok(Some(show)) => {
+                        r.plan.name = show.name.clone();
+                        r.plan.show = Some(show);
+                        r.plan.rename();
+                        Some(Ok(r.plan.name.clone()))
+                    }
+                    Ok(None) => Some(Err(format!("TVmaze doesn't know \"{name}\": check the name, or keep the numbered names."))),
+                    Err(e) => Some(Err(format!("Couldn't look the names up ({e}); the episodes are numbered."))),
+                }
+            });
+            match found {
+                Some(Ok(n)) => {
+                    ui.set_ripfiles_name(n.into());
+                    refresh_rip_files(&ui);
+                }
+                Some(Err(msg)) => {
+                    refresh_rip_files(&ui);
+                    ui.set_ripfiles_summary(msg.into());
+                }
+                None => {}
+            }
+        });
+    });
+}
+
+fn setup_rip_files(ui: &AppWindow) {
+    let edit = |ui: &AppWindow, f: &dyn Fn(&mut RipFiles)| {
+        RIP_PLAN.with_borrow_mut(|r| {
+            if let Some(r) = r {
+                f(r);
+                r.plan.rename();
+            }
+        });
+        refresh_rip_files(ui);
+    };
+    let weak = ui.as_weak();
+    ui.on_ripfiles_renamed(move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let name = ui.get_ripfiles_name().to_string();
+        edit(&ui, &|r| r.plan.name = name.clone());
+    });
+    let weak = ui.as_weak();
+    ui.on_ripfiles_season_by(move |d| {
+        let Some(ui) = weak.upgrade() else { return };
+        edit(&ui, &|r| r.plan.season = (r.plan.season as i32 + d).clamp(1, 99) as u32);
+    });
+    let weak = ui.as_weak();
+    ui.on_ripfiles_first_by(move |d| {
+        let Some(ui) = weak.upgrade() else { return };
+        edit(&ui, &|r| r.plan.first = (r.plan.first as i32 + d).clamp(1, 999) as u32);
+    });
+    let weak = ui.as_weak();
+    ui.on_ripfiles_lookup(move || {
+        if let Some(ui) = weak.upgrade() {
+            lookup_rip_names(&ui);
+        }
+    });
+    let weak = ui.as_weak();
+    ui.on_ripfiles_toggle(move |i| {
+        let Some(ui) = weak.upgrade() else { return };
+        edit(&ui, &|r| {
+            if let Some(item) = r.plan.items.get_mut(i as usize) {
+                item.rip = !item.rip;
+            }
+        });
+    });
+    let weak = ui.as_weak();
+    ui.on_ripfiles_choose_folder(move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let start = RIP_PLAN.with_borrow(|r| r.as_ref().map(|r| r.base.clone())).unwrap_or_else(discrip::videos_dir);
+        if let Some(dir) = rfd::FileDialog::new().set_title("Rip into which folder?").set_directory(&start).pick_folder() {
+            edit(&ui, &|r| r.base = dir.clone());
+        }
+    });
+    let weak = ui.as_weak();
+    ui.on_ripfiles_start(move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let Some(r) = RIP_PLAN.with_borrow_mut(Option::take) else { return };
+        ui.set_ripfiles_open(false);
+        start_rip_files(&ui, r);
+    });
+}
+
+/// Rip the chosen titles one after another, each straight to its name.
+fn start_rip_files(ui: &AppWindow, r: RipFiles) {
+    if !ui.get_busy_text().is_empty() {
+        ui.set_toast("Please wait for the current task to finish".into());
+        return;
+    }
+    let folder = r.plan.folder(&r.base);
+    let items: Vec<discrip::Item> = r.plan.items.iter().filter(|i| i.rip).cloned().collect();
+    let cancel = ripper::Cancel::default();
+    RIP_CANCEL.with_borrow_mut(|c| *c = Some(cancel.clone()));
+    ui.set_busy_text("Ripping with MakeMKV…".into());
+    show_disc_card(ui, "RIPPING WITH MAKEMKV", &r.plan.name, &r.drive, "Starting MakeMKV…");
+    ui.set_rip_percent(0.0);
+    log::info!("ripping {} titles from {} to {}", items.len(), r.device, folder.display());
+    let weak = ui.as_weak();
+    std::thread::spawn(move || {
+        let total: u64 = items.iter().map(|i| i.title.bytes.max(1)).sum();
+        let started = std::time::Instant::now();
+        let mut done_bytes = 0u64;
+        let mut saved = Vec::new();
+        let mut failure = None;
+        for (n, item) in items.iter().enumerate() {
+            let heading = format!("RIPPING {} OF {} WITH MAKEMKV", n + 1, items.len());
+            let title = item.file.trim_end_matches(".mkv").to_owned();
+            let _ = weak.upgrade_in_event_loop({
+                let (heading, title) = (heading.clone(), title.clone());
+                move |ui| {
+                    ui.set_rip_heading(heading.into());
+                    ui.set_rip_title(title.into());
+                }
+            });
+            let progress_ui = weak.clone();
+            let size = item.title.bytes.max(1);
+            let before = done_bytes;
+            let result = ripper::rip(&r.tool, &r.device, &item.title, &folder, &cancel, move |p| {
+                let part = (before as f64 + size as f64 * f64::from(p.percent) / 100.0) / total as f64;
+                let elapsed = started.elapsed().as_secs_f64();
+                let eta = if part > 0.02 { time_left((elapsed * (1.0 - part) / part) as u64) } else { "working out the time left…".to_owned() };
+                let _ = progress_ui.upgrade_in_event_loop(move |ui| {
+                    ui.set_rip_percent(part as f32);
+                    if !p.stage.is_empty() {
+                        ui.set_rip_stage(p.stage.into());
+                    }
+                    ui.set_rip_eta(eta.into());
+                });
+            });
+            match result {
+                Ok(file) => {
+                    let target = free_path(&folder.join(&item.file));
+                    let named = match std::fs::rename(&file, &target) {
+                        Ok(()) => target,
+                        Err(e) => {
+                            log::warn!("couldn't rename {} to {}: {e}", file.display(), target.display());
+                            file
+                        }
+                    };
+                    log::info!("ripped title {} to {}", item.title.id, named.display());
+                    saved.push(named);
+                }
+                Err(e) => {
+                    failure = Some(e);
+                    break;
+                }
+            }
+            done_bytes += size;
+        }
+        let _ = weak.upgrade_in_event_loop(move |ui| {
+            RIP_CANCEL.with_borrow_mut(|c| *c = None);
+            ui.set_busy_text("".into());
+            ui.set_rip_active(false);
+            let what = |n: usize| if n == 1 { "1 file".to_owned() } else { format!("{n} files") };
+            match failure {
+                None => {
+                    let text = format!("{} saved in\n{}", what(saved.len()), folder.display());
+                    ask(&ui, "Disc ripped", &text, "Open folder", "Close", move |ui, yes| {
+                        if yes && let Err(e) = open_folder(&folder) {
+                            ui.set_toast(format!("Couldn't open the folder: {e}").into());
+                        }
+                    });
+                }
+                Some(ripper::RipError::Cancelled) => ui.set_toast(
+                    format!("Rip cancelled; {} already done are in {}", what(saved.len()), folder.display()).into(),
+                ),
+                Some(ripper::RipError::NeedsKey) => {
+                    ui.set_toast("MakeMKV needs its free beta key before it reads discs".into());
+                    ui.invoke_show_makemkv_key();
+                }
+                Some(e) => {
+                    let mut text = e.to_string();
+                    if !saved.is_empty() {
+                        text += &format!("\n\n{} done before that are in {}.", what(saved.len()), folder.display());
+                    }
+                    ask(&ui, "The rip didn't finish", &text, "OK", "", |_, _| {});
+                }
+            }
+        });
+    });
+}
+
+/// `path`, or "name (2).mkv" … when a file of that name is already there.
+fn free_path(path: &Path) -> PathBuf {
+    if !path.exists() {
+        return path.to_owned();
+    }
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    (2..)
+        .map(|n| path.with_file_name(format!("{stem} ({n}){ext}")))
+        .find(|p| !p.exists())
+        .unwrap_or_else(|| path.to_owned())
 }
 
 /// "about 12 min left"

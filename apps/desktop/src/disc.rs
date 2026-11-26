@@ -419,7 +419,9 @@ fn drive_label(dev: &str, props: &[String]) -> String {
 
 /// "Blu-ray drive", "DVD drive" or "CD drive", by what it can read.
 fn drive_name(props: &[String]) -> &'static str {
-    if can_read(DiscKind::Bluray, props) {
+    if props.iter().any(|p| p == "SMP_ANY_DISC=1") {
+        "Disc drive"
+    } else if can_read(DiscKind::Bluray, props) {
         "Blu-ray drive"
     } else if can_read(DiscKind::Dvd, props) {
         "DVD drive"
@@ -488,7 +490,13 @@ fn detect(dev: &str, props: &[String]) -> Option<DiscPlan> {
     } else if has("ID_CDROM_MEDIA_DVD") {
         DiscKind::Dvd
     } else {
-        log::warn!("{dev}: could not tell what kind of disc this is");
+        // Windows shows an audio CD as Track01.cda files; reading one isn't
+        // done there yet.
+        if mount_point(dev, false).is_some_and(|m| m.join("Track01.cda").exists()) {
+            log::warn!("{dev}: an audio CD; playing audio CDs works on Linux only so far");
+        } else {
+            log::warn!("{dev}: could not tell what kind of disc this is");
+        }
         return None;
     };
     Some(DiscPlan::new(kind, dev.to_owned()))
@@ -718,6 +726,7 @@ pub fn audio_tracks(toc: &[(u8, u32, bool)]) -> Vec<CdTrack> {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 enum DriveStatus {
     DiscOk,
     NoDisc,
@@ -754,7 +763,13 @@ fn drive_status(dev: &str) -> DriveStatus {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+fn drive_status(dev: &str) -> DriveStatus {
+    // An empty drive's root can't be read.
+    if std::fs::read_dir(format!("{dev}\\")).is_ok() { DriveStatus::DiscOk } else { DriveStatus::NoDisc }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn drive_status(_dev: &str) -> DriveStatus {
     DriveStatus::DiscOk
 }
@@ -789,7 +804,13 @@ pub(crate) fn mount_point(dev: &str, mount: bool) -> Option<PathBuf> {
     find()
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+pub(crate) fn mount_point(dev: &str, _mount: bool) -> Option<PathBuf> {
+    let root = PathBuf::from(format!("{dev}\\"));
+    std::fs::read_dir(&root).is_ok().then_some(root)
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn mount_point(_dev: &str, _mount: bool) -> Option<PathBuf> {
     None
 }
@@ -813,6 +834,7 @@ fn device_of_mount(_dir: &Path) -> Option<String> {
 }
 
 /// /proc/mounts escapes spaces and friends as octal (\040).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn unescape_mount(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
@@ -882,7 +904,35 @@ fn list_drives() -> Option<Vec<(String, Vec<String>)>> {
     Some(drives)
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Windows: the drive letters of optical drives ("D:"). Windows doesn't say
+/// cheaply what a drive can read, so they count as able to read anything
+/// ("Disc drive"); what is in one is seen from its files.
+#[cfg(windows)]
+fn list_drives() -> Option<Vec<(String, Vec<String>)>> {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLogicalDrives() -> u32;
+        fn GetDriveTypeW(root: *const u16) -> u32;
+    }
+    const DRIVE_CDROM: u32 = 5;
+    // SAFETY: plain Win32 calls; the root is a NUL-terminated "D:\\".
+    let mask = unsafe { GetLogicalDrives() };
+    let drives = (0..26u8)
+        .filter(|i| mask & (1 << i) != 0)
+        .map(|i| char::from(b'A' + i))
+        .filter(|l| {
+            let root: Vec<u16> = format!("{l}:\\").encode_utf16().chain([0]).collect();
+            unsafe { GetDriveTypeW(root.as_ptr()) == DRIVE_CDROM }
+        })
+        .map(|l| {
+            let props = ["ID_CDROM_CD=1", "ID_CDROM_DVD=1", "ID_CDROM_BD=1", "SMP_ANY_DISC=1"];
+            (format!("{l}:"), props.map(str::to_owned).to_vec())
+        })
+        .collect();
+    Some(drives)
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn list_drives() -> Option<Vec<(String, Vec<String>)>> {
     None
 }

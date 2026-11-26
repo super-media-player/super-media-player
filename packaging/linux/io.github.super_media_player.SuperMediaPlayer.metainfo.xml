@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream description, for software centres and the AppImage. -->
+<component type="desktop-application">
+  <id>io.github.super_media_player.SuperMediaPlayer</id>
+  <name>Super Media Player</name>
+  <summary>Play videos, music, streams and discs</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <launchable type="desktop-id">super-media-player.desktop</launchable>
+  <url type="homepage">https://github.com/super-media-player/super-media-player</url>
+  <url type="bugtracker">https://github.com/super-media-player/super-media-player/issues</url>
+  <developer id="io.github.super_media_player">
+    <name>Super Media Player</name>
+  </developer>
+  <description>
+    <p>
+      A fast media player that plays almost anything: files, folders, internet
+      radio, podcasts, network shares, YouTube and similar sites, audio CDs,
+      DVDs with their menus, and Blu-rays. It can also send what you play to a TV.
+    </p>
+    <ul>
+      <li>Media library with albums, artists, series and Continue watching</li>
+      <li>Audio CDs with song names and covers, ripped to exact FLAC files</li>
+      <li>Seek-bar previews, subtitles from speech, skipping intros</li>
+      <li>Equalizer, gapless and bit-perfect playback, MilkDrop visuals</li>
+      <li>Skins, a compact view and a command palette</li>
+    </ul>
+  </description>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Player</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+</component>

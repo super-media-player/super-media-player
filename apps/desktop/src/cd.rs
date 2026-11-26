@@ -296,6 +296,7 @@ pub fn cover(album: &Album, online: bool) -> Option<PathBuf> {
 /// TOC format 5 after its 4-byte header): 18-byte packs of pack type,
 /// track number, sequence, block / character position, 12 bytes of text
 /// and a CRC. Only the first block (usually English, ISO 8859-1) is read.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn parse_cd_text(packs: &[u8]) -> Option<Album> {
     // Text per pack type (0x80 title, 0x81 performer), split into strings
     // by NULs: string i belongs to track first_track + i (0 = the album).
@@ -411,96 +412,343 @@ pub fn rip_folder(root: &Path, album: Option<&Album>, disc_id: Option<&str>) -> 
     }
 }
 
+/// What a rip found while reading: the songs written and how hard the
+/// disc was to read.
+#[derive(Debug, Default)]
+pub struct RipReport {
+    pub files: Vec<PathBuf>,
+    /// Read errors and dropped or doubled bytes that cdparanoia repaired by
+    /// reading again (a worn or dirty disc; the result is still exact).
+    pub corrected: u64,
+    /// Sectors cdparanoia gave up on (scratches it couldn't read past): the
+    /// song has a short glitch there. Songs with any are named in `damaged`.
+    pub skipped: u64,
+    pub damaged: Vec<String>,
+}
+
 /// Rip each of `tracks` from `device` to FLAC in `dir`, tagged from `album`
-/// with the `cover` added. `progress(track index, fraction of that track)`.
+/// with the `cover` added. `first_lba`: where the first audio track starts
+/// on the disc (the tracks' starts count from there).
+/// `progress(track index, fraction of that track)`.
+///
+/// The sectors are read with libcdio-paranoia (full checking: every
+/// sector is read until two reads agree, jitter and scratches corrected)
+/// and encoded as they come, so each file holds exactly the song's samples:
+/// nothing cut, nothing added, the same bits as on the CD.
 /// Leaves the songs already done when cancelled or when one fails (the one
 /// in progress is removed). Blocks; run it on a worker thread.
+#[allow(clippy::too_many_arguments)]
 pub fn rip(
     device: &str,
     tracks: &[CdTrack],
+    first_lba: u32,
     album: Option<&Album>,
     cover: Option<&Path>,
     dir: &Path,
     cancel: &AtomicBool,
     progress: impl Fn(usize, f32),
-) -> Result<Vec<PathBuf>, String> {
+) -> Result<RipReport, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
     let picture = cover.and_then(|c| std::fs::read(c).ok());
+    let mut reader = paranoia::Reader::open(device)?;
     let total = tracks.len();
-    let mut done = Vec::new();
+    let mut report = RipReport::default();
     for (i, t) in tracks.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
             return Err("Cancelled".into());
         }
         let title = album.map(|a| a.track_title(i, t.number)).unwrap_or_else(|| format!("Track {}", t.number));
         let out = dir.join(format!("{:02} - {}.flac", t.number, file_name(&title)));
-        let length = f64::from(t.frames) / 75.0;
-        let job = crate::clip::Job {
-            source: track_edl(t, i, None),
-            start: 0.0,
-            end: length,
-            format: crate::clip::Format::Flac,
-            aid: None,
-            vid: None,
-            out: out.clone(),
-            extra: vec![
-                ("cdda-device".into(), device.to_owned()),
-                // Full cdparanoia checking: slower, but scratches don't
-                // end up as clicks in the file.
-                ("cdda-paranoia".into(), "2".into()),
-            ],
-        };
-        crate::clip::run(&job, cancel, |f| progress(i, f))?;
-        if let Err(e) = tag(&out, album, i, t.number, total, picture.as_deref()) {
-            log::warn!("couldn't tag {}: {e}", out.display());
+        let start = first_lba + t.start;
+        let (corrected, skipped) = paranoia::counts();
+        let flac = reader.read_flac(start, t.frames, cancel, |f| progress(i, f))?;
+        let (c2, s2) = paranoia::counts();
+        report.corrected += c2 - corrected;
+        if s2 > skipped {
+            report.skipped += s2 - skipped;
+            report.damaged.push(title.clone());
         }
-        done.push(out);
+        let flac = with_tags(&flac, &tags(album, i, t.number, total), picture.as_deref())?;
+        let part = out.with_extension("flac.part");
+        std::fs::write(&part, flac).map_err(|e| format!("couldn't write {}: {e}", part.display()))?;
+        std::fs::rename(&part, &out).map_err(|e| format!("couldn't write {}: {e}", out.display()))?;
+        report.files.push(out);
     }
     if let Some(c) = cover {
         let _ = std::fs::copy(c, dir.join("cover.jpg"));
     }
-    Ok(done)
+    Ok(report)
 }
 
-/// Write the song's tags (and the cover) into the FLAC file.
-fn tag(path: &Path, album: Option<&Album>, i: usize, number: u8, total: usize, cover: Option<&[u8]>) -> Result<(), String> {
-    use lofty::config::WriteOptions;
-    use lofty::picture::{MimeType, Picture, PictureType};
-    use lofty::prelude::*;
-    use lofty::tag::Tag;
-    let mut file = lofty::read_from_path(path).map_err(|e| e.to_string())?;
-    let kind = file.primary_tag_type();
-    if file.primary_tag_mut().is_none() {
-        file.insert_tag(Tag::new(kind));
+/// libcdio-paranoia (cdparanoia's library), loaded when a rip starts: it is
+/// bundled with the player, and only ripping needs it.
+mod paranoia {
+    use std::ffi::{CString, c_char, c_int, c_long, c_void};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    use flacenc::component::BitRepr;
+    use flacenc::error::Verify;
+    use flacenc::source::{Fill, Source};
+
+    /// Samples per sector and channel (2352 bytes of 16-bit stereo).
+    const SECTOR_SAMPLES: usize = 588;
+    /// PARANOIA_MODE_FULL ^ PARANOIA_MODE_NEVERSKIP: check everything, but
+    /// give up on a sector after the retries instead of hanging forever (what
+    /// `cdparanoia` does by default).
+    const MODE: c_int = 0xff ^ 0x20;
+    const RETRIES: c_int = 20;
+    // paranoia_cb_mode_t values (cdio/paranoia/paranoia.h). Edge and atom
+    // fix-ups (2, 3) are the drive's ordinary jitter, corrected on clean
+    // discs too, so they don't count as trouble.
+    const CB_SKIP: c_int = 6;
+    const CB_FIXUP_DROPPED: c_int = 10;
+    const CB_FIXUP_DUPED: c_int = 11;
+    const CB_READERR: c_int = 12;
+
+    static CORRECTED: AtomicU64 = AtomicU64::new(0);
+    static SKIPPED: AtomicU64 = AtomicU64::new(0);
+
+    /// (sectors corrected, sectors skipped) so far, over all rips.
+    pub fn counts() -> (u64, u64) {
+        (CORRECTED.load(Ordering::Relaxed), SKIPPED.load(Ordering::Relaxed))
     }
-    let tag = file.primary_tag_mut().ok_or("no tag")?;
-    tag.set_track(u32::from(number));
-    tag.set_track_total(total as u32);
-    if let Some(a) = album {
-        tag.set_title(a.track_title(i, number));
-        let artist = a.track_artist(i);
-        if !artist.is_empty() {
-            tag.set_artist(artist);
+
+    extern "C" fn callback(_pos: c_long, mode: c_int) {
+        match mode {
+            CB_FIXUP_DROPPED | CB_FIXUP_DUPED | CB_READERR => {
+                CORRECTED.fetch_add(1, Ordering::Relaxed);
+            }
+            CB_SKIP => {
+                SKIPPED.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
         }
-        if !a.title.is_empty() {
-            tag.set_album(a.title.clone());
-        }
-        if !a.artist.is_empty() {
-            tag.insert_text(ItemKey::AlbumArtist, a.artist.clone());
-        }
-        if !a.date.is_empty() {
-            tag.insert_text(ItemKey::RecordingDate, a.date.clone());
-        }
-        if let Some(id) = &a.release_id {
-            tag.insert_text(ItemKey::MusicBrainzReleaseId, id.clone());
-        }
-    } else {
-        tag.set_title(format!("Track {number}"));
     }
+
+    type Identify = unsafe extern "C" fn(*const c_char, c_int, *mut *mut c_char) -> *mut c_void;
+    type Open = unsafe extern "C" fn(*mut c_void) -> c_int;
+    type Close = unsafe extern "C" fn(*mut c_void) -> c_int;
+    type Init = unsafe extern "C" fn(*mut c_void) -> *mut c_void;
+    type Free = unsafe extern "C" fn(*mut c_void);
+    type ModeSet = unsafe extern "C" fn(*mut c_void, c_int);
+    type Seek = unsafe extern "C" fn(*mut c_void, i32, c_int) -> i32;
+    type Read = unsafe extern "C" fn(*mut c_void, extern "C" fn(c_long, c_int), c_int) -> *const i16;
+
+    pub struct Reader {
+        // Kept loaded while the handles live.
+        _cdda: libloading::Library,
+        _paranoia: libloading::Library,
+        drive: *mut c_void,
+        p: *mut c_void,
+        close: Close,
+        free: Free,
+        seek: Seek,
+        read: Read,
+    }
+
+    impl Reader {
+        pub fn open(device: &str) -> Result<Reader, String> {
+            let missing = || "the CD reading library (libcdio-paranoia) is missing: on Ubuntu, sudo apt install libcdio-paranoia2t64".to_owned();
+            let cdda = crate::disc::open_bundled_library(&["libcdio_cdda.so.2", "libcdio_cdda.so"]).ok_or_else(missing)?;
+            let paranoia = crate::disc::open_bundled_library(&["libcdio_paranoia.so.2", "libcdio_paranoia.so"]).ok_or_else(missing)?;
+            // SAFETY: the signatures match libcdio-paranoia 10.2+2.x's headers
+            // (cdio/paranoia/cdda.h and paranoia.h).
+            unsafe {
+                let sym = |e: libloading::Error| format!("libcdio-paranoia is too old: {e}");
+                let identify = *cdda.get::<Identify>(b"cdio_cddap_identify\0").map_err(sym)?;
+                let open = *cdda.get::<Open>(b"cdio_cddap_open\0").map_err(sym)?;
+                let close = *cdda.get::<Close>(b"cdio_cddap_close\0").map_err(sym)?;
+                let init = *paranoia.get::<Init>(b"cdio_paranoia_init\0").map_err(sym)?;
+                let free = *paranoia.get::<Free>(b"cdio_paranoia_free\0").map_err(sym)?;
+                let modeset = *paranoia.get::<ModeSet>(b"cdio_paranoia_modeset\0").map_err(sym)?;
+                let seek = *paranoia.get::<Seek>(b"cdio_paranoia_seek\0").map_err(sym)?;
+                let read = *paranoia.get::<Read>(b"cdio_paranoia_read_limited\0").map_err(sym)?;
+                let dev = CString::new(device).map_err(|_| "bad device name".to_owned())?;
+                let drive = identify(dev.as_ptr(), 0, std::ptr::null_mut());
+                if drive.is_null() {
+                    return Err(format!("couldn't open the CD in {device}"));
+                }
+                if open(drive) != 0 {
+                    close(drive);
+                    return Err(format!("couldn't read the CD in {device}"));
+                }
+                let p = init(drive);
+                if p.is_null() {
+                    close(drive);
+                    return Err("couldn't start cdparanoia".into());
+                }
+                modeset(p, MODE);
+                Ok(Reader { _cdda: cdda, _paranoia: paranoia, drive, p, close, free, seek, read })
+            }
+        }
+
+        /// Read `sectors` sectors from `lba` on and encode them as FLAC.
+        pub fn read_flac(
+            &mut self,
+            lba: u32,
+            sectors: u32,
+            cancel: &AtomicBool,
+            progress: impl Fn(f32),
+        ) -> Result<Vec<u8>, String> {
+            // SAFETY: p is a live paranoia handle; SEEK_SET = 0.
+            if unsafe { (self.seek)(self.p, lba as i32, 0) } < 0 {
+                return Err(format!("couldn't seek to sector {lba}"));
+            }
+            let mut src = Sectors { reader: self, left: sectors, total: sectors, cancel, progress, error: None, pending: Vec::new() };
+            let mut config = flacenc::config::Encoder::default();
+            config.multithread = false;
+            let config = config.into_verified().map_err(|e| format!("{e:?}"))?;
+            let block = config.block_size;
+            let stream = flacenc::encode_with_fixed_block_size(&config, &mut src, block);
+            if let Some(e) = src.error.take() {
+                return Err(e);
+            }
+            let stream = stream.map_err(|e| format!("FLAC encoder: {e}"))?;
+            let mut sink = flacenc::bitsink::ByteSink::new();
+            stream.write(&mut sink).map_err(|e| format!("FLAC encoder: {e:?}"))?;
+            Ok(sink.into_inner())
+        }
+
+        /// One sector's 1176 samples (interleaved, host order).
+        fn sector(&mut self) -> Option<&[i16]> {
+            // SAFETY: the returned buffer holds one raw sector and stays valid
+            // until the next read.
+            let data = unsafe { (self.read)(self.p, callback, RETRIES) };
+            (!data.is_null()).then(|| unsafe { std::slice::from_raw_parts(data, SECTOR_SAMPLES * 2) })
+        }
+    }
+
+    impl Drop for Reader {
+        fn drop(&mut self) {
+            // SAFETY: freed once, paranoia before its drive.
+            unsafe {
+                (self.free)(self.p);
+                (self.close)(self.drive);
+            }
+        }
+    }
+
+    /// The sectors of one song, as a FLAC encoder source.
+    struct Sectors<'a, P: Fn(f32)> {
+        reader: &'a mut Reader,
+        left: u32,
+        total: u32,
+        cancel: &'a AtomicBool,
+        progress: P,
+        error: Option<String>,
+        /// Read but not yet handed to the encoder (interleaved).
+        pending: Vec<i32>,
+    }
+
+    impl<P: Fn(f32)> Source for Sectors<'_, P> {
+        fn channels(&self) -> usize {
+            2
+        }
+        fn bits_per_sample(&self) -> usize {
+            16
+        }
+        fn sample_rate(&self) -> usize {
+            44_100
+        }
+        fn len_hint(&self) -> Option<usize> {
+            Some(self.total as usize * SECTOR_SAMPLES)
+        }
+        fn read_samples<F: Fill>(&mut self, block_size: usize, dest: &mut F) -> Result<usize, flacenc::error::SourceError> {
+            let fail = |s: &mut Self, e: String| {
+                s.error = Some(e);
+                Err(flacenc::error::SourceError::from_unknown())
+            };
+            // Every frame but the last must hold exactly `block_size` samples,
+            // so sectors are read until there are enough (the rest waits).
+            while self.pending.len() < block_size * 2 && self.left > 0 {
+                if self.cancel.load(Ordering::Relaxed) {
+                    return fail(self, "Cancelled".into());
+                }
+                match self.reader.sector() {
+                    Some(s) => self.pending.extend(s.iter().map(|&x| i32::from(x))),
+                    None => return fail(self, "the drive stopped reading the CD".into()),
+                }
+                self.left -= 1;
+            }
+            (self.progress)(1.0 - self.left as f32 / self.total.max(1) as f32);
+            let n = self.pending.len().min(block_size * 2);
+            if n == 0 {
+                return Ok(0);
+            }
+            dest.fill_interleaved(&self.pending[..n])?;
+            self.pending.drain(..n);
+            Ok(n / 2)
+        }
+    }
+}
+
+/// The Vorbis comments of song `i` (0-based, number `number` of `total`).
+fn tags(album: Option<&Album>, i: usize, number: u8, total: usize) -> Vec<(&'static str, String)> {
+    let mut t = vec![("TRACKNUMBER", number.to_string()), ("TRACKTOTAL", total.to_string())];
+    match album {
+        Some(a) => {
+            t.push(("TITLE", a.track_title(i, number)));
+            t.push(("ARTIST", a.track_artist(i)));
+            t.push(("ALBUM", a.title.clone()));
+            t.push(("ALBUMARTIST", a.artist.clone()));
+            t.push(("DATE", a.date.clone()));
+            if let Some(id) = &a.release_id {
+                t.push(("MUSICBRAINZ_ALBUMID", id.clone()));
+            }
+        }
+        None => t.push(("TITLE", format!("Track {number}"))),
+    }
+    t.retain(|(_, v)| !v.trim().is_empty());
+    t
+}
+
+/// `flac` (a FLAC stream whose only metadata block is STREAMINFO, as the
+/// encoder writes it) with the tags, the front cover and some padding (so
+/// tag editors don't have to rewrite the file) added after STREAMINFO.
+/// Written here, not by a tag library afterwards, so the audio frames are
+/// never rewritten.
+fn with_tags(flac: &[u8], tags: &[(&str, String)], cover: Option<&[u8]>) -> Result<Vec<u8>, String> {
+    // "fLaC", then STREAMINFO: a 4-byte header and 34 bytes.
+    if flac.len() < 42 || &flac[..4] != b"fLaC" || flac[4] & 0x7f != 0 {
+        return Err("the FLAC encoder wrote something unexpected".into());
+    }
+    let block = |out: &mut Vec<u8>, kind: u8, last: bool, body: &[u8]| -> Result<(), String> {
+        let len = u32::try_from(body.len()).ok().filter(|&l| l < 1 << 24).ok_or("a tag is too large")?;
+        out.push(kind | if last { 0x80 } else { 0 });
+        out.extend(&len.to_be_bytes()[1..]);
+        out.extend(body);
+        Ok(())
+    };
+    let mut comments = Vec::new();
+    let vendor = concat!("Super Media Player ", env!("CARGO_PKG_VERSION"));
+    comments.extend((vendor.len() as u32).to_le_bytes());
+    comments.extend(vendor.as_bytes());
+    comments.extend((tags.len() as u32).to_le_bytes());
+    for (k, v) in tags {
+        let field = format!("{k}={}", v.replace(['\n', '\r'], " "));
+        comments.extend((field.len() as u32).to_le_bytes());
+        comments.extend(field.as_bytes());
+    }
+    let mut out = Vec::with_capacity(flac.len() + comments.len() + cover.map_or(0, <[u8]>::len) + 8300);
+    out.extend(b"fLaC");
+    out.push(flac[4] & 0x7f); // STREAMINFO, no longer the last block
+    out.extend(&flac[5..42]);
+    block(&mut out, 4, false, &comments)?;
     if let Some(data) = cover {
-        tag.push_picture(Picture::new_unchecked(PictureType::CoverFront, Some(MimeType::Jpeg), None, data.to_vec()));
+        let mime = if data.starts_with(b"\x89PNG") { "image/png" } else { "image/jpeg" };
+        let mut pic = Vec::new();
+        pic.extend(3u32.to_be_bytes()); // front cover
+        pic.extend((mime.len() as u32).to_be_bytes());
+        pic.extend(mime.as_bytes());
+        pic.extend(0u32.to_be_bytes()); // no description
+        pic.extend([0u8; 16]); // size and colours: unknown
+        pic.extend((data.len() as u32).to_be_bytes());
+        pic.extend(data);
+        block(&mut out, 6, false, &pic)?;
     }
-    file.save_to_path(path, WriteOptions::default()).map_err(|e| e.to_string())
+    block(&mut out, 1, true, &[0u8; 8192])?;
+    out.extend(&flac[42..]);
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -607,9 +855,29 @@ mod tests {
             ..Default::default()
         };
         let t = CdTrack { number: 1, start: 0, frames: 75 * 3 };
-        let edl = track_edl(&t, 0, Some(&album))
-            .replace("%7%cdda://", &edl_escape("av://lavfi:sine=d=3:f=440"));
+        // A WAV file stands in for the CD (mpv 0.42 has no av://lavfi).
+        let wav = std::env::temp_dir().join(format!("smp-edl-{}.wav", std::process::id()));
+        let samples = 44_100 * 3 * 2;
+        let mut data = Vec::new();
+        for (tag, v) in [(b"RIFF", 36 + samples * 2), (b"WAVE", 0), (b"fmt ", 16)] {
+            data.extend(tag);
+            if tag != b"WAVE" {
+                data.extend((v as u32).to_le_bytes());
+            }
+        }
+        data.extend([1u8, 0, 2, 0]); // PCM, stereo
+        data.extend(44_100u32.to_le_bytes());
+        data.extend((44_100u32 * 4).to_le_bytes());
+        data.extend([4u8, 0, 16, 0]);
+        data.extend(b"data");
+        data.extend((samples as u32 * 2).to_le_bytes());
+        data.resize(data.len() + samples * 2, 0);
+        std::fs::write(&wav, data).unwrap();
+        let edl = track_edl(&t, 0, Some(&album)).replace("%7%cdda://", &edl_escape(&wav.to_string_lossy()));
         let _ = player.set_string("ao", "null");
+        if let Some(log) = std::env::var_os("SMP_TEST_MPV_LOG") {
+            let _ = player.set_string("log-file", &log.to_string_lossy());
+        }
         player.load(&edl, player_core::LoadMode::Replace).unwrap();
         let mut tags = None;
         for _ in 0..50 {
@@ -623,48 +891,56 @@ mod tests {
         assert_eq!(title, "Song, with %percent%");
         assert_eq!(artist.as_deref(), Some("Ünïcode = Band"));
         assert_eq!(alb.as_deref(), Some("Greatest; Hits, Vol. 1"));
+        let _ = std::fs::remove_file(&wav);
     }
 
-    /// A ripped song gets its tags and cover (encoded from a test tone).
+    /// A ripped song's tags and cover, readable by tag libraries, and the
+    /// audio still decodes to exactly the samples encoded.
     #[test]
     fn ripped_file_is_tagged() {
-        let dir = std::env::temp_dir().join(format!("smp-cd-tag-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&dir);
-        let out = dir.join("01 - Song.flac");
-        let job = crate::clip::Job {
-            source: "av://lavfi:sine=d=2:f=440".into(),
-            start: 0.0,
-            end: 1.0,
-            format: crate::clip::Format::Flac,
-            aid: None,
-            vid: None,
-            out: out.clone(),
-            extra: Vec::new(),
-        };
-        if crate::clip::run(&job, &AtomicBool::new(false), |_| {}).is_err() {
-            eprintln!("no libmpv encoder, skipped");
-            return;
-        }
+        use flacenc::component::BitRepr;
+        use flacenc::error::Verify;
+        let samples: Vec<i32> = (0..44_100 * 2).map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i32).collect();
+        let config = flacenc::config::Encoder::default().into_verified().unwrap();
+        let src = flacenc::source::MemSource::from_samples(&samples, 2, 16, 44_100);
+        let stream = flacenc::encode_with_fixed_block_size(&config, src, config.block_size).unwrap();
+        let mut sink = flacenc::bitsink::ByteSink::new();
+        stream.write(&mut sink).unwrap();
         let album = Album {
             title: "Album".into(),
             artist: "Band".into(),
             date: "1999".into(),
-            tracks: vec![TrackName { title: "Song".into(), artist: "Guest".into() }],
+            tracks: vec![TrackName { title: "Song = One".into(), artist: "Guest".into() }],
             release_id: Some("abc".into()),
             source: "MusicBrainz".into(),
         };
         let jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0xFF, 0xD9];
-        tag(&out, Some(&album), 0, 1, 12, Some(&jpeg)).unwrap();
+        let bytes = with_tags(sink.as_slice(), &tags(Some(&album), 0, 1, 12), Some(&jpeg)).unwrap();
+        let dir = std::env::temp_dir().join(format!("smp-cd-tag-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let out = dir.join("01 - Song.flac");
+        std::fs::write(&out, &bytes).unwrap();
         use lofty::prelude::*;
         let file = lofty::read_from_path(&out).unwrap();
         let t = file.primary_tag().unwrap();
-        assert_eq!(t.title().as_deref(), Some("Song"));
+        assert_eq!(t.title().as_deref(), Some("Song = One"));
         assert_eq!(t.artist().as_deref(), Some("Guest"));
         assert_eq!(t.album().as_deref(), Some("Album"));
         assert_eq!(t.track(), Some(1));
         assert_eq!(t.track_total(), Some(12));
         assert_eq!(t.get_string(&ItemKey::AlbumArtist), Some("Band"));
         assert_eq!(t.pictures().len(), 1);
+        assert_eq!(file.properties().duration().as_millis(), 1000);
+        // The ffmpeg program, when there, decodes every sample back.
+        if let Ok(o) = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-i"])
+            .arg(&out)
+            .args(["-f", "s16le", "-"])
+            .output()
+        {
+            let back: Vec<i32> = o.stdout.chunks(2).map(|c| i32::from(i16::from_le_bytes([c[0], c[1]]))).collect();
+            assert!(o.status.success() && back == samples, "decoded differently");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -693,7 +969,8 @@ mod tests {
         println!("cover: {art:?}");
         let dir = rip_folder(&root, album.as_ref(), id.as_deref());
         let start = std::time::Instant::now();
-        let files = rip(&device, &tracks[..songs.min(tracks.len())], album.as_ref(), art.as_deref(), &dir, &AtomicBool::new(false), |_, _| {}).unwrap();
-        println!("{files:?} in {:?}", start.elapsed());
+        let origin = toc.iter().find(|e| !e.2).map_or(0, |e| e.1);
+        let report = rip(&device, &tracks[..songs.min(tracks.len())], origin, album.as_ref(), art.as_deref(), &dir, &AtomicBool::new(false), |_, _| {}).unwrap();
+        println!("{report:?} in {:?}", start.elapsed());
     }
 }
