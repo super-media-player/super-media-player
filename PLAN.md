@@ -438,12 +438,15 @@ Items 1–12 landed in v0.39 (`basics.rs`, `mpris.rs`, `instance.rs`). Settings 
 - [x] 21. Network sources: SMB, SFTP, WebDAV, DLNA/UPnP browsing — M–L (v0.44, `network.rs`: Library → Network; shares through gvfs, DLNA by SSDP + ContentDirectory)
 - [x] 22. HDR tone-mapping choice — S (v0.45: View → HDR tone-mapping, Settings → Video; curve + scene brightness detection, `enhance::set_tone_mapping`)
   - [ ] HDR passthrough on Wayland — **blocked**: needs the compositor's colour-management protocol (GNOME 48+, KDE 6) and a 10-bit HDR surface for the video, which Slint's window doesn't offer yet. Revisit once the user's desktop has HDR.
-- [x] 23. Audio CD: MusicBrainz / CD-Text names, rip to FLAC — M (v0.46, `cd.rs`: names by MusicBrainz disc ID (cached), else CD-Text over SG_IO; tags ride in each song's EDL so the music view, MPRIS and scrobbling see them; cover from the Cover Art Archive. File → Play disc → Rip audio CD to FLAC: cdparanoia mode 2, tagged + cover, Music/Artist/Album/NN - Title.flac. Settings → Discs turns the online lookup off. Not yet tried on a real CD.)
+- [x] 23. Audio CD: MusicBrainz / CD-Text names, rip to FLAC — M (v0.59: tried on a real CD, 2Pac *Greatest Hits* disc 1: names, artists, cover and tags right. Ripping now reads the sectors itself with libcdio-paranoia and encodes FLAC in Rust (`flacenc`): the files are bit-identical to the disc, checked against raw reads; the mpv way was off by up to 2,112 samples at song edges. Tags and cover are written as FLAC blocks before the audio (lofty broke the encoder's stream). The packaged engine had no CD support at all (mpv built without cdda): fixed. v0.46, `cd.rs`: names by MusicBrainz disc ID (cached), else CD-Text over SG_IO; tags ride in each song's EDL so the music view, MPRIS and scrobbling see them; cover from the Cover Art Archive. File → Play disc → Rip audio CD to FLAC: cdparanoia mode 2, tagged + cover, Music/Artist/Album/NN - Title.flac. Settings → Discs turns the online lookup off. Not yet tried on a real CD.)
 - [x] 24. Media library (Phase 3): albums, artists, "continue watching", search — L (v0.47: `medialib.rs` index in SQLite with an incremental scan, `art.rs` pictures, `collection.rs` + `ui/media.slint` pages: Home, Albums, Artists, Genres, Songs, Videos, Folders, search. Ctrl+Shift+M. Files without tags get artist and title from "Artist - Title" names. An unplugged drive keeps its entries. 40,000 songs: every page under 0.1 s, off the UI thread.)
+  - [ ] Later: AccurateRip check of rips (needs the drive's read offset); audio CDs on Windows (TOC through DeviceIoControl)
   - [ ] Later: smart playlists and ratings, "up next" for series, disc folders and ISOs in the library, watching folders live (it scans when opened)
 - [x] 25. Casting to Chromecast / DLNA — L (v0.48, `cast/`: mDNS and SSDP discovery, own CASTV2 (rustls) and SOAP sessions, a media server with a secret in its links that runs only while casting. Sent as it is, or converted into a pipe by the ffmpeg program (picture copied where possible) or a hidden mpv; a refused file is tried again converted. Tried against `scripts/fake-cast-devices.py`, which speaks both protocols and decodes what it gets; **not yet on a real Chromecast or TV**.)
+  - [ ] Try on a real Chromecast and TV (none on the user's network yet)
   - [ ] Later: hardware encoding, discs, Chromecast playback speed, several audio tracks without converting
 - [x] 26. DVD menus (own libdvdnav layer) — L (v0.49, `dvdmenu/`: libdvdnav runs the disc's program; its menus and short clips reach mpv as our own stream (`smpdvd://`, `player-core/stream.rs`) with continuous times, the chosen button is laid over the picture (own subpicture decoder); titles over a minute are handed to mpv's `dvd://`, and afterwards the program goes on from the title's end. Keys, mouse, Disc menu (Ctrl+Shift+D), Back to the film, Main film. Settings → Discs turns it off. Tried on an authored DVD (motion, still and chapter menus) and a commercial, copy-protected series DVD.) Also: `dvd://` no longer runs on into the menu at a title's end.
+  - [x] Rip a DVD or Blu-ray to named video files (v0.59, `discrip.rs`: File → Play disc → Rip disc to video files. MakeMKV copies the titles losslessly; series discs are recognised from the disc's name and volume label ("Reacher: Season Three Disc 2", "FRIENDS_S01_D2"), the episode titles picked by length ("play all" and extras left out), named from TVmaze (`Show - S03E05 - Name.mkv` in `Videos/Show/Season 03`), first episode adjustable. Tried on Reacher season 3 disc 2: episodes 5–8 named right, one ripped with both audio tracks, both subtitles and 8 chapters.)
   - [ ] Later: HDMV Blu-ray menus, choosing angles, buttons inside films
 
 ### Step 4: beyond VLC
@@ -454,6 +457,7 @@ Items 1–12 landed in v0.39 (`basics.rs`, `mpris.rs`, `instance.rs`). Settings 
 - [x] B. **Title bar that matches the player** — M (v0.52, `frame.rs`, `ui/titlebar.slint`: GNOME reported no dark preference, so its frame stayed light grey. The window has no frame now; title, drag strip and window buttons share the menu bar's row, in `Theme` colours, so skins' `theme.*` reach it. Double-click maximizes, right-click opens the desktop's window menu (our own on X11), all edges and corners resize, corners are rounded by a small GL shader after drawing. Settings → Look → Title bar: player's own / desktop's. The desktop's is dark on Wayland; GNOME's X11 frames don't listen. Also fixed: after resizing a skin from its edge, the next press went to that edge again. Checked in a private headless GNOME 46 session on X11 and Wayland.)
   - [ ] Later: square corners and no edge on the tiled sides of a tiled window; a shadow (GNOME draws none without a frame); the detached playlist and Advanced navigation windows still have the desktop's bar; new guide pictures (start and settings are done)
 - [x] 29. Auto-crop black bars — S–M (v0.56, `autocrop.rs`: C, View → Picture, or Settings → Video; mpv's `video-crop`, so hardware decoding stays. What is kept is every place a picture was ever seen. A file is looked through by a hidden player at 24 moments, in a second or two, and the result is cached. Discs and streams: a filter branch copies two frames a second back from the graphics card for `cropdetect`, and the crop comes after 10 s without news; it opens at once when a picture appears in the bars. About 1 % of a core at 1080p and 9 % at 4K 10-bit (VA-API), only while on. Logos, text and one-sided darkness aren't taken for the picture; picture subtitles stay where they were meant. Checked on made-up files and HTTP streams; **not yet on a real disc or on NVIDIA**.)
+  - [ ] Check on a real disc and on an NVIDIA card (no NVIDIA here)
   - [ ] Later: cropping that changes with each scene; remembering a disc's bars
 - [x] 30. Skip silence for podcasts and lectures; remember speed per file — S (v0.53, `silence.rs`, `pace.rs`: an FFmpeg graph looks 0.25 s ahead and 0.15 s back, and drops frames where all of that is quiet. Times stay true, so the position and subtitles jump along; for video mpv's `mc=1` brings the picture back within 0.2 s. Raising mpv's speed instead was tried: the position jumps about a second each way. The threshold is learned from the speech and the background, checked on speech with clean and noisy backgrounds. About 1.6 % of a core, only while on. Speed and skipping come back per file and per podcast show; files from the same folder go on as the last one.)
   - [ ] Later: live streams
@@ -462,7 +466,10 @@ Items 1–12 landed in v0.39 (`basics.rs`, `mpris.rs`, `instance.rs`). Settings 
 
 ### Step 5: reach
 
-- [ ] 32. Windows, macOS and Android builds; AppImage and Flatpak (§9)
+- [x] 32. Packages for Linux, Windows and macOS (v0.59, §9): .deb, .rpm, AppImage and tarball from one Ubuntu 22.04 container; the Windows installer and portable zip cross-built in it; the macOS .dmg from GitHub Actions.
+  - [ ] Android: a port rather than a package (touch UI, libmpv for Android, Slint's Android backend)
+  - [ ] Flatpak (needs flatpak-builder on the build machine)
+  - [ ] Signed Windows installer and notarized macOS app (need paid certificates)
 - [ ] 33. Translations and accessibility
 
 Older ideas still open: Wayland drag and drop without XWayland (needs winit
@@ -471,26 +478,17 @@ theme and more compact looks.
 
 ---
 
-## 9. Packaging TODO
+## 9. Packaging
 
-- [ ] **1. AppImage** (Linux, any distro, no install)
-  - Reuse the staged folder from `scripts/package-linux.sh` (binary, `lib/` with libmpv and codecs, decryption libraries, yt-dlp) as the AppDir. Add `AppRun`, the `.desktop` file and the icon at its root, and build with `appimagetool`.
-  - Build on the oldest distro we support (e.g. Ubuntu 22.04), because glibc only works forwards.
-  - Optional: AppImageUpdate metadata for in-place updates.
-- [ ] **2. .deb** (Debian, Ubuntu, Mint)
-  - Already built by `scripts/package-linux.sh` → `dist/super-media-player_<version>_amd64.deb`, installing to `/opt/super-media-player`.
-  - Still to do: an arm64 build, building in CI on the oldest supported Ubuntu, and a signed apt repository (optional).
-- [ ] **3. .rpm** (Fedora, openSUSE, RHEL)
-  - Same staged folder, packaged with `rpmbuild` (spec file) or `nfpm`, to `/opt/super-media-player`. Requires: base desktop libraries only.
-  - Build on Fedora, or in a Fedora container in CI. Fedora ships libmpv from RPM Fusion, or use a static libmpv build (PLAN §1.1).
-  - Note: Fedora doesn't ship libdvdcss/libaacs; bundle them as in the .deb.
-- [ ] **4. Windows** (installer + portable zip)
-  - Build `x86_64-pc-windows-msvc`. Bundle `libmpv-2.dll` (shinchiro's mpv-winbuild or our own static build), `yt-dlp.exe` and the decryption DLLs if wanted.
-  - Port the Linux-only parts: optical drives (`disc.rs`: drive letters and IOCTL_CDROM_*; mounting isn't needed), config paths (already `%APPDATA%`), Explorer drag and drop (works in winit).
-  - Installer: Inno Setup or WiX (MSI) with file associations. Sign the code to avoid SmartScreen warnings.
-- [ ] **5. macOS** (universal .dmg)
-  - Build `aarch64-apple-darwin` + `x86_64-apple-darwin` and merge with `lipo`. Bundle `libmpv.2.dylib` and its dependencies in `.app/Contents/Frameworks` (paths fixed with `install_name_tool` / `dylibbundler`). Add yt-dlp_macos.
-  - Port the drive code (DiskArbitration / IOKit). Check the OpenGL render path (deprecated on macOS but still works), with Metal via a native window as a fallback (PLAN §1.3).
-  - Sign with a Developer ID and notarize, otherwise Gatekeeper blocks the app. Build the `.dmg` with `create-dmg`.
+All Linux packages are built in the smp-build container (`packaging/linux/build.Containerfile`,
+Ubuntu 22.04, rootless podman on the build machine; `scripts/in-container.sh`), so they run on
+Ubuntu 22.04 / Mint 21 / Debian 12 / Fedora 36 and newer, and the build machine needs no build
+packages. The daily check rebuilds the image with that day's Ubuntu updates.
 
-**Shared work for all of them:** one CI workflow (GitHub Actions matrix) that builds every package on release tags and uploads them to the release; a version number from one place (`Cargo.toml`); a static libmpv/FFmpeg build per platform instead of copying system libraries (PLAN §1.1, Phase 0).
+- [x] **AppImage**: `scripts/package-linux.sh`, from the same staged folder (pinned appimagetool and runtime).
+- [x] **.deb**: as before, now with `libc6 (>= 2.35)`.
+- [x] **.rpm**: `rpmbuild` in the container; requires base libraries by soname, so it fits Fedora and openSUSE.
+- [x] **Windows**: `scripts/package-windows.sh` in the container: cargo-xwin (MSVC target), libmpv from shinchiro's mpv-winbuild (pinned, SHA-256), yt-dlp.exe, NSIS installer (Start menu, Open with, uninstaller) and a portable zip. Drive letters for DVDs and Blu-rays; single instance over a localhost port with a secret. Not yet: audio CDs, disc decryption.
+- [x] **macOS**: `scripts/package-macos.sh` on GitHub's macOS runners (`.github/workflows/release.yml`): Homebrew's libmpv bundled with dylibbundler, a .dmg per architecture. Unsigned, and untried until the code is on GitHub.
+- Note, engine on 22.04: mpv's PipeWire output needs libpipewire 0.3.57 (22.04 has 0.3.48), so the packages use the PulseAudio output (PipeWire desktops serve it). dav1d, libdisplay-info are built from source and bundled; a newer libdrm only to compile against.
+- [ ] arm64 Linux packages.

@@ -16,7 +16,9 @@
 # those can need build changes, so the pin is moved by hand.
 #
 # Rebuilt packages carry a "+autoYYYYMMDD" suffix, so apt sees them as newer.
-# It builds the source last copied over by vm-build.sh. Log: daily.log.
+# It first gets GitHub's newest code (scripts/vm-pull.sh) when the folder is a
+# git checkout; otherwise it builds the source last copied over by
+# vm-build.sh. Log: daily.log.
 #
 # Usage: vm-daily.sh [--force]    --force rebuilds even when nothing changed
 set -uo pipefail
@@ -24,11 +26,23 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 export PATH="$HOME/.cargo/bin:$PATH:/usr/sbin:/sbin"
 
-exec 9>.daily.lock
-flock -n 9 || exit 0
 if pgrep -f "$root/scripts/[v]m-job.sh" >/dev/null; then
     exit 0 # a build started by hand is running; tomorrow's check catches up
 fi
+# Newest code first, then this script again from it (it may have changed).
+if [[ -z "${SMP_NO_PULL:-}" ]]; then
+    flock -n .daily.lock true || exit 0
+    scripts/vm-pull.sh >>daily.log 2>&1
+    case $? in
+    0) export SMP_NO_PULL=1; exec "$0" "$@" ;;
+    3) ;;
+    *) echo "=== $(date -Is) could not get the code from GitHub" >>daily.log
+       scripts/notify.sh "SMP daily check failed" "Could not get the code from GitHub; see daily.log on the build machine." high
+       exit 1 ;;
+    esac
+fi
+exec 9>.daily.lock
+flock -n 9 || exit 0
 exec >>daily.log 2>&1
 echo "=== $(date -Is) daily check"
 
@@ -84,12 +98,24 @@ else
 fi
 
 # ---- bundled system libraries changed by updates ----
+# The packages are built in the smp-build container: rebuild its image with
+# today's Ubuntu updates, then compare the libraries in it with the ones the
+# last packages bundled.
+check='sha256sum -c dist/bundled-sources.sha256 2>/dev/null'
+if [[ -z "${SMP_NO_CONTAINER:-}" ]] && command -v podman >/dev/null; then
+    scripts/in-container.sh "--image=$(date +%F)" >/dev/null || problems+=("the container image (Ubuntu updates)")
+    run_check() { scripts/in-container.sh "$check"; }
+else
+    run_check() { bash -c "$check"; }
+fi
 libs=""
 if [[ -f dist/bundled-sources.sha256 ]]; then
-    libs=$(sha256sum -c dist/bundled-sources.sha256 2>/dev/null | grep -v ': OK$' |
+    libs=$(run_check | grep -v ': OK$' |
         sed 's/: [A-Z].*$//' | xargs -r -n1 basename | sort -u | paste -sd' ') || true
     [[ -n "$libs" ]] && changes+=("updated system libraries: $libs")
 fi
+# Old images (each day's refresh leaves the previous one untagged).
+podman image prune -f >/dev/null 2>&1 || true
 [[ "${1:-}" == "--force" ]] && changes+=("forced rebuild")
 
 note=""

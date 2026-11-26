@@ -28,6 +28,14 @@ export struct DriveChoice {
     detail: string,
 }
 
+// One title of a disc to rip to a video file (discrip.rs): the file it
+// becomes and its length, size and chapters.
+export struct RipRow {
+    rip: bool,
+    file: string,
+    detail: string,
+}
+
 // A TV or speaker found on the network (cast/).
 export struct CastDevice {
     name: string,

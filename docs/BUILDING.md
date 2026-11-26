@@ -40,25 +40,53 @@ feature is missing:
 | libprojectM 4 + presets | MilkDrop visualizer | `scripts/fetch-projectm.sh` (needs `libgles-dev libegl-dev cmake`) |
 | whisper.cpp `whisper-cli` | Subtitles from speech | `scripts/fetch-whisper.sh` (GPU through Vulkan when `libvulkan-dev glslc` are installed) |
 
-## Packaging (Linux)
+## Packaging
+
+The release packages are built in a container, so the build machine needs only
+podman (rootless) and none of the build packages:
 
 ```sh
-sudo apt install patchelf            # once; plus libmpv as above
-scripts/package-linux.sh
+scripts/in-container.sh --image                      # once: the smp-build image (Ubuntu 22.04)
+scripts/in-container.sh scripts/build-engine.sh      # FFmpeg + libmpv, see below
+scripts/in-container.sh scripts/package-linux.sh     # the Linux packages
+scripts/in-container.sh scripts/package-windows.sh   # the Windows packages
 ```
 
-This writes two self-contained packages to `dist/`. Both bundle libmpv,
-FFmpeg and the codec libraries, so the target machine needs nothing
-downloaded:
+Built on Ubuntu 22.04, the Linux packages run on 22.04 / Mint 21 / Debian 12 /
+Fedora 36 and every newer distribution (glibc only works forwards).
+`scripts/vm-job.sh` does all of this on the build machine by itself.
 
+`scripts/package-linux.sh` writes to `dist/`. All of them bundle libmpv, FFmpeg
+and the codec libraries, so the target machine needs nothing downloaded:
+
+- `super-media-player-<version>-x86_64.AppImage`: one file; `chmod +x` and run it.
+- `super-media-player_<version>_amd64.deb`: `sudo apt install ./dist/super-media-player_*.deb`
+  installs it to `/opt/super-media-player`. Its dependencies are only base desktop
+  libraries (OpenGL, X11/Wayland, audio), which every desktop already has.
+- `super-media-player-<version>-1.x86_64.rpm`: the same for Fedora and openSUSE
+  (`sudo dnf install ./…rpm`).
 - `super-media-player-<version>-linux-x86_64.tar.gz`: unpack anywhere and run
   `./install.sh` to add it to the applications menu for the current user
   (`./install.sh --uninstall` removes it). No root needed.
-- `super-media-player_<version>_amd64.deb`: `sudo apt install ./dist/super-media-player_*.deb`
-  installs it to `/opt/super-media-player`. Its dependencies are only base desktop
-  libraries (OpenGL, X11/Wayland, audio), which Ubuntu already has.
+- `SHA256SUMS-<version>`: checksums of all of them.
 
-The packages also bundle:
+It also runs outside the container (`sudo apt install patchelf`, plus libmpv as
+above): then the packages need that machine's distribution or a newer one, and
+the .rpm and AppImage are made only when `rpmbuild` and `appimagetool` are installed.
+
+`scripts/package-windows.sh` cross-compiles the 64-bit Windows program with
+cargo-xwin and writes `super-media-player-<version>-windows-x64-setup.exe` (an
+NSIS installer: Start menu, "Open with" for media files, an uninstaller) and a
+portable `…-windows-x64.zip`. libmpv comes from shinchiro's mpv-winbuild (pinned
+in the script, SHA-256 checked). On Windows, DVDs and Blu-rays play from drive
+letters; audio CDs and disc decryption are Linux-only so far.
+
+macOS packages need a Mac: `scripts/package-macos.sh` (Homebrew's mpv,
+dylibbundler, librsvg) makes a `.dmg`, and `.github/workflows/release.yml` runs
+it on GitHub's Apple silicon and Intel runners for every `v*` tag and adds
+the `.dmg` files to that tag's GitHub release.
+
+The Linux packages also bundle:
 
 - [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) (standalone build, checked against
   the release's SHA-256 list) for YouTube and ~1800 other sites. The player
@@ -69,17 +97,27 @@ The packages also bundle:
   of them installed. The build machine needs libdvdcss (see above); the script
   stops if it is missing. Set `SMP_NO_DVDCSS=1` to build without it on purpose,
   where its use isn't allowed. The script ends with a list of what was bundled.
+- libcdio-paranoia (reading audio CDs exactly), libprojectM with its presets
+  (MilkDrop) and whisper.cpp (subtitles from speech), built once by
+  `scripts/vm-job.sh`.
 
 ### Newer FFmpeg in the packages
 
-By default the packages carry the distribution's FFmpeg (6.1 on Ubuntu
-24.04). To ship a newer one, build the engine from source first:
+By default the packages carry the distribution's FFmpeg. To ship a newer one,
+build the engine from source first (the release packages always do):
 
 ```sh
 scripts/build-engine.sh --deps       # prints the one-time `sudo apt install ...` line
 scripts/build-engine.sh              # FFmpeg 9.1 + libplacebo + libmpv 0.42 → .devlibs/engine/
 scripts/package-linux.sh             # now bundles that engine
 ```
+
+Where the distribution's are too old (Ubuntu 22.04), dav1d and libdisplay-info
+are built too and bundled, and a newer libdrm is built only to compile against
+(the packages use the system's, which must match its GPU drivers). The engine
+includes x264, LAME and Opus (saved clips, casting) and audio CD support; mpv's
+PipeWire output only where libpipewire is 0.3.57 or newer (on 22.04 it plays
+through the PulseAudio output, which PipeWire desktops serve too).
 
 FFmpeg and libmpv are built together as one matched set: libmpv only works
 with the FFmpeg it was compiled against, so FFmpeg is never replaced on its
@@ -98,14 +136,39 @@ machines, or an older one.
 ```sh
 echo 'BUILD_HOST=user@host' > vm-build.conf   # git-ignored; ssh key login
 scripts/vm-build.sh setup     # once: build packages (asks for sudo) + Rust
-scripts/vm-build.sh           # copy the source over and start; returns at once
+scripts/vm-build.sh connect super-media-player/super-media-player  # once
+scripts/vm-build.sh           # start a build of GitHub's newest main
+scripts/vm-build.sh start --copy  # or of this folder, unpushed changes too
 scripts/vm-build.sh status    # end of the build log
 scripts/vm-build.sh fetch     # copy the finished packages into dist/
 ```
 
+After `connect`, the build machine's folder is a git checkout: every build
+and every daily check first moves it to GitHub's newest commit
+(`scripts/vm-pull.sh`), so what is built is always a known commit. Push, then
+build. Changes copied over with `--copy` are dropped again by the next build
+from GitHub.
+
 For notifications, put `NTFY_URL=https://ntfy.sh/<topic>` in
 `~/super-media-player/notify.conf` on the build machine. The engine is only
 rebuilt when `scripts/build-engine.sh` changed since its last build.
+
+### Releases
+
+A build of a commit with a version tag publishes its packages as that tag's
+GitHub release (`scripts/publish-github.sh`), next to the macOS `.dmg` files
+from GitHub Actions:
+
+```sh
+git tag v0.59.0 && git push origin main v0.59.0   # macOS build starts
+scripts/vm-build.sh                               # Linux + Windows, then publish
+```
+
+This needs `github.conf` in `~/super-media-player` on the build machine
+(git-ignored): `GITHUB_TOKEN=` a fine-grained token for the repository only,
+with "Contents: Read and write", and `GITHUB_REPO=super-media-player/super-media-player`.
+`scripts/vm-build.sh publish` publishes the last build again by hand. Daily
+rebuilds (`+auto`) are not published.
 
 `scripts/vm-build.sh schedule` turns on a daily check there
 (`scripts/vm-daily.sh`, from cron at 05:30). It rebuilds the packages by
@@ -121,8 +184,8 @@ notification, so a missing morning note means the check did not run.
 When the build machine runs build-hub (a web page that
 schedules and records the builds of several projects), let build-hub
 schedule `scripts/vm-daily.sh` instead: run `scripts/vm-build.sh unschedule`
-so it doesn't run twice. Copying new code over (`scripts/vm-build.sh`) works
-the same either way.
+so it doesn't run twice. build-hub's runs get GitHub's newest code the same
+way.
 
 ## Tests
 

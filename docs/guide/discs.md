@@ -50,8 +50,13 @@ any. *Settings → Discs → Audio CD names and covers* turns the lookup off.
 
 1. *File → Play disc → Rip audio CD to FLAC…*
 2. Check the folder it suggests and confirm.
-3. The songs go to `Music/Artist/Album`, with names, tags and the cover. Reading is
-   checked for errors (cdparanoia), so a CD takes several minutes.
+3. The songs go to `Music/Artist/Album`, with names, tags and the cover.
+
+Every sector is read until two reads agree (cdparanoia), so each file holds exactly the
+CD's sound: nothing cut or added at the start or end of a song, bit for bit. A CD takes
+about 15 minutes. At the end the player says whether every sector read cleanly, needed
+reading again (a worn disc; the files are still exact) or couldn't be read at all
+(a scratch: that song may click, and cleaning the disc and ripping it again can help).
 
 ## Blu-rays
 
@@ -78,6 +83,28 @@ Most drives refuse to hand 4K discs to any program but
    temporary and deleted afterwards.
 
 ![Copying a disc](../images/panel-ripping.png)
+
+## Copy a DVD or Blu-ray to video files
+
+Keeps a disc's films or episodes as files on your computer, with every audio track,
+subtitle and chapter, exactly as they are on the disc. It uses MakeMKV (set it up as
+described above).
+
+1. *File → Play disc → Rip disc to video files…*
+2. MakeMKV reads the disc (a minute or so). Then the player shows what it found:
+   - **A series disc** ("Reacher: Season Three Disc 2"): the episodes, named from
+     [TVmaze](https://www.tvmaze.com) (only the show's name is sent), for example
+     `Reacher - S03E05 - Smackdown.mkv`. Disc 2 with four episodes holds episodes 5
+     to 8; if the disc is split differently, change *First episode on this disc*. A
+     "play all" title and short extras are left unticked.
+   - **A film**: its longest title, named after the disc.
+3. Untick what you don't want, change the name or folder if needed, and press **Rip**.
+
+   ![Ripping a series disc to named files](../images/panel-rip-files.png)
+
+The files go to `Videos/Show/Season 03/` (or `Videos/Film/`), which Jellyfin, Plex,
+Kodi and the player's own [media library](media-library.md) recognise. A DVD episode
+takes a few minutes.
 
 ## Disc images and folders
 

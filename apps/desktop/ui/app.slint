@@ -2,9 +2,9 @@ import { LineEdit } from "std-widgets.slint";
 import { Theme, Clock } from "theme.slint";
 import { Icon, Icons } from "icons.slint";
 import { Fmt, IconButton, PillButton, SeekBar, Slider, MenuRow, MenuHeader } from "controls.slint";
-import { CastDevice, PlaylistItem, TrackItem, CheckItem, DriveChoice, PaletteItem, SignalStage, TranscriptLine, NavState, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark } from "types.slint";
+import { CastDevice, PlaylistItem, TrackItem, CheckItem, DriveChoice, RipRow, PaletteItem, SignalStage, TranscriptLine, NavState, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark } from "types.slint";
 import { MediaLibrary } from "media.slint";
-import { PictureCard, MediaInfoPanel, SubSearchPanel, LibraryPanel } from "basics.slint";
+import { PictureCard, MediaInfoPanel, SubSearchPanel, LibraryPanel, RipFilesPanel } from "basics.slint";
 import { NavPanel, NavWindow, Chip } from "nav.slint";
 import { PlaylistList } from "playlist.slint";
 import { TitleBar, WindowEdges, MenuBarWidth } from "titlebar.slint";
@@ -328,7 +328,7 @@ export component AppWindow inherits Window {
     out property <bool> panel-open: root.compact && (root.info-open || root.signal-open || root.library-open
         || root.subsearch-open || root.subsync-open || root.media-info-open || root.transcript-open || root.clip-open || root.remote-open
         || root.cast-open || root.party-open || root.palette-open || root.eq-open || root.settings-open
-        || root.ask-open || root.makemkv-open || root.check-open);
+        || root.ask-open || root.makemkv-open || root.check-open || root.ripfiles-open);
     // A skin with nothing over it: right-clicks are for its menu, not for a
     // dialog's text field.
     out property <bool> skin-alone: root.compact && !root.panel-open && !drive-popup.is-open && !url-popup.is-open
@@ -663,6 +663,25 @@ export component AppWindow inherits Window {
     callback start-window-resize(int);
     // Rip & play with MakeMKV (ripper.rs), its key, and stopping a rip.
     callback rip-disc();
+    // Rip a disc to named video files (discrip.rs).
+    callback rip-files();
+    in-out property <bool> ripfiles-open;
+    in property <[RipRow]> ripfiles-rows;
+    in property <bool> ripfiles-series;
+    in-out property <string> ripfiles-name;
+    in property <int> ripfiles-season;
+    in property <int> ripfiles-first;
+    in property <string> ripfiles-summary;
+    in property <string> ripfiles-folder;
+    in property <string> ripfiles-total;
+    in property <bool> ripfiles-can-start;
+    callback ripfiles-renamed();
+    callback ripfiles-season-by(int);
+    callback ripfiles-first-by(int);
+    callback ripfiles-lookup();
+    callback ripfiles-toggle(int);
+    callback ripfiles-choose-folder();
+    callback ripfiles-start();
     callback update-ffmpeg();
     callback register-makemkv(string);
     in property <bool> busy-cancellable: false;
@@ -962,6 +981,7 @@ export component AppWindow inherits Window {
                 MenuItem { title: "DVD, main film (no menu)"; activated => { root.open-disc("dvd-film"); } }
                 MenuItem { title: "Blu-ray"; activated => { root.open-disc("bluray"); } }
                 MenuItem { title: "Rip & play with MakeMKV…"; activated => { root.rip-disc(); } }
+                MenuItem { title: "Rip disc to video files…"; activated => { root.rip-files(); } }
                 MenuItem { title: "Audio CD"; activated => { root.open-disc("cd"); } }
                 MenuItem { title: "Rip audio CD to FLAC…"; activated => { root.open-disc("rip-cd"); } }
                 MenuSeparator { }
@@ -1286,6 +1306,7 @@ export component AppWindow inherits Window {
             if (e.text == Key.Escape && root.picture-open) { root.picture-open = false; return accept; }
             if (e.text == Key.Escape && root.media-info-open) { root.media-info-open = false; return accept; }
             if (e.text == Key.Escape && root.subsearch-open) { root.subsearch-open = false; return accept; }
+            if (e.text == Key.Escape && root.ripfiles-open) { root.ripfiles-open = false; return accept; }
             if (e.text == Key.Escape && root.library-open) { root.library-open = false; return accept; }
             if (root.media-open && !root.compact) {
                 if (e.text == Key.Escape && !root.settings-open && !root.palette-open) {
@@ -1664,6 +1685,7 @@ export component AppWindow inherits Window {
                         MenuItem { title: "DVD, main film (no menu)"; activated => { root.open-disc("dvd-film"); } }
                         MenuItem { title: "Blu-ray"; activated => { root.open-disc("bluray"); } }
                         MenuItem { title: "Rip & play with MakeMKV…"; activated => { root.rip-disc(); } }
+                        MenuItem { title: "Rip disc to video files…"; activated => { root.rip-files(); } }
                         MenuItem { title: "Audio CD"; activated => { root.open-disc("cd"); } }
                         MenuItem { title: "Rip audio CD to FLAC…"; activated => { root.open-disc("rip-cd"); } }
                         MenuSeparator { }
@@ -2687,6 +2709,26 @@ export component AppWindow inherits Window {
             close => { root.subsearch-open = false; keys.focus(); }
         }
 
+        if root.ripfiles-open: RipFilesPanel {
+            rows: root.ripfiles-rows;
+            series: root.ripfiles-series;
+            name <=> root.ripfiles-name;
+            season: root.ripfiles-season;
+            first: root.ripfiles-first;
+            summary: root.ripfiles-summary;
+            folder: root.ripfiles-folder;
+            total: root.ripfiles-total;
+            can-start: root.ripfiles-can-start;
+            renamed => { root.ripfiles-renamed(); }
+            season-by(d) => { root.ripfiles-season-by(d); }
+            first-by(d) => { root.ripfiles-first-by(d); }
+            lookup => { root.ripfiles-lookup(); }
+            toggle(i) => { root.ripfiles-toggle(i); }
+            choose-folder => { root.ripfiles-choose-folder(); }
+            begin => { root.ripfiles-start(); }
+            close => { root.ripfiles-open = false; keys.focus(); }
+        }
+
         if root.media-info-open: MediaInfoPanel {
             rows: root.media-info-rows;
             as-text: root.media-info-text;
@@ -3415,6 +3457,7 @@ export component AppWindow inherits Window {
                 MenuRow { text: "Blu-ray"; clicked => { root.open-disc("bluray"); } }
                 MenuRow { text: "Audio CD"; clicked => { root.open-disc("cd"); } }
                 MenuRow { text: "Rip audio CD to FLAC…"; clicked => { root.open-disc("rip-cd"); } }
+                MenuRow { text: "Rip disc to video files…"; clicked => { root.rip-files(); } }
                 MenuRow { text: "Disc image (ISO)…"; clicked => { root.open-disc("image"); } }
                 MenuRow { text: "Disc folder…"; clicked => { root.open-disc("folder"); } }
             }

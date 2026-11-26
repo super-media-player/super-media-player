@@ -181,6 +181,7 @@ pub fn options(s: &Settings) -> Vec<(&'static str, String)> {
     if s.scripts { options_in(settings::data_dir().map(|d| d.join("mpv")), settings::config_dir()) } else { Vec::new() }
 }
 
+#[cfg_attr(not(unix), allow(unused_variables, unused_mut))]
 fn options_in(home: Option<PathBuf>, config: Option<PathBuf>) -> Vec<(&'static str, String)> {
     let mut out = vec![
         // They are loaded one by one, so each can be switched off.

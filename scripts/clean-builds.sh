@@ -62,10 +62,15 @@ newest=$(ls -1t "${debs[@]}" | head -n 1)
 keep=${newest#dist/super-media-player_}
 keep=${keep%_*.deb}
 echo "keeping $keep"
-for f in "${debs[@]}" dist/super-media-player-*-linux-*.tar.gz; do
+for f in "${debs[@]}" dist/super-media-player-*-linux-*.tar.gz dist/super-media-player-*.rpm \
+    dist/super-media-player-*.AppImage dist/super-media-player-*-windows-* dist/SHA256SUMS-*; do
     v=${f#dist/super-media-player[_-]}
     case "$f" in
     *.deb) v=${v%_*.deb} ;;
+    *.rpm) v=${v%-1.*.rpm} ;;
+    *.AppImage) v=${v%-*.AppImage} ;;
+    *-windows-*) v=${v%-windows-*} ;;
+    dist/SHA256SUMS-*) v=${f#dist/SHA256SUMS-} ;;
     *) v=${v%-linux-*.tar.gz} ;;
     esac
     [[ "$v" == "$keep" ]] || remove "$f"

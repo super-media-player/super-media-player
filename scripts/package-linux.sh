@@ -3,6 +3,14 @@
 #
 #   dist/super-media-player-<version>-linux-<arch>.tar.gz   portable folder, no root needed
 #   dist/super-media-player_<version>_<debarch>.deb         installs to /opt/super-media-player
+#   dist/super-media-player-<version>-<arch>.rpm            the same for Fedora / openSUSE
+#                                                           (when rpmbuild is installed)
+#   dist/super-media-player-<version>-<arch>.AppImage       one file, runs anywhere
+#                                                           (when appimagetool is installed)
+#
+# They run on the distribution they were built on and newer ones (glibc only
+# works forwards): the release packages are built in the Ubuntu 22.04
+# container (scripts/in-container.sh).
 #
 # libmpv and every library it needs (FFmpeg, codecs, ...) are copied into the
 # package, so nothing has to be downloaded or installed on the target machine.
@@ -259,6 +267,11 @@ depends=$(for p in "${system_paths[@]}"; do
     done
 # (AMD's driver repo renames some Mesa packages, e.g. libgbm1-amdgpu; depend on the standard names.)
 done | sed "s/-amdgpu//" | sort -u | paste -sd, | sed "s/,/, /g")
+# glibc only works forwards: at least the build machine's.
+# (sed reads it all: `| head` would end ldd early, a failure under pipefail.)
+glibc=$(ldd --version 2>&1 | sed -nE '1s/.* ([0-9]+\.[0-9]+)$/\1/p')
+[[ -n "$glibc" ]] || { echo "error: couldn't tell the glibc version" >&2; exit 1; }
+depends=$(sed -E "s/(^|, )libc6(,|$)/\1libc6 (>= $glibc)\2/" <<<"$depends")
 installed_kb=$(du -sk "$deb" --exclude=DEBIAN | cut -f1)
 
 cat > "$deb/DEBIAN/control" <<EOF
@@ -281,6 +294,78 @@ dpkg-deb --root-owner-group -Zxz --build "$deb" "$debfile" >/dev/null
 echo "==> $debfile ($(du -h "$debfile" | cut -f1))"
 echo "    depends: $depends"
 
+# ---- .rpm ----
+if command -v rpmbuild >/dev/null; then
+    rpmtop="$stage/rpm"
+    mkdir -p "$rpmtop"/{BUILD,RPMS,SOURCES,SPECS,SRPMS,BUILDROOT}
+    # The same system libraries as the .deb, by the names rpm packages provide.
+    # Private libraries that come with a public one and carry the build
+    # machine's version in their name (libpulsecommon-15.99.so comes with
+    # libpulse.so.0) are left out: no other distribution has that name.
+    requires=$(for p in "${system_paths[@]}"; do basename "$p"; done | sort -u |
+        grep -vE '^(linux-vdso|libpulsecommon-)' | sed 's/$/()(64bit)/' | paste -sd' ')
+    rpmversion=${version//-/_}
+    cat > "$rpmtop/SPECS/smp.spec" <<EOF
+Name: super-media-player
+Version: $rpmversion
+Release: 1
+Summary: Super Media Player (SMP) for video, music, streams and discs
+License: GPL-3.0-or-later
+URL: https://github.com/
+# Everything but base desktop libraries is in /opt/super-media-player.
+AutoReqProv: no
+Requires: $requires libc.so.6(GLIBC_$glibc)(64bit)
+%description
+A desktop media player built on libmpv and FFmpeg, with hardware video
+decoding. libmpv and its codec libraries are bundled in /opt/super-media-player.
+%install
+cp -a "$deb/opt" "$deb/usr" %{buildroot}/
+%files
+/opt/super-media-player
+/usr/bin/super-media-player
+/usr/share/applications/super-media-player.desktop
+/usr/share/icons/hicolor/scalable/apps/super-media-player.svg
+EOF
+    rpmbuild --quiet -bb --define "_topdir $rpmtop" --define "_build_id_links none" \
+        --define "__strip /bin/true" --define "__brp_strip /bin/true" \
+        --define "__os_install_post %{nil}" "$rpmtop/SPECS/smp.spec" >/dev/null
+    rpmfile="dist/super-media-player-${rpmversion}-1.$arch.rpm"
+    cp "$rpmtop"/RPMS/*/*.rpm "$rpmfile"
+    echo "==> $rpmfile ($(du -h "$rpmfile" | cut -f1))"
+else
+    echo "    note: rpmbuild not installed, no .rpm"
+fi
+
+# ---- AppImage ----
+if command -v appimagetool >/dev/null; then
+    appdir="$stage/AppDir"
+    rm -rf "$appdir"
+    cp -r "$app" "$appdir"
+    rm -f "$appdir/install.sh" "$appdir/README.md"
+    cp packaging/linux/super-media-player.desktop "$appdir/"
+    cp packaging/linux/super-media-player.svg "$appdir/"
+    mkdir -p "$appdir/usr/share/metainfo"
+    cp packaging/linux/*.metainfo.xml "$appdir/usr/share/metainfo/"
+    cat > "$appdir/AppRun" <<'EOF'
+#!/bin/sh
+here="$(dirname "$(readlink -f "$0")")"
+exec "$here/super-media-player" "$@"
+EOF
+    chmod 755 "$appdir/AppRun"
+    appimage="dist/super-media-player-$version-$arch.AppImage"
+    runtime=/usr/local/share/appimage-runtime-$arch
+    ARCH=$arch appimagetool --no-appstream ${SMP_APPIMAGE_RUNTIME:+--runtime-file "$SMP_APPIMAGE_RUNTIME"} \
+        $([[ -z "${SMP_APPIMAGE_RUNTIME:-}" && -e "$runtime" ]] && echo --runtime-file "$runtime") \
+        "$appdir" "$appimage" >/dev/null 2>"$stage/appimagetool.log" ||
+        { cat "$stage/appimagetool.log" >&2; echo "error: appimagetool failed" >&2; exit 1; }
+    echo "==> $appimage ($(du -h "$appimage" | cut -f1))"
+else
+    echo "    note: appimagetool not installed, no AppImage"
+fi
+
+# ---- checksums of everything this run made ----
+(cd dist && sha256sum ./*"$version"[-._]* 2>/dev/null | sed 's#  \./#  #' | grep -v SHA256SUMS > "SHA256SUMS-$version") || true
+
 # ---- summary: what other machines get without installing anything ----
 has() { [[ -e "$app/$1" ]] && echo "included" || echo "NOT included"; }
 echo "==> bundled for other machines:"
@@ -288,6 +373,7 @@ echo "    DVD decryption (libdvdcss):   $(has lib/libdvdcss.so.2)"
 echo "    Blu-ray AACS (libaacs):       $(has lib/libaacs.so.0)"
 echo "    Blu-ray BD+ (libbdplus):      $(has lib/libbdplus.so.0)"
 echo "    Online video (yt-dlp):        $(has yt-dlp)"
+echo "    Audio CD reading (cdparanoia): $(has lib/libcdio_paranoia.so.2)"
 echo "    Intro detection (chromaprint): $(has lib/libchromaprint.so.1)"
 echo "    MilkDrop (libprojectM):       $(has lib/libprojectM-4.so.4)"
 echo "    Speech to subtitles (whisper): $(has whisper/whisper-cli)"

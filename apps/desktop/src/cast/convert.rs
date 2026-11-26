@@ -12,8 +12,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 use player_core::{LoadMode, Player, PlayerConfig, PlayerEvent};
 
 use super::discovery::Kind;
@@ -550,6 +552,7 @@ fn ffmpeg_args(job: &Job) -> Vec<String> {
 }
 
 /// mpv options for encoding into file descriptor `fd`.
+#[cfg(unix)]
 fn mpv_options(job: &Job, fd: i32) -> Vec<(String, String)> {
     let (src, plan) = (&job.source, &job.plan);
     let mut o: Vec<(&str, String)> = vec![

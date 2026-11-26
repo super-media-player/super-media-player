@@ -7,7 +7,7 @@ import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { IconButton } from "controls.slint";
 import { Panel } from "extras.slint";
-import { InfoRow, PictureState, SubHit, LibraryRow } from "types.slint";
+import { InfoRow, PictureState, SubHit, LibraryRow, RipRow } from "types.slint";
 
 // One slider of the picture card: label, value, and a double-click resets it.
 component PicSlider inherits HorizontalLayout {
@@ -315,6 +315,121 @@ export component SubSearchPanel inherits Panel {
             wrap: word-wrap;
         }
         Button { text: "Subtitles from speech…"; clicked => { root.from-speech(); } }
+    }
+}
+
+// Rip a DVD or Blu-ray to video files (discrip.rs): what each title
+// becomes, a series' name, season and first episode, and where it goes.
+export component RipFilesPanel inherits Panel {
+    in property <[RipRow]> rows;
+    in property <bool> series;
+    in-out property <string> name;
+    in property <int> season;
+    in property <int> first;
+    in property <string> summary;
+    in property <string> folder;
+    in property <string> total;
+    in property <bool> can-start;
+    callback renamed();
+    callback season-by(int);
+    callback first-by(int);
+    callback lookup();
+    callback toggle(int);
+    callback choose-folder();
+    callback begin();
+
+    title: "Rip the disc to video files";
+    card-width: 700px;
+    card-height: 620px;
+
+    HorizontalLayout {
+        spacing: 8px;
+        Text {
+            text: root.series ? "Series" : "Film";
+            color: Theme.text-dim;
+            vertical-alignment: center;
+            width: 48px;
+        }
+        LineEdit {
+            horizontal-stretch: 1;
+            text <=> root.name;
+            placeholder-text: root.series ? "The show's name" : "The film's name";
+            edited => { root.renamed(); }
+            accepted => { root.lookup(); }
+        }
+        if root.series: Button { text: "Look up names"; clicked => { root.lookup(); } }
+    }
+    if root.series: HorizontalLayout {
+        spacing: 8px;
+        Text { text: "Season"; color: Theme.text-dim; vertical-alignment: center; width: 48px; }
+        Button { text: "−"; clicked => { root.season-by(-1); } }
+        Text { text: root.season; color: Theme.text; font-weight: 700; vertical-alignment: center; horizontal-alignment: center; min-width: 28px; }
+        Button { text: "+"; clicked => { root.season-by(1); } }
+        Rectangle { width: 16px; }
+        Text { text: "First episode on this disc"; color: Theme.text-dim; vertical-alignment: center; }
+        Button { text: "−"; clicked => { root.first-by(-1); } }
+        Text { text: root.first; color: Theme.text; font-weight: 700; vertical-alignment: center; horizontal-alignment: center; min-width: 28px; }
+        Button { text: "+"; clicked => { root.first-by(1); } }
+        Rectangle { horizontal-stretch: 1; }
+    }
+    if root.summary != "": Text {
+        text: root.summary;
+        color: Theme.text-dim;
+        font-size: 12px;
+        wrap: word-wrap;
+    }
+    ScrollView {
+        vertical-stretch: 1;
+        VerticalLayout {
+            padding-right: 14px;
+            spacing: 2px;
+            alignment: start;
+            for r[i] in root.rows: Rectangle {
+                height: 46px;
+                border-radius: 8px;
+                background: row-touch.has-hover ? #ffffff10 : transparent;
+                row-touch := TouchArea { mouse-cursor: pointer; clicked => { root.toggle(i); } }
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 10px;
+                    CheckBox {
+                        checked: r.rip;
+                        toggled => { root.toggle(i); }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        Text { text: r.file; color: r.rip ? Theme.text : Theme.text-faint; overflow: elide; }
+                        Text { text: r.detail; color: Theme.text-faint; font-size: 11px; overflow: elide; }
+                    }
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        Text {
+            text: "Into " + root.folder;
+            color: Theme.text-dim;
+            font-size: 12px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Button { text: "Change…"; clicked => { root.choose-folder(); } }
+    }
+    HorizontalLayout {
+        spacing: 10px;
+        Text {
+            text: root.total;
+            color: Theme.text-faint;
+            font-size: 11px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            wrap: word-wrap;
+        }
+        Button { text: "Rip"; primary: true; enabled: root.can-start; clicked => { root.begin(); } }
     }
 }
 

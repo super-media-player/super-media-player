@@ -290,7 +290,7 @@ fn main() {
         ui.set_rip_title(if name == "rip-scanning" { "Reading the disc…" } else { "HOLIDAY FILM" }.into());
         ui.set_ask_open(name == "ask");
         ui.set_ask_title("Rip & play".into());
-        ui.set_ask_text("Copy \"HOLIDAY FILM\" (2:35:31, 7.6 GB) from the DVD drive (TSST SH-216DB, /dev/sr0) to\n/home/dima/Videos/Super Media Player/Rip & play (temporary)/HOLIDAY FILM\n\nIt starts playing when the copy is done. A DVD takes 10 to 30 minutes, an Ultra HD movie 20 to 60; you can cancel at any time.\n\nThe copy is temporary: it is deleted when playback ends, when you play something else, or when you close the player.".into());
+        ui.set_ask_text("Copy \"HOLIDAY FILM\" (2:35:31, 7.6 GB) from the DVD drive (TSST SH-216DB, /dev/sr0) to\n/home/alex/Videos/Super Media Player/Rip & play (temporary)/HOLIDAY FILM\n\nIt starts playing when the copy is done. A DVD takes 10 to 30 minutes, an Ultra HD movie 20 to 60; you can cancel at any time.\n\nThe copy is temporary: it is deleted when playback ends, when you play something else, or when you close the player.".into());
         ui.set_ask_ok_label("Rip & play".into());
         ui.set_ask_cancel_label("Cancel".into());
         ui.set_rip_drive("Blu-ray drive (LG WH14NS40, /dev/sr1)".into());

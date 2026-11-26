@@ -1,0 +1,57 @@
+# Packages that need their own system to build: macOS (Apple silicon and
+# Intel). Linux and Windows packages are built on the build machine
+# (scripts/vm-job.sh, scripts/package-windows.sh in the smp-build container).
+#
+# Runs for a version tag (v0.59.0) or by hand; the .dmg files are kept as
+# the run's artifacts and, for a tag, added to its GitHub release (the build
+# machine's scripts/publish-github.sh adds the Linux and Windows packages to
+# the same release; whichever comes first creates it).
+name: Release packages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]   # Apple silicon, Intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Homebrew packages
+        run: brew install mpv dylibbundler librsvg
+      - run: scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.os }}
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dmg
+          merge-multiple: true
+      - name: Add the .dmg files to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # A draft made by the build machine has no tag yet: find it by name.
+          tags=$(gh release list --limit 100 --json tagName --jq '.[].tagName')
+          if ! grep -qx "$TAG" <<<"$tags"; then
+            gh release create "$TAG" --draft --verify-tag --title "Super Media Player ${TAG#v}" --notes ""
+          fi
+          gh release upload "$TAG" dmg/*.dmg --clobber
