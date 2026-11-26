@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
@@ -19,18 +20,29 @@ fn fixtures_dir() -> PathBuf {
 }
 
 /// Generate `name` with ffmpeg `args` unless it exists. Returns None without ffmpeg.
+///
+/// Tests run in parallel and share these files. One lock makes them one at a
+/// time, and ffmpeg writes under a temporary name that is renamed when done,
+/// so no test ever opens a half-written file.
 fn fixture(name: &str, args: &[&str]) -> Option<PathBuf> {
+    static MAKING: Mutex<()> = Mutex::new(());
+    let _guard = MAKING.lock().unwrap_or_else(|e| e.into_inner());
     let path = fixtures_dir().join(name);
     if path.exists() {
         return Some(path);
     }
+    let partial = fixtures_dir().join(format!("partial-{name}"));
     let status = Command::new("ffmpeg")
         .args(["-hide_banner", "-loglevel", "error", "-y"])
         .args(args)
-        .arg(&path)
+        .arg(&partial)
         .status()
         .ok()?;
-    status.success().then_some(path)
+    if !status.success() {
+        return None;
+    }
+    std::fs::rename(&partial, &path).ok()?;
+    Some(path)
 }
 
 fn audio_fixture() -> Option<PathBuf> {
@@ -94,14 +106,20 @@ fn wait_for(
     mut pred: impl FnMut(&PlayerEvent) -> bool,
 ) -> PlayerEvent {
     let deadline = Instant::now() + Duration::from_secs(10);
+    // Kept for the failure message: on a CI machine it is the only clue.
+    let mut seen = Vec::new();
     while let Some(left) = deadline.checked_duration_since(Instant::now()) {
         match rx.recv_timeout(left) {
             Ok(e) if pred(&e) => return e,
-            Ok(_) => {}
+            Ok(e) => seen.push(format!("{e:?}")),
             Err(_) => break,
         }
     }
-    panic!("timed out waiting for {what}");
+    let recent = &seen[seen.len().saturating_sub(15)..];
+    panic!(
+        "timed out waiting for {what}; last events:\n{}",
+        recent.join("\n")
+    );
 }
 
 fn path_str(p: &Path) -> &str {
