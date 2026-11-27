@@ -134,7 +134,10 @@ mod tests {
             }
         }
         let mut found = Vec::new();
-        scan(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut found);
+        scan(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut found,
+        );
         assert!(found.is_empty(), "use crate::process::command at {found:?}");
     }
 }

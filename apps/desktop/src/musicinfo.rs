@@ -140,10 +140,10 @@ pub fn lookup(q: &Query) -> Info {
         if let Ok(tagged) = lofty::read_from_path(&q.path) {
             use lofty::prelude::*;
             if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
-                info.year = tag.year();
+                info.year = tag.date().map(|d| u32::from(d.year));
                 info.track = tag.track();
                 info.genre = tag.genre().map(|g| g.into_owned()).unwrap_or_default();
-                embedded_lyrics = tag.get_string(&ItemKey::Lyrics).map(str::to_owned);
+                embedded_lyrics = tag.get_string(ItemKey::Lyrics).map(str::to_owned);
                 let pics = tag.pictures();
                 let pic = pics
                     .iter()

@@ -36,6 +36,8 @@ mod party;
 mod pcm;
 mod playlists;
 mod process;
+mod overlay;
+mod pitch;
 mod pulse;
 mod remote;
 mod resume;
@@ -1155,6 +1157,9 @@ fn start_engine(
     ui.set_starting(false);
     refresh_tool_status(ui);
     run_system_check(ui, &settings.borrow(), true);
+    if settings.borrow().check_app_updates {
+        check_app_release(ui);
+    }
     schedule_auto_update(ui, settings);
     // The renderer creates mpv's render context on the next frame.
     ui.window().request_redraw();
@@ -1183,7 +1188,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_s_visualizer(index_of(settings::VISUALIZERS, &s.visualizer));
     ui.set_s_artist_pos(index_of(ARTIST_POSITIONS, &s.artist_image));
     ui.set_s_artist_online(s.artist_image_online);
-    ui.set_s_pulse_line(s.pulse_line);
+    ui.set_s_overlay(index_of(settings::OVERLAYS, &s.music_overlay));
     ui.set_s_lyrics_online(s.lyrics_online);
     ui.set_s_show_lyrics(s.show_lyrics);
     ui.set_s_gapless(s.gapless);
@@ -1203,6 +1208,7 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_s_bluray_decryption(index_of(BLURAY_DECRYPTION, &s.bluray_decryption));
     ui.set_s_window_system(index_of(WINDOW_SYSTEMS, &s.window_system));
     ui.set_s_auto_update(s.auto_update);
+    ui.set_s_check_app_updates(s.check_app_updates);
     ui.set_s_night_mode(s.night_mode);
     ui.set_s_dialogue_boost(s.dialogue_boost);
     ui.set_s_seek_thumbnails(s.seek_thumbnails);
@@ -1245,7 +1251,7 @@ fn settings_from_ui(ui: &AppWindow, old: &Settings) -> Settings {
         visualizer: pick(settings::VISUALIZERS, ui.get_s_visualizer()),
         artist_image: pick(ARTIST_POSITIONS, ui.get_s_artist_pos()),
         artist_image_online: ui.get_s_artist_online(),
-        pulse_line: ui.get_s_pulse_line(),
+        music_overlay: pick(settings::OVERLAYS, ui.get_s_overlay()),
         lyrics_online: ui.get_s_lyrics_online(),
         show_lyrics: ui.get_s_show_lyrics(),
         gapless: ui.get_s_gapless(),
@@ -1265,6 +1271,7 @@ fn settings_from_ui(ui: &AppWindow, old: &Settings) -> Settings {
         window_system: pick(WINDOW_SYSTEMS, ui.get_s_window_system()),
         volume: old.volume,
         auto_update: ui.get_s_auto_update(),
+        check_app_updates: ui.get_s_check_app_updates(),
         playlist_detached: old.playlist_detached,
         classic_playlist: old.classic_playlist,
         bass: old.bass,
@@ -1923,6 +1930,8 @@ fn start_meter(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     use slint::Model;
     let model = Rc::new(slint::VecModel::from(vec![0.0f32; meter::BANDS]));
     ui.set_spectrum(model.clone().into());
+    let peaks = Rc::new(slint::VecModel::from(vec![0.0f32; meter::BANDS]));
+    ui.set_spectrum_peaks(peaks.clone().into());
     let mut meter = meter::Meter::default();
     meter.tone.set(meter::Tone {
         bass: ui.get_bass() as f64,
@@ -2012,6 +2021,7 @@ fn start_meter(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     let weak = ui.as_weak();
     let player = player.clone();
     let mut pulse = pulse::Pulse::default();
+    let mut overlay = overlay::Overlay::default();
     let mut last_title = slint::SharedString::default();
     let mut clock_ms = 0f64;
     let mut last_tick = std::time::Instant::now();
@@ -2075,33 +2085,101 @@ fn start_meter(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
                 meter::set_fade(&player, gain);
                 fade_shown = gain;
             }
+            // The music overlay picked (settings::OVERLAYS); the melody trail
+            // needs the note meter too.
+            let picked = settings::OVERLAYS
+                .get(ui.get_s_overlay().max(0) as usize)
+                .copied()
+                .unwrap_or("off");
+            meter.want_notes = picked == "melody";
             if let Some(levels) = meter.tick(&player, bars, has_video, paused) {
                 for (i, v) in levels.into_iter().enumerate().take(model.row_count()) {
                     model.set_row_data(i, v);
+                }
+                for (i, &v) in meter.peaks().iter().enumerate().take(peaks.row_count()) {
+                    peaks.set_row_data(i, v);
                 }
             }
             // Beat, loudness and the pulse line (pulse.rs) for the UI's visuals.
             let title = ui.get_media_title();
             if title != last_title {
                 pulse.clear();
+                overlay.clear();
                 last_title = title;
             }
-            pulse.tick(meter.heard().filter(|_| bars && !paused));
+            let heard = meter.heard().filter(|_| bars && !paused);
+            pulse.tick(heard);
+            if !matches!(picked, "off" | "pulse") {
+                overlay.tick(heard, meter.heard_notes(), pulse.hit());
+            }
             if milkdrop::active() {
                 milkdrop::set_levels(meter.heard().filter(|_| !paused));
                 milkdrop::set_preset_seconds(settings.borrow().milkdrop_seconds);
             }
             ui.set_beat(pulse.beat());
             ui.set_energy(pulse.energy());
-            if bars && ui.get_s_pulse_line() {
-                let aspect = ui.get_pulse_aspect();
-                let view_h = pulse::HISTORY as f32 * if aspect > 0.0 { aspect } else { 0.15 };
-                ui.set_pulse_path(pulse.path(view_h).into());
-                ui.set_pulse_head(pulse.head());
+            if bars {
+                show_overlay(&ui, picked, &pulse, &overlay);
             }
         },
     );
     std::mem::forget(timer);
+}
+
+/// Hand the music overlay `picked` (settings::OVERLAYS) its new picture.
+fn show_overlay(ui: &AppWindow, picked: &str, pulse: &pulse::Pulse, o: &overlay::Overlay) {
+    let aspect = ui.get_pulse_aspect();
+    let aspect = if aspect > 0.0 { aspect } else { 0.15 };
+    // Paths come in a viewbox as wide as the history and as tall as the
+    // overlay's shape, so they aren't stretched.
+    let view_h = overlay::SPAN as f32 * aspect;
+    let bpm = || {
+        pulse
+            .bpm()
+            .map_or("—".to_string(), |b| format!("{:.0}", b))
+            .into()
+    };
+    match picked {
+        "pulse" => {
+            ui.set_pulse_path(pulse.path(pulse::HISTORY as f32 * aspect).into());
+            ui.set_pulse_head(pulse.head());
+        }
+        "ribbons" => {
+            let [bass, voice, bright, beats] = o.ribbons(view_h);
+            ui.set_ribbon_bass(bass.into());
+            ui.set_ribbon_voice(voice.into());
+            ui.set_ribbon_bright(bright.into());
+            ui.set_ribbon_beats(beats.into());
+            ui.set_bpm(bpm());
+        }
+        "melody" => {
+            let [voice, bass, beats] = o.melody(view_h);
+            ui.set_melody_voice(voice.into());
+            ui.set_melody_bass(bass.into());
+            ui.set_melody_beats(beats.into());
+            let (m, b) = o.notes_now();
+            let y = |n: Option<pitch::Note>| n.map_or(-1.0, |n| overlay::note_y(n.midi, 1.0));
+            ui.set_melody_y(y(m));
+            ui.set_melody_level(m.map_or(0.0, |n| n.level));
+            ui.set_melody_note(m.map(|n| pitch::name(n.midi)).unwrap_or_default().into());
+            ui.set_bass_note_y(y(b));
+            ui.set_bass_note_level(b.map_or(0.0, |n| n.level));
+        }
+        "heatmap" => {
+            ui.set_heat_picture(slint::Image::from_rgba8(o.heat_map()));
+            ui.set_heat_beats(o.beat_ticks(view_h).into());
+        }
+        "ring" => {
+            ui.set_ring_path(o.ring(pulse.beat()).into());
+            ui.set_ring_tone(o.tone());
+        }
+        "lamps" => {
+            let levels: Vec<f32> = o.lamps().to_vec();
+            ui.set_lamp_levels(std::rc::Rc::new(slint::VecModel::from(levels)).into());
+            ui.set_bpm(bpm());
+        }
+        _ => {}
+    }
 }
 
 /// Run the system check (doctor.rs) on a worker thread and show the
@@ -2281,6 +2359,63 @@ fn schedule_auto_update(ui: &AppWindow, settings: Rc<RefCell<Settings>>) {
         move || check(),
     );
     std::mem::forget(timer);
+}
+
+/// At startup: ask GitHub for the newest release of the player and, when it
+/// is newer than this one, offer to open its download page. Waits a few
+/// seconds so it doesn't slow the start or cover a file being opened.
+fn check_app_release(ui: &AppWindow) {
+    let weak = ui.as_weak();
+    slint::Timer::single_shot(Duration::from_secs(4), move || {
+        let weak = weak.clone();
+        std::thread::spawn(move || {
+            let latest = match tools::newer_app_release() {
+                Ok(Some(v)) => v,
+                Ok(None) => return,
+                Err(e) => {
+                    log::info!("could not check for a new version: {e}");
+                    return;
+                }
+            };
+            log::info!(
+                "Super Media Player {latest} is out (this is {})",
+                env!("CARGO_PKG_VERSION")
+            );
+            let _ = weak.upgrade_in_event_loop(move |ui| {
+                // Don't replace a question the user is answering.
+                if ui.get_ask_open() {
+                    ui.set_toast(
+                        format!(
+                            "Super Media Player {latest} is out: {}",
+                            tools::APP_RELEASES_PAGE
+                        )
+                        .into(),
+                    );
+                    return;
+                }
+                ask(
+                    &ui,
+                    "A new version is out",
+                    &format!(
+                        "Super Media Player {latest} is available. You have {}.\n\n\
+                         Open the download page? You can turn this message off in \
+                         Settings → Online.",
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                    "Open download page",
+                    "Not now",
+                    |ui, yes| {
+                        if !yes {
+                            return;
+                        }
+                        if let Err(e) = open_folder(Path::new(tools::APP_RELEASES_PAGE)) {
+                            ui.set_toast(format!("Could not open the browser: {e}").into());
+                        }
+                    },
+                );
+            });
+        });
+    });
 }
 
 /// Install or update yt-dlp, then (when `retry` is given) play that link again.

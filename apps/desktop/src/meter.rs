@@ -23,6 +23,12 @@ const LOW_HZ: f64 = 50.0;
 const HIGH_HZ: f64 = 14_000.0;
 /// mpv filter label; also the `af-metadata/<label>` key.
 const LABEL: &str = "vis";
+/// The note meter (for the melody trail): one band a semitone wide per
+/// note from `NOTE_LOW` up, MIDI numbers. 60 bands plus the sound itself
+/// stay under `amerge`'s limit of 64 inputs.
+const NOTE_LABEL: &str = "notes";
+pub const NOTE_LOW: u8 = 36; // C2, 65 Hz
+pub const NOTES: usize = 60; // up to B6, 1976 Hz
 
 /// Channel layouts the final `pan` can restore by name. Anything else (rare
 /// in music) is left alone, without bars.
@@ -59,29 +65,57 @@ fn centers(samplerate: u32) -> Vec<f64> {
 /// The lavfi graph measuring audio with layout `layout` (mpv's name for it,
 /// e.g. "stereo"). `None` when the layout is not one we can restore.
 pub fn graph(layout: &str, samplerate: u32) -> Option<String> {
-    let channels = LAYOUTS.iter().find(|(n, _)| *n == layout)?.1;
     let cs = centers(samplerate);
     let width = (cs[BANDS - 1] / cs[0]).log2() / (BANDS - 1) as f64;
+    band_graph(layout, &cs, width)
+}
+
+/// Centre frequencies of the note meter's bands, MIDI `NOTE_LOW` up, as
+/// many as fit under the Nyquist limit.
+fn note_centers(samplerate: u32) -> Vec<f64> {
+    let top = f64::from(samplerate) * 0.45;
+    (0..NOTES)
+        .map(|i| 440.0 * 2f64.powf((f64::from(NOTE_LOW) + i as f64 - 69.0) / 12.0))
+        .take_while(|f| *f < top)
+        .collect()
+}
+
+/// The note meter's graph: like [`graph`], with a band a semitone wide on
+/// every note (for finding the melody and the bass note; pitch.rs).
+pub fn note_graph(layout: &str, samplerate: u32) -> Option<String> {
+    band_graph(layout, &note_centers(samplerate), 1.0 / 12.0)
+}
+
+/// A mono copy of the sound through one band-pass filter per centre
+/// (`width` octaves wide), merged in as extra channels after the sound's
+/// own, `astats` measuring each, and `pan` dropping them again, so what is
+/// heard is untouched.
+fn band_graph(layout: &str, centres: &[f64], width: f64) -> Option<String> {
+    let channels = LAYOUTS.iter().find(|(n, _)| *n == layout)?.1;
+    let n = centres.len();
+    if n == 0 {
+        return None;
+    }
     let mix = if channels == 1 {
         "c0=c0"
     } else {
         "c0=0.5*c0+0.5*c1"
     };
-    let mut g = format!("asplit[m][s];[s]pan=mono|{mix},asplit={BANDS}");
-    for i in 0..BANDS {
+    let mut g = format!("asplit[m][s];[s]pan=mono|{mix},asplit={n}");
+    for i in 0..n {
         g += &format!("[b{i}]");
     }
-    for (i, c) in cs.iter().enumerate() {
-        g += &format!(";[b{i}]bandpass=f={c:.0}:width_type=o:w={width:.3}[c{i}]");
+    for (i, c) in centres.iter().enumerate() {
+        g += &format!(";[b{i}]bandpass=f={c:.1}:width_type=o:w={width:.4}[c{i}]");
     }
     g += ";[m]";
-    for i in 0..BANDS {
+    for i in 0..n {
         g += &format!("[c{i}]");
     }
     g += &format!(
         "amerge=inputs={},astats=metadata=1:reset=1:measure_perchannel=RMS_level:\
          measure_overall=none,pan={layout}",
-        BANDS + 1
+        n + 1
     );
     for c in 0..channels {
         g += &format!("|c{c}=c{c}");
@@ -291,6 +325,26 @@ fn parse(meta: &Value, channels: usize) -> Option<Vec<f32>> {
         .collect()
 }
 
+/// Note energies (linear power, MIDI `NOTE_LOW` up) from an
+/// `af-metadata/notes` reply; bands missing above the Nyquist limit are 0.
+fn parse_notes(meta: &Value, channels: usize) -> Option<Vec<f32>> {
+    let mut out = vec![0.0f32; NOTES];
+    let mut any = false;
+    for (i, o) in out.iter_mut().enumerate() {
+        let key = format!("lavfi.astats.{}.RMS_level", channels + 1 + i);
+        let db = match meta.get(&key) {
+            Some(Value::Str(s)) => s.parse::<f64>().unwrap_or(f64::NEG_INFINITY),
+            Some(Value::Double(d)) => *d,
+            _ => continue,
+        };
+        any = true;
+        if db.is_finite() {
+            *o = 10f64.powf(db / 10.0) as f32;
+        }
+    }
+    any.then_some(out)
+}
+
 /// A real video track is playing (cover art doesn't count).
 fn mpv_has_video(player: &Player) -> bool {
     player.get_string("current-tracks/video/id").is_some()
@@ -301,9 +355,10 @@ fn mpv_has_video(player: &Player) -> bool {
 }
 
 /// What the file-local filter chain was built for: path, channel layout,
-/// sample rate, whether it measures (music without video), equalizer on,
-/// bypassed (bit-perfect), and night / dialogue / karaoke / skip silence.
-type Installed = (String, String, u32, bool, bool, bool, [bool; 4]);
+/// sample rate, whether it measures (music without video) and the notes too,
+/// equalizer on, bypassed (bit-perfect), and night / dialogue / karaoke /
+/// skip silence.
+type Installed = (String, String, u32, [bool; 2], bool, bool, [bool; 4]);
 
 /// Puts the audio filters on each file (tone, and for music the meter) and
 /// feeds the UI bars. Owned by the UI thread; call [`Meter::tick`] ~30 times
@@ -314,17 +369,63 @@ pub struct Meter {
     channels: usize,
     /// The measuring filter for the current file is in place.
     measuring: bool,
+    /// Measure the notes too (the melody trail is on), and whether that
+    /// filter is in place.
+    pub want_notes: bool,
+    measuring_notes: bool,
     /// Tone and equalizer, shared with the knobs' and the equalizer's
     /// callbacks.
     pub tone: std::rc::Rc<std::cell::Cell<Tone>>,
-    /// Measured levels waiting to be shown, oldest first.
-    pending: VecDeque<(Instant, Vec<f32>)>,
+    /// Measured levels (and note energies) waiting to be shown, oldest first.
+    pending: VecDeque<(Instant, Vec<f32>, Option<Vec<f32>>)>,
     /// What the bars show now, falling smoothly like a hardware analyzer.
     shown: Vec<f32>,
     /// What is being heard now, as measured (not smoothed): for beat
     /// tracking (pulse.rs).
     heard: Option<Vec<f32>>,
+    /// The note energies being heard now (pitch.rs), while measured.
+    heard_notes: Option<Vec<f32>>,
+    /// The caps above the bars: they stay up a moment, then fall.
+    peaks: Peaks,
     last_tick: Option<Instant>,
+}
+
+/// Peak caps for the bars, as on a hardware analyzer: a cap jumps up with
+/// its bar, waits there for `HOLD` seconds, then falls slowly.
+#[derive(Default)]
+struct Peaks {
+    level: Vec<f32>,
+    /// Seconds each cap still waits before falling.
+    wait: Vec<f32>,
+}
+
+impl Peaks {
+    const HOLD: f32 = 0.45;
+    /// Fall speed, bar heights a second.
+    const FALL: f32 = 0.9;
+
+    /// Follow the bars; true when a cap moved.
+    fn update(&mut self, bars: &[f32], dt: f32) -> bool {
+        if self.level.len() != bars.len() {
+            self.level = vec![0.0; bars.len()];
+            self.wait = vec![0.0; bars.len()];
+        }
+        let mut moved = false;
+        for ((p, w), &b) in self.level.iter_mut().zip(&mut self.wait).zip(bars) {
+            let new = if b >= *p {
+                *w = Self::HOLD;
+                b
+            } else if *w > 0.0 {
+                *w -= dt;
+                *p
+            } else {
+                (*p - Self::FALL * dt).max(b)
+            };
+            moved |= (new - *p).abs() > 0.001;
+            *p = new;
+        }
+        moved
+    }
 }
 
 impl Meter {
@@ -359,7 +460,14 @@ impl Meter {
                 .get_value(&format!("af-metadata/{LABEL}"))
                 .and_then(|m| parse(&m, self.channels))
             {
-                self.pending.push_back((now, levels));
+                let notes = if self.measuring_notes {
+                    player
+                        .get_value(&format!("af-metadata/{NOTE_LABEL}"))
+                        .and_then(|m| parse_notes(&m, self.channels))
+                } else {
+                    None
+                };
+                self.pending.push_back((now, levels, notes));
             }
             // Show what is being heard now: measured `audio-buffer` ago.
             let lead = player.get_double("audio-buffer").unwrap_or(0.2) + 0.04;
@@ -367,14 +475,17 @@ impl Meter {
             while self.pending.len() > 1 && now.duration_since(self.pending[1].0) >= lead {
                 self.pending.pop_front();
             }
-            if let Some((t, l)) = self.pending.front()
+            self.heard_notes = None;
+            if let Some((t, l, n)) = self.pending.front()
                 && now.duration_since(*t) >= lead
             {
                 target = Some(l.clone());
+                self.heard_notes.clone_from(n);
             }
         }
         if paused || !bars {
             self.pending.clear();
+            self.heard_notes = None;
         }
         self.heard.clone_from(&target);
 
@@ -389,13 +500,25 @@ impl Meter {
             }
             *s = new;
         }
+        changed |= self.peaks.update(&self.shown, dt);
         changed.then(|| self.shown.clone())
+    }
+
+    /// Where the caps above the bars are (0..1, bass first).
+    pub fn peaks(&self) -> &[f32] {
+        &self.peaks.level
     }
 
     /// The levels being heard now, unsmoothed (None while nothing is
     /// measured, e.g. paused).
     pub fn heard(&self) -> Option<&[f32]> {
         self.heard.as_deref()
+    }
+
+    /// The note energies being heard now (MIDI `NOTE_LOW` up), while the
+    /// note meter runs.
+    pub fn heard_notes(&self) -> Option<&[f32]> {
+        self.heard_notes.as_deref()
     }
 
     /// Put the filters on the current file once its audio format is known:
@@ -417,7 +540,7 @@ impl Meter {
             path,
             layout,
             rate,
-            measure,
+            [measure, measure && self.want_notes],
             tone.eq_enabled,
             tone.bypass,
             [tone.night, tone.dialogue, tone.karaoke, tone.skip_silence],
@@ -437,6 +560,7 @@ impl Meter {
                 log::warn!("audio filters: {e}");
             }
             self.measuring = false;
+            self.measuring_notes = false;
             self.pending.clear();
             self.installed = Some(key);
             return;
@@ -456,6 +580,15 @@ impl Meter {
             af += ",";
             af += &lavfi(LABEL, g);
         }
+        let notes = if meter.is_some() && key.3[1] {
+            note_graph(&key.1, rate)
+        } else {
+            None
+        };
+        if let Some(g) = &notes {
+            af += ",";
+            af += &lavfi(NOTE_LABEL, g);
+        }
         let ok = match player.set_string("file-local-options/af", &af) {
             Ok(()) => true,
             Err(e) => {
@@ -465,6 +598,7 @@ impl Meter {
         };
         self.channels = channels(&key.1).unwrap_or(0);
         self.measuring = ok && meter.is_some();
+        self.measuring_notes = self.measuring && notes.is_some();
         self.pending.clear();
         // Remembered even after a failure, so it isn't retried 30 times a
         // second.
@@ -475,6 +609,26 @@ impl Meter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn peak_caps_hold_then_fall() {
+        let mut p = Peaks::default();
+        assert!(p.update(&[0.8, 0.2], 0.033));
+        assert_eq!(p.level, vec![0.8, 0.2]);
+        // The bar drops: the cap waits...
+        p.update(&[0.1, 0.2], 0.2);
+        assert_eq!(p.level[0], 0.8);
+        // ...then falls, but never below its bar.
+        for _ in 0..10 {
+            p.update(&[0.1, 0.2], 0.1);
+        }
+        assert!(p.level[0] < 0.8 && p.level[0] >= 0.1, "{:?}", p.level);
+        for _ in 0..20 {
+            p.update(&[0.1, 0.2], 0.1);
+        }
+        assert_eq!(p.level[0], 0.1);
+        assert!(!p.update(&[0.1, 0.2], 0.1));
+    }
 
     #[test]
     fn graph_shape() {
@@ -711,5 +865,65 @@ mod tests {
             "loudest band {hz} Hz: {peak:?}"
         );
         assert!(peak[0] < 0.3 && peak[BANDS - 1] < 0.3, "{peak:?}");
+    }
+
+    #[test]
+    fn note_graph_fits_amerge() {
+        let g = note_graph("stereo", 44_100).unwrap();
+        // 60 notes and the sound itself: under amerge's 64 inputs.
+        assert!(g.contains("amerge=inputs=61,"), "{g}");
+        assert!(g.contains("bandpass=f=65.4:") && g.contains("bandpass=f=1975.5:"));
+        // Low sample rates lose the notes over their Nyquist limit.
+        assert!(note_graph("mono", 4_000).unwrap().contains("amerge=inputs=59,"));
+        assert!(note_graph("hexagonal", 44_100).is_none());
+    }
+
+    /// End to end through libmpv: a tune (A4 then E5, with overtones, over
+    /// an A2 bass) gives those notes in the melody trail. Skipped without
+    /// libmpv or ffmpeg.
+    #[test]
+    fn note_meter_follows_a_tune() {
+        let dir = std::env::temp_dir().join(format!("smp-notes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("tune.wav");
+        let tune = "aevalsrc=exprs='0.25*sin(2*PI*110*t)\
+                    +0.2*sin(2*PI*if(lt(t,1.5),440,659.26)*t)\
+                    +0.25*sin(4*PI*if(lt(t,1.5),440,659.26)*t)\
+                    +0.1*sin(6*PI*if(lt(t,1.5),440,659.26)*t)':s=44100:d=3";
+        let made = crate::process::command("ffmpeg")
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i", tune, "-ac", "2"])
+            .arg(&file)
+            .status()
+            .is_ok_and(|s| s.success());
+        let Ok(player) = Player::new(&player_core::PlayerConfig::headless(), |_| {}) else {
+            eprintln!("libmpv not available; skipping");
+            return;
+        };
+        if !made {
+            eprintln!("ffmpeg not available; skipping");
+            return;
+        }
+        player
+            .load(&file.to_string_lossy(), player_core::LoadMode::Replace)
+            .unwrap();
+        let mut meter = Meter {
+            want_notes: true,
+            ..Meter::default()
+        };
+        let mut notes = crate::pitch::Notes::default();
+        let (mut melody, mut bass) = (Vec::new(), Vec::new());
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(2800) {
+            meter.tick(&player, true, false, false);
+            let (m, b) = notes.tick(meter.heard_notes());
+            melody.extend(m.map(|n| n.midi.round() as i32));
+            bass.extend(b.map(|n| n.midi.round() as i32));
+            std::thread::sleep(Duration::from_millis(33));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        let share = |v: &[i32], n: i32| v.iter().filter(|&&x| x == n).count() as f32 / v.len().max(1) as f32;
+        assert!(share(&melody, 69) > 0.3 && share(&melody, 76) > 0.2, "{melody:?}");
+        assert!(share(&melody, 69) + share(&melody, 76) > 0.85, "{melody:?}");
+        assert!(share(&bass, 45) > 0.85, "{bass:?}");
     }
 }

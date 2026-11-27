@@ -10,16 +10,22 @@ says otherwise.
 | Page | What is there |
 |---|---|
 | Look | Skin, colours, your own skins, title bar, always on top |
-| Music view | Visuals, pulse line, artist picture, lyrics |
+| Music view | Visuals, music overlay, artist picture, lyrics |
 | Audio | Output device, equalizer, gapless, ReplayGain, bit-perfect, night mode |
 | Playback | Resume, remembering the speed, series intros, next episode, preview pictures, speech model |
 | Video | Hardware decoding, enhancement, smooth motion, black bars, HDR |
 | Subtitles | Their look, and the OpenSubtitles account |
 | Shortcuts | Your own keys and mouse actions |
-| Online | Streaming quality, sponsors in YouTube videos, yt-dlp, updates |
+| Online | Streaming quality, sponsors in YouTube videos, yt-dlp, updates, new versions |
 | Discs | DVD menus, CD names, Blu-ray decryption |
 | System | FFmpeg updates, system check, window system, one player window |
 | Scripts | Your own mpv scripts |
+
+## New versions
+
+When the player opens, it checks GitHub for a newer version. If there is one, it tells
+you and offers to open the download page. It never downloads or installs anything by
+itself. To stop the message, turn off *Settings → Online → Tell me about new versions*.
 
 ## Your own shortcuts
 
@@ -107,3 +113,4 @@ only when you use them or leave them on:
 | Subtitle search | OpenSubtitles | the film's fingerprint, or the name you type | – |
 | Skipping sponsors | SponsorBlock | four characters of a code made from the YouTube video's ID | Settings → Online |
 | yt-dlp and key database updates | GitHub and the database's site | nothing about you | Settings → Online |
+| New versions of the player | GitHub, each time the player opens | nothing about you | Settings → Online → Tell me about new versions |

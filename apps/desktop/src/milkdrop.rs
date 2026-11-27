@@ -91,7 +91,10 @@ fn preset_dirs() -> Vec<PathBuf> {
     d
 }
 
-/// Every `.milk` preset, except the "transition" ones (fades to black).
+/// Every `.milk` preset, except the "transition" ones (fades to black) and
+/// the "Waveform" folder: those draw the sound's waveform as a thin line,
+/// and the signal projectM gets here (see the top) is not the real waveform,
+/// so they showed little more than a line on black.
 fn presets() -> &'static [PathBuf] {
     static LIST: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
     LIST.get_or_init(|| {
@@ -105,7 +108,7 @@ fn presets() -> &'static [PathBuf] {
                 for e in rd.flatten() {
                     let p = e.path();
                     let name = e.file_name().to_string_lossy().to_lowercase();
-                    if p.is_dir() && !name.contains("transition") {
+                    if p.is_dir() && !name.contains("transition") && name != "waveform" {
                         stack.push(p);
                     } else if name.ends_with(".milk") {
                         out.push(p);

@@ -371,10 +371,7 @@ mod tests {
     }
 
     fn ffmpeg(args: &[&str]) -> Option<String> {
-        let out = crate::process::command("ffmpeg")
-            .args(args)
-            .output()
-            .ok()?;
+        let out = crate::process::command("ffmpeg").args(args).output().ok()?;
         assert!(
             out.status.success(),
             "{}",

@@ -274,8 +274,23 @@ fn auto_update_ytdlp() -> Result<Option<String>, String> {
     Ok(Some(latest))
 }
 
-/// yt-dlp versions are dates ("2026.11.03", nightlies add ".123456"), so
-/// newer means greater number by number.
+/// The player's own releases on GitHub.
+const APP_LATEST_API: &str =
+    "https://api.github.com/repos/super-media-player/super-media-player/releases/latest";
+pub const APP_RELEASES_PAGE: &str =
+    "https://github.com/super-media-player/super-media-player/releases/latest";
+
+/// The newest released version of the player ("0.69.0"), when it is newer
+/// than this one. `Ok(None)` when this one is up to date.
+pub fn newer_app_release() -> Result<Option<String>, String> {
+    let json = String::from_utf8(get(APP_LATEST_API, 1 << 20)?).map_err(|_| "bad reply")?;
+    let tag = crate::artist::json_string_field(&json, "tag_name").ok_or("no version in reply")?;
+    let latest = tag.trim_start_matches(['v', 'V']).to_owned();
+    Ok(is_newer(&latest, env!("CARGO_PKG_VERSION")).then_some(latest))
+}
+
+/// yt-dlp versions are dates ("2026.11.03", nightlies add ".123456") and
+/// the player's are "0.69.0", so newer means greater number by number.
 fn is_newer(latest: &str, current: &str) -> bool {
     let parse = |v: &str| -> Vec<u64> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
     let (l, c) = (parse(latest), parse(current));
@@ -411,6 +426,12 @@ mod tests {
         // A broken reply never counts as newer; an unknown local version does.
         assert!(!is_newer("garbage", "2026.11.03"));
         assert!(is_newer("2026.11.03", ""));
+        // The player's own versions.
+        assert!(is_newer("0.69.0", "0.68.0"));
+        assert!(is_newer("0.100.0", "0.99.0"));
+        assert!(is_newer("1.0.0", "0.99.0"));
+        assert!(!is_newer("0.67.0", "0.68.0"));
+        assert!(!is_newer("0.68.0", "0.68.0"));
     }
 
     #[test]

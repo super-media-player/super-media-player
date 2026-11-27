@@ -333,15 +333,15 @@ fn read_tags(path: &Path) -> Option<Entry> {
         e.artist = text(tag.artist());
         e.album = text(tag.album());
         e.album_artist = tag
-            .get_string(&ItemKey::AlbumArtist)
+            .get_string(ItemKey::AlbumArtist)
             .map(clean)
             .unwrap_or_default();
         let genres: Vec<String> = tag
-            .get_strings(&ItemKey::Genre)
+            .get_strings(ItemKey::Genre)
             .flat_map(genre_list)
             .collect();
         e.genre = genres.join("; ");
-        e.year = tag.year().filter(|y| (1000..3000).contains(y)).unwrap_or(0);
+        e.year = tag.date().map(|d| u32::from(d.year)).filter(|y| (1000..3000).contains(y)).unwrap_or(0);
         e.disc = tag.disk().unwrap_or(0);
         e.track = tag.track().unwrap_or(0);
     }

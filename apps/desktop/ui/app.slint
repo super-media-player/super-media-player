@@ -129,6 +129,63 @@ component PulseBars inherits Rectangle {
     }
 }
 
+// The "Spectrum bars" visual: one bar per band of meter.rs across the music
+// view, coloured from bass to treble, a cap that waits at each peak, and a
+// faint reflection under them. `levels` and `peaks`: 0..1, bass first.
+component SpectrumField inherits Rectangle {
+    in property <bool> playing;
+    in property <[float]> levels;
+    in property <[float]> peaks;
+    property <int> n: max(1, root.levels.length);
+    // The bars stand on this line, and grow up to `tall`.
+    property <length> floor: root.height * 0.64;
+    property <length> tall: Math.max(40px, root.floor - 96px);
+    property <length> side: Math.max(24px, root.width * 0.07);
+    property <length> step: (root.width - 2 * root.side) / root.n;
+    property <length> bar-w: root.step * 0.7;
+    clip: true;
+    Rectangle {
+        x: root.side;
+        y: root.floor;
+        width: root.width - 2 * root.side;
+        height: 1px;
+        background: Theme.accent.transparentize(80%);
+    }
+    for i in root.n: Rectangle {
+        property <float> a: root.playing ? root.levels[i] : 0;
+        property <float> pk: root.playing ? root.peaks[i] : 0;
+        property <color> c: Theme.accent.mix(Theme.accent-2, 1 - i / Math.max(1, root.n - 1));
+        property <length> h: 4px + (root.tall - 4px) * self.a;
+        x: root.side + i * root.step + (root.step - root.bar-w) / 2;
+        width: root.bar-w;
+        height: root.height;
+        Rectangle {
+            y: root.floor - 2px - parent.h;
+            height: parent.h;
+            border-top-left-radius: Math.min(self.width / 2, 5px);
+            border-top-right-radius: self.border-top-left-radius;
+            border-bottom-left-radius: 1px;
+            border-bottom-right-radius: 1px;
+            background: @linear-gradient(0deg, parent.c.darker(30%) 0%, parent.c 60%, parent.c.brighter(30%) 100%);
+            opacity: 0.6 + 0.4 * parent.a;
+        }
+        // The cap: waits at the peak, then falls (meter.rs).
+        Rectangle {
+            y: root.floor - 2px - (4px + (root.tall - 4px) * parent.pk) - 7px;
+            height: 3px;
+            border-radius: 1.5px;
+            background: parent.c.brighter(60%);
+            opacity: parent.pk > 0.01 ? 0.95 : 0;
+        }
+        // Reflection on the floor.
+        Rectangle {
+            y: root.floor + 3px;
+            height: parent.h * 0.35;
+            background: @linear-gradient(180deg, parent.c.transparentize(70%) 0%, parent.c.transparentize(100%) 100%);
+        }
+    }
+}
+
 // A heart-monitor line scrolling right to left across the music view: about
 // 25 s of the song, fading out at the old (left) end, with a glowing head.
 // `commands` come from pulse.rs in a viewbox 750 wide and as tall as this
@@ -159,6 +216,293 @@ component PulseLine inherits Rectangle {
         opacity: 0.55 + 0.45 * root.beat;
         drop-shadow-blur: 12px + 10px * root.beat;
         drop-shadow-color: Theme.accent-2;
+    }
+}
+
+// The music overlays besides the pulse line (overlay.rs). Each path comes
+// in a viewbox 300 wide and as tall as the overlay (`pulse-aspect`), the
+// newest moment at the right edge, about 10 s across.
+
+// Ribbons: bass, the voice's range and bright sounds (snare, hats,
+// cymbals) as lanes that get thicker when louder, and a lane of beats.
+component RibbonsOverlay inherits Rectangle {
+    in property <string> bass;
+    in property <string> voice;
+    in property <string> bright;
+    in property <string> beats;
+    in property <string> bpm;
+    property <float> vh: 300 * root.height / Math.max(1px, root.width);
+    property <color> warm: #ffc861;
+    property <length> lane: root.height / 4;
+    for l[i] in [
+        { path: root.bass, name: "Bass", c: Theme.accent-2 },
+        { path: root.voice, name: "Voice", c: Theme.accent },
+        { path: root.bright, name: "Bright", c: root.warm },
+    ]: Rectangle {
+        Path {
+            width: root.width;
+            height: root.height;
+            viewbox-width: 300;
+            viewbox-height: root.vh;
+            commands: l.path;
+            fill: @linear-gradient(90deg, l.c.transparentize(100%) 0%, l.c.transparentize(55%) 45%, l.c.transparentize(10%) 100%);
+            stroke-width: 0;
+        }
+        Text {
+            x: 14px;
+            y: root.lane * (i + 0.5) - self.height / 2;
+            text: l.name;
+            color: l.c;
+            font-size: Theme.font-small;
+            font-weight: 600;
+        }
+    }
+    Rectangle {
+        y: root.lane * 3.5;
+        height: 1px;
+        background: Theme.text.transparentize(88%);
+    }
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 300;
+        viewbox-height: root.vh;
+        commands: root.beats;
+        stroke: @linear-gradient(90deg, Theme.text.transparentize(100%) 0%, Theme.text.transparentize(60%) 40%, Theme.text 100%);
+        stroke-width: 2.5px;
+        fill: transparent;
+    }
+    Text {
+        x: 14px;
+        y: root.lane * 3.5 - self.height / 2;
+        text: "Beat";
+        color: Theme.text;
+        font-size: Theme.font-small;
+        font-weight: 600;
+    }
+    Text {
+        x: 54px;
+        y: root.lane * 3.5 - self.height / 2;
+        text: root.bpm;
+        color: Theme.text-dim;
+        font-size: Theme.font-small;
+        font-weight: 600;
+    }
+}
+
+// Melody trail: the melody's note as a glowing trail (higher notes higher,
+// thicker when louder) with the bass note below it, and a faint line on
+// each beat. The pens sit at the right edge; `*-y` is -1 while silent.
+component MelodyOverlay inherits Rectangle {
+    in property <string> voice;
+    in property <string> bass;
+    in property <string> beats;
+    in property <string> note;
+    in property <float> voice-y: -1;
+    in property <float> voice-level;
+    in property <float> bass-y: -1;
+    in property <float> bass-level;
+    in property <float> beat;
+    property <float> vh: 300 * root.height / Math.max(1px, root.width);
+    // overlay.rs note_y: MIDI 33..90 between 8% from the top and the bottom.
+    function note-row(m: float) -> length {
+        root.height * (0.08 + (1 - (m - 33) / 57) * 0.84)
+    }
+    for g in [{ m: 36, t: "C2" }, { m: 48, t: "C3" }, { m: 60, t: "C4" }, { m: 72, t: "C5" }, { m: 84, t: "C6" }]: Rectangle {
+        Rectangle {
+            x: 40px;
+            y: root.note-row(g.m);
+            width: root.width - 40px;
+            height: 1px;
+            background: Theme.text.transparentize(93%);
+        }
+        Text {
+            x: 14px;
+            y: root.note-row(g.m) - self.height / 2;
+            text: g.t;
+            color: Theme.text-faint;
+            font-size: Theme.font-small;
+        }
+    }
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 300;
+        viewbox-height: root.vh;
+        commands: root.beats;
+        stroke: Theme.text.transparentize(90%);
+        stroke-width: 1px;
+        fill: transparent;
+    }
+    for t[i] in [
+        { path: root.bass, c: Theme.accent-2 },
+        { path: root.voice, c: Theme.accent },
+    ]: Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 300;
+        viewbox-height: root.vh;
+        commands: t.path;
+        fill: @linear-gradient(90deg, t.c.transparentize(100%) 0%, t.c.transparentize(65%) 40%, t.c 100%);
+        stroke-width: 0;
+    }
+    for pen[i] in [
+        { y: root.bass-y, level: root.bass-level, c: Theme.accent-2 },
+        { y: root.voice-y, level: root.voice-level, c: Theme.accent },
+    ]: Rectangle {
+        property <length> d: 8px + 10px * pen.level;
+        visible: pen.y >= 0;
+        x: root.width - self.d / 2 - 2px;
+        y: root.height * pen.y - self.d / 2;
+        width: self.d;
+        height: self.d;
+        border-radius: self.d / 2;
+        background: pen.c.brighter(50%);
+        drop-shadow-blur: 14px + 10px * root.beat;
+        drop-shadow-color: pen.c;
+        // A ring that pops out on the beat.
+        Rectangle {
+            property <length> r: parent.d + 4px + (1 - root.beat) * 30px;
+            x: (parent.width - self.r) / 2;
+            y: (parent.height - self.r) / 2;
+            width: self.r;
+            height: self.r;
+            border-radius: self.r / 2;
+            border-width: 1.5px;
+            border-color: Theme.text.transparentize(100% - 60% * root.beat);
+        }
+    }
+    if root.voice-y >= 0: Text {
+        x: root.width - self.width - 26px;
+        y: root.height * root.voice-y - self.height - 10px;
+        text: root.note;
+        color: Theme.accent.brighter(60%);
+        font-size: Theme.font-small;
+        font-weight: 700;
+    }
+    Text {
+        x: root.width - self.width - 14px;
+        y: 0;
+        text: "Melody";
+        color: Theme.accent;
+        font-size: Theme.font-small;
+        font-weight: 600;
+    }
+    Text {
+        x: root.width - self.width - 80px;
+        y: 0;
+        text: "Bass";
+        color: Theme.accent-2;
+        font-size: Theme.font-small;
+        font-weight: 600;
+    }
+}
+
+// Heat map: low sounds at the bottom, high at the top, brighter is louder,
+// scrolling left; the beats tick along the bottom. `picture` is 300 × 20
+// pixels (overlay.rs heat_map), scaled up smoothly.
+component HeatOverlay inherits Rectangle {
+    in property <image> picture;
+    in property <string> beats;
+    property <float> vh: 300 * root.height / Math.max(1px, root.width);
+    Image {
+        width: root.width;
+        height: root.height * 0.92;
+        source: root.picture;
+        image-fit: fill;
+        image-rendering: smooth;
+    }
+    Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: 300;
+        viewbox-height: root.vh;
+        commands: root.beats;
+        stroke: @linear-gradient(90deg, Theme.text.transparentize(100%) 0%, Theme.text.transparentize(40%) 40%, Theme.text 100%);
+        stroke-width: 2px;
+        fill: transparent;
+    }
+    // Where the parts sit: bands 18, 10 and 1.5 of 20, from the bottom.
+    for l in [{ t: "Cymbals", b: 18 }, { t: "Voice", b: 10 }, { t: "Bass", b: 1.5 }]: Rectangle {
+        x: 12px;
+        y: root.height * 0.92 * (1 - (l.b + 0.5) / 20) - self.height / 2;
+        width: label.preferred-width + 12px;
+        height: label.preferred-height + 4px;
+        border-radius: 4px;
+        background: Theme.bg.transparentize(35%);
+        label := Text {
+            text: l.t;
+            color: Theme.text;
+            font-size: Theme.font-small;
+            font-weight: 600;
+        }
+    }
+}
+
+// Part lamps: a light for each part of the song (each listens to a range
+// of sound, so a guitar can light "Voice"), top to bottom, and the tempo.
+component LampsOverlay inherits Rectangle {
+    in property <[float]> levels;
+    in property <string> bpm;
+    in property <float> beat;
+    property <length> d: 30px;
+    VerticalLayout {
+        spacing: 12px;
+        alignment: start;
+        for lamp[i] in [
+            { t: "Kick", c: Theme.text },
+            { t: "Bass", c: Theme.accent-2 },
+            { t: "Voice", c: Theme.accent },
+            { t: "Snare", c: #ff8c78 },
+            { t: "Cymbals", c: #ffc861 },
+        ]: HorizontalLayout {
+            property <float> v: Math.min(1, root.levels[i]);
+            spacing: 12px;
+            alignment: start;
+            Rectangle {
+                width: root.d;
+                height: root.d;
+                border-radius: self.width / 2;
+                background: Theme.text.transparentize(94%);
+                Rectangle {
+                    property <length> s: root.d * (0.5 + 0.5 * v);
+                    x: (parent.width - self.s) / 2;
+                    y: (parent.height - self.s) / 2;
+                    width: self.s;
+                    height: self.s;
+                    border-radius: self.s / 2;
+                    background: lamp.c.transparentize(90% - 90% * v);
+                    drop-shadow-blur: 22px * v;
+                    drop-shadow-color: lamp.c;
+                }
+            }
+            Text {
+                vertical-alignment: center;
+                text: lamp.t;
+                color: v > 0.35 ? lamp.c : Theme.text-dim;
+                font-size: Theme.font-small;
+                font-weight: 600;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            padding-top: 4px;
+            alignment: start;
+            Text {
+                text: root.bpm;
+                color: Theme.text;
+                opacity: 0.7 + 0.3 * root.beat;
+                font-size: 22px * Theme.text-scale;
+                font-weight: 700;
+            }
+            Text {
+                vertical-alignment: center;
+                text: "BPM";
+                color: Theme.text-dim;
+                font-size: Theme.font-small;
+                font-weight: 600;
+            }
+        }
     }
 }
 
@@ -285,12 +629,35 @@ export component AppWindow inherits Window {
     in property <bool> visual-active: false;
     // Live spectrum bar heights (0..1, bass first), from meter.rs.
     in property <[float]> spectrum;
+    // Where the caps above those bars are (meter.rs), for the spectrum visual.
+    in property <[float]> spectrum-peaks;
     // Beat (1 on a bass hit, decaying) and loudness, 0..1, plus the pulse
     // line's path (pulse.rs).
     in property <float> beat;
     in property <float> energy;
     in property <string> pulse-path;
     in property <float> pulse-head;
+    // The other music overlays (overlay.rs), for the one picked in
+    // `s-overlay`: ribbons, melody trail, heat map, ring, part lamps.
+    in property <string> ribbon-bass;
+    in property <string> ribbon-voice;
+    in property <string> ribbon-bright;
+    in property <string> ribbon-beats;
+    in property <string> melody-voice;
+    in property <string> melody-bass;
+    in property <string> melody-beats;
+    in property <string> melody-note;
+    in property <float> melody-y: -1;
+    in property <float> melody-level;
+    in property <float> bass-note-y: -1;
+    in property <float> bass-note-level;
+    in property <image> heat-picture;
+    in property <string> heat-beats;
+    in property <string> ring-path;
+    in property <float> ring-tone: 0.4;
+    in property <[float]> lamp-levels: [0, 0, 0, 0, 0];
+    // The tempo found ("118"), or "—".
+    in property <string> bpm: "—";
     // Height / width of the pulse line, so pulse.rs draws it unstretched.
     out property <float> pulse-aspect: root.pulse-height / Math.max(1px, root.pulse-width);
     property <length> pulse-width: root.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
@@ -395,7 +762,9 @@ export component AppWindow inherits Window {
     in-out property <int> s-visualizer: 0;
     in-out property <int> s-artist-pos: 2;
     in-out property <bool> s-artist-online: false;
-    in-out property <bool> s-pulse-line: true;
+    // What runs over the music visual: an index into settings::OVERLAYS
+    // (off, pulse line, ribbons, melody trail, heat map, ring, part lamps).
+    in-out property <int> s-overlay: 0;
     in-out property <bool> s-lyrics-online: false;
     in-out property <bool> s-show-lyrics: true;
     in-out property <bool> s-gapless: true;
@@ -420,6 +789,7 @@ export component AppWindow inherits Window {
     in-out property <int> s-bluray-decryption: 0;
     in-out property <int> s-window-system: 0;
     in-out property <bool> s-auto-update: true;
+    in-out property <bool> s-check-app-updates: true;
     in property <string> ytdlp-status;
     in property <string> keydb-status;
     in property <string> disc-status;
@@ -631,6 +1001,7 @@ export component AppWindow inherits Window {
     // Visualizer index 0 is the spinning disc, 1 particles, 7 "none".
     property <bool> show-disc: root.s-visualizer == 0;
     property <bool> show-particles: root.s-visualizer == 1;
+    property <bool> show-spectrum: root.s-visualizer == 2;
 
     // Where mpv should draw video or the visualizer, in this window's content
     // coordinates; main.rs turns it into mpv's video margins.
@@ -942,6 +1313,7 @@ export component AppWindow inherits Window {
         root.compare-moved(root.compare-on ? root.compare-split : -1);
     }
     public function choose-visual(v: int) { root.set-visual(v); }
+    public function choose-overlay(v: int) { root.set-overlay(v); }
     public function choose-skin(i: int) { root.set-skin(i); }
     public function choose-view(m: int) { root.set-view(m); }
 
@@ -979,8 +1351,8 @@ export component AppWindow inherits Window {
             root.settings-changed();
         }
     }
-    function set-pulse-line(on: bool) {
-        root.s-pulse-line = on;
+    function set-overlay(v: int) {
+        root.s-overlay = v;
         root.settings-changed();
     }
     function set-visual(v: int) {
@@ -1179,13 +1551,20 @@ export component AppWindow inherits Window {
             MenuItem { title: "Themes and colours…"; activated => { root.show-colours(); } }
             Menu {
                 title: "Music visualization";
-                for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
+                for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
                     title: v;
                     checked: root.s-visualizer == i;
                     activated => { root.set-visual(i); }
                 }
             }
-            MenuItem { title: "Pulse line (beat)"; checked: root.s-pulse-line; activated => { root.set-pulse-line(!root.s-pulse-line); } }
+            Menu {
+                title: "Music overlay";
+                for v[i] in ["Off", "Pulse line (beat)", "Ribbons", "Melody trail", "Heat map", "Ring", "Part lamps"]: MenuItem {
+                    title: v;
+                    checked: root.s-overlay == i;
+                    activated => { root.set-overlay(i); }
+                }
+            }
             Menu {
                 title: "Artist picture";
                 for v[i] in ["Off", "Top left", "Top right"]: MenuItem {
@@ -1521,7 +1900,7 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Music drawn by the UI: particles, and the pulse line (behind the disc).
+        // Music drawn by the UI: particles, spectrum bars, and the pulse line (behind the disc).
         if !root.idle && !root.has-video && !root.visual-active && !root.compact && !root.media-open && root.show-particles: ParticleField {
             width: parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
             height: parent.height - root.bar-height - 16px;
@@ -1529,7 +1908,14 @@ export component AppWindow inherits Window {
             beat: root.beat;
             energy: root.energy;
         }
-        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.s-pulse-line: PulseLine {
+        if !root.idle && !root.has-video && !root.visual-active && !root.compact && !root.media-open && root.show-spectrum: SpectrumField {
+            width: parent.width - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            height: parent.height - root.bar-height - 16px;
+            playing: !root.paused;
+            levels: root.spectrum;
+            peaks: root.spectrum-peaks;
+        }
+        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.s-overlay == 1: PulseLine {
             x: 0;
             width: root.pulse-width;
             height: root.pulse-height;
@@ -1539,6 +1925,57 @@ export component AppWindow inherits Window {
             beat: root.beat;
             head: root.pulse-head;
             opacity: root.paused ? 0.45 : 0.9;
+            animate opacity { duration: Theme.normal; }
+        }
+        // The other overlays in the pulse line's place (part lamps down a
+        // side; the ring goes around the artist picture, further down).
+        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.s-overlay == 2: RibbonsOverlay {
+            width: root.pulse-width;
+            height: root.pulse-height;
+            y: (parent.height - root.bar-height - 16px) * 0.5 - self.height / 2 + 28px;
+            bass: root.ribbon-bass;
+            voice: root.ribbon-voice;
+            bright: root.ribbon-bright;
+            beats: root.ribbon-beats;
+            bpm: root.bpm == "—" ? "" : root.bpm + " BPM";
+            opacity: root.paused ? 0.45 : 0.95;
+            animate opacity { duration: Theme.normal; }
+        }
+        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.s-overlay == 3: MelodyOverlay {
+            width: root.pulse-width;
+            height: root.pulse-height;
+            y: (parent.height - root.bar-height - 16px) * 0.5 - self.height / 2 + 28px;
+            voice: root.melody-voice;
+            bass: root.melody-bass;
+            beats: root.melody-beats;
+            note: root.melody-note;
+            voice-y: root.melody-y;
+            voice-level: root.melody-level;
+            bass-y: root.bass-note-y;
+            bass-level: root.bass-note-level;
+            beat: root.beat;
+            opacity: root.paused ? 0.45 : 0.95;
+            animate opacity { duration: Theme.normal; }
+        }
+        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.s-overlay == 4: HeatOverlay {
+            width: root.pulse-width;
+            height: root.pulse-height;
+            y: (parent.height - root.bar-height - 16px) * 0.5 - self.height / 2 + 28px;
+            picture: root.heat-picture;
+            beats: root.heat-beats;
+            opacity: root.paused ? 0.45 : 0.9;
+            animate opacity { duration: Theme.normal; }
+        }
+        // Part lamps: down the side away from the artist picture.
+        if !root.idle && !root.has-video && !root.compact && !root.media-open && root.s-overlay == 6: LampsOverlay {
+            x: root.s-artist-pos == 1 ? root.pulse-width - self.width - 22px : 22px;
+            y: 70px;
+            width: self.preferred-width;
+            height: self.preferred-height;
+            levels: root.lamp-levels;
+            bpm: root.bpm;
+            beat: root.beat;
+            opacity: root.paused ? 0.45 : 1;
             animate opacity { duration: Theme.normal; }
         }
 
@@ -1628,28 +2065,59 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Artist picture (else the album cover) in a corner of the music
-        // view; click it for more about the song.
-        if !root.idle && !root.has-video && !root.compact && (root.has-artist-image || root.has-cover) && root.s-artist-pos > 0: Rectangle {
-            property <length> size: Math.min(150px, root.height * 0.22);
+        // Artist picture (else the album cover, else a stand-in) in a corner
+        // of the music view; click it for more about the song.
+        if !root.idle && !root.has-video && !root.compact && (root.s-artist-pos > 0 || root.s-overlay == 5): artist-corner := Rectangle {
+            property <length> size: Math.min(150px, root.height * 0.22) * (self.ring ? 0.8 : 1);
+            property <bool> ring: root.s-overlay == 5;
+            // Room for the ring around it.
+            property <length> margin: self.ring ? 18px + self.size * 0.45 : 18px;
             width: self.size;
             height: self.size;
-            y: 66px;
-            x: root.s-artist-pos == 1 ? 18px
-                : parent.width - self.width - 18px - (root.playlist-open ? playlist-panel.width + 14px : 0px);
+            y: self.ring ? 50px + self.size * 0.45 : 66px;
+            x: root.s-artist-pos == 1 ? self.margin
+                : parent.width - self.width - self.margin - (root.playlist-open ? playlist-panel.width + 14px : 0px);
             animate x { duration: Theme.normal; easing: ease-in-out; }
-            border-radius: 12px;
+            border-radius: self.ring ? self.size / 2 : 12px;
+            // The ring overlay around the picture (which is then round, and
+            // shown top right when the corner picture is off).
+            if artist-corner.ring: Path {
+                width: artist-corner.size * 1.9;
+                height: self.width;
+                x: (artist-corner.width - self.width) / 2;
+                y: (artist-corner.height - self.height) / 2;
+                viewbox-width: 200;
+                viewbox-height: 200;
+                commands: root.ring-path;
+                fill: Theme.accent.mix(Theme.accent-2, root.ring-tone).transparentize(45%);
+                stroke: Theme.accent.mix(Theme.accent-2, root.ring-tone).brighter(30%);
+                stroke-width: 1.5px;
+                opacity: root.paused ? 0.45 : 1;
+                animate opacity { duration: Theme.normal; }
+            }
             drop-shadow-blur: 24px;
             drop-shadow-color: #00000090;
             background: Theme.surface;
             Rectangle {
                 border-radius: parent.border-radius;
                 clip: true;
-                Image {
+                if root.has-artist-image || root.has-cover: Image {
                     width: parent.width;
                     height: parent.height;
                     source: root.has-artist-image ? root.artist-image : root.cover-image;
                     image-fit: cover;
+                }
+                // No picture next to the song, in it, or (when allowed) online.
+                if !root.has-artist-image && !root.has-cover: Rectangle {
+                    background: @linear-gradient(145deg, Theme.accent.transparentize(55%) 0%, Theme.accent-2.transparentize(70%) 100%);
+                    Icon {
+                        width: parent.width * 0.38;
+                        height: self.width;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2 - (root.media-artist != "" ? 8px : 0px);
+                        commands: Icons.note;
+                        color: #ffffffb0;
+                    }
                 }
             }
             // The album cover as a small badge when the big picture is the artist.
@@ -1676,11 +2144,11 @@ export component AppWindow inherits Window {
                 clicked => { root.info-open = true; }
             }
             Rectangle {
-                border-radius: 12px;
+                border-radius: parent.border-radius;
                 border-width: corner-touch.has-hover ? 2px : 0px;
                 border-color: Theme.accent;
             }
-            if root.media-artist != "": Rectangle {
+            if root.media-artist != "" && !artist-corner.ring: Rectangle {
                 y: parent.height - self.height;
                 height: 24px;
                 border-radius: 12px;
@@ -1882,13 +2350,20 @@ export component AppWindow inherits Window {
                     MenuItem { title: "Themes and colours…"; activated => { root.show-colours(); } }
                     Menu {
                         title: "Music visualization";
-                        for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
+                        for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
                             title: v;
                             checked: root.s-visualizer == i;
                             activated => { root.set-visual(i); }
                         }
                     }
-                    MenuItem { title: "Pulse line (beat)"; checked: root.s-pulse-line; activated => { root.set-pulse-line(!root.s-pulse-line); } }
+                    Menu {
+                        title: "Music overlay";
+                        for v[i] in ["Off", "Pulse line (beat)", "Ribbons", "Melody trail", "Heat map", "Ring", "Part lamps"]: MenuItem {
+                            title: v;
+                            checked: root.s-overlay == i;
+                            activated => { root.set-overlay(i); }
+                        }
+                    }
                     Menu {
                         title: "Artist picture";
                         for v[i] in ["Off", "Top left", "Top right"]: MenuItem {
@@ -2963,7 +3438,7 @@ export component AppWindow inherits Window {
             visualizer <=> root.s-visualizer;
             artist-pos <=> root.s-artist-pos;
             artist-online <=> root.s-artist-online;
-            pulse-line <=> root.s-pulse-line;
+            overlay <=> root.s-overlay;
             lyrics-online <=> root.s-lyrics-online;
             show-lyrics <=> root.s-show-lyrics;
             gapless <=> root.s-gapless;
@@ -2978,6 +3453,7 @@ export component AppWindow inherits Window {
             bluray-decryption <=> root.s-bluray-decryption;
             window-system <=> root.s-window-system;
             auto-update <=> root.s-auto-update;
+            check-app-updates <=> root.s-check-app-updates;
             night-mode <=> root.s-night-mode;
             dialogue-boost <=> root.s-dialogue-boost;
             seek-thumbnails <=> root.s-seek-thumbnails;
