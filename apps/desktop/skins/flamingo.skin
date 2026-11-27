@@ -1,0 +1,17 @@
+# Hot pink with coral. A theme: it colours the media player and compact views.
+name = Flamingo
+layout = any
+author = Super Media Player
+
+bg = #12060c
+bg-2 = #2a0d1c
+surface = #2e1020d0
+surface-hi = #3e172ce8
+panel = #2c0f1f
+popup = #3e182c
+text = #ffeef6
+text-dim = #dba3bd
+text-faint = #906176
+accent = #ff4fa3
+accent-2 = #ff8a5c
+on-accent = #1a0510

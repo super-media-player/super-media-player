@@ -462,7 +462,7 @@ impl Db {
     }
 
     pub fn add_folder(&self, dir: &Path) -> Result<()> {
-        let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        let dir = crate::process::full_path(dir);
         let text = dir.to_str().ok_or("That folder's name isn't valid text")?;
         self.0
             .execute("INSERT OR IGNORE INTO folders VALUES (?1)", [text])

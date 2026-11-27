@@ -61,8 +61,9 @@ export component CompactView inherits Rectangle {
     // mpv draws underneath the UI, so everything opaque must leave a hole
     // where the visualizer window is: the backgrounds are drawn as four
     // pieces around it.
-    property <color> bg: #10141f;
-    property <color> panel: #04060b;
+    // The skin's background colours (theme.slint).
+    property <color> bg: Theme.bg-2;
+    property <color> panel: Theme.bg;
     Rectangle { x: 0; y: 0; width: root.width; height: root.vis-y; background: root.bg; }
     Rectangle { x: 0; y: root.vis-y + root.vis-height; width: root.width; height: root.height - self.y; background: root.bg; }
     Rectangle { x: 0; y: root.vis-y; width: root.vis-x; height: root.vis-height; background: root.bg; }
@@ -77,7 +78,7 @@ export component CompactView inherits Rectangle {
     }
     TitleButton {
         x: 10px; y: 7px; glyph: "≡";
-        face: #1a2132; edge: Theme.accent.with-alpha(0.25); ink: Theme.text-dim;
+        face: Theme.surface-hi; edge: Theme.accent.with-alpha(0.25); ink: Theme.text-dim;
         clicked => { root.show-menu({ x: self.x, y: self.y + self.height + 2px }); }
     }
     Text {
@@ -95,12 +96,12 @@ export component CompactView inherits Rectangle {
     }
     TitleButton {
         x: root.width - 10px - 2 * self.width - 3px; y: 7px; glyph: "−";
-        face: #1a2132; edge: Theme.accent.with-alpha(0.25); ink: Theme.text-dim;
+        face: Theme.surface-hi; edge: Theme.accent.with-alpha(0.25); ink: Theme.text-dim;
         clicked => { root.minimize(); }
     }
     TitleButton {
         x: root.width - 10px - self.width; y: 7px; glyph: "×";
-        face: #1a2132; edge: Theme.accent.with-alpha(0.25); ink: Theme.text-dim;
+        face: Theme.surface-hi; edge: Theme.accent.with-alpha(0.25); ink: Theme.text-dim;
         clicked => { root.close(); }
     }
 
@@ -166,7 +167,7 @@ export component CompactView inherits Rectangle {
             height: 52px;
             border-radius: 4px;
             // Transparent while mpv draws here, so its picture shows through.
-            background: root.visual-active || root.has-video ? transparent : #0a0e18;
+            background: root.visual-active || root.has-video ? transparent : Theme.bg;
             border-width: 1px;
             border-color: #ffffff10;
             if !root.visual-active && !root.has-video: MiniBars {
@@ -303,7 +304,7 @@ export component CompactView inherits Rectangle {
         width: parent.width - 20px;
         height: parent.height - self.y - 10px;
         border-radius: 8px;
-        background: #04060bc0;
+        background: Theme.bg.with-alpha(0.75);
         border-width: 1px;
         border-color: Theme.border;
         clip: true;

@@ -1,0 +1,17 @@
+# Plain greys, no colour. A theme: it colours the media player and compact views.
+name = Graphite
+layout = any
+author = Super Media Player
+
+bg = #0b0b0c
+bg-2 = #18181a
+surface = #1c1c1fd0
+surface-hi = #26262ae8
+panel = #1c1c1f
+popup = #2a2a2e
+text = #f2f2f3
+text-dim = #a6a6ab
+text-faint = #66666b
+accent = #e8e8ea
+accent-2 = #9a9aa0
+on-accent = #0b0b0c

@@ -835,7 +835,7 @@ pub(crate) fn mount_point(dev: &str, mount: bool) -> Option<PathBuf> {
         return None;
     }
     let ok = run_with_timeout(
-        std::process::Command::new("udisksctl").args(["mount", "--no-user-interaction", "-b", dev]),
+        crate::process::command("udisksctl").args(["mount", "--no-user-interaction", "-b", dev]),
         Duration::from_secs(20),
     );
     if !ok {

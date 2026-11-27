@@ -1,15 +1,17 @@
-import { LineEdit } from "std-widgets.slint";
+import { LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme, Clock } from "theme.slint";
 import { Icon, Icons } from "icons.slint";
 import { Fmt, IconButton, PillButton, SeekBar, Slider, MenuRow, MenuHeader } from "controls.slint";
-import { CastDevice, PlaylistItem, TrackItem, CheckItem, DriveChoice, RipRow, PaletteItem, SignalStage, TranscriptLine, NavState, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark } from "types.slint";
+import { CastDevice, PlaylistItem, TrackItem, CheckItem, DriveChoice, RipRow, PaletteItem, SignalStage, TranscriptLine, NavState, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark, ColourRow, ThemeCard } from "types.slint";
 import { MediaLibrary } from "media.slint";
 import { PictureCard, MediaInfoPanel, SubSearchPanel, LibraryPanel, RipFilesPanel } from "basics.slint";
 import { NavPanel, NavWindow, Chip } from "nav.slint";
 import { PlaylistList } from "playlist.slint";
 import { TitleBar, WindowEdges, MenuBarWidth } from "titlebar.slint";
 import { CompactView } from "compact.slint";
-import { ClassicView, PlaylistWindow, Classic } from "classic.slint";
+import { ClassicView, Classic } from "classic.slint";
+import { PlaylistWindow } from "playlist-window.slint";
+import { ColoursPanel, SkinListRow } from "colours.slint";
 import { SilverView, Silver } from "silver.slint";
 import { SettingsPanel } from "settings.slint";
 import { MusicInfoPanel } from "musicinfo.slint";
@@ -18,8 +20,9 @@ import { SystemCheckPanel } from "doctor.slint";
 import { MakeMkvPanel } from "makemkv.slint";
 import { RipCard, AskCard } from "rip.slint";
 import { CommandPalette, SignalPathPanel, KaraokeView, SubSyncPanel, TranscriptPanel, ClipPanel, RemotePanel, CastPanel, DvdBar, CastBanner, PartyPanel, SkipButton, CompareSplit } from "extras.slint";
+import { DragMove, Drag } from "drag.slint";
 
-export { Theme, Clock, Classic, Silver, PlaylistItem, TrackItem, PlaylistWindow, NavWindow, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark }
+export { Theme, Clock, Classic, Silver, ColourRow, ThemeCard, PlaylistItem, TrackItem, PlaylistWindow, NavWindow, InfoRow, PictureState, ShortcutRow, ScriptRow, SubHit, LibraryRow, MediaCard, MediaLine, SeekMark }
 
 // Slowly drifting colored glows behind the UI when no video is shown.
 component AmbientBackground inherits Rectangle {
@@ -211,14 +214,14 @@ component LyricLines inherits VerticalLayout {
         color: Theme.text-faint;
         horizontal-alignment: center;
         overflow: elide;
-        font-size: 14px;
+        font-size: 14px * Theme.text-scale;
     }
     Text {
         text: root.current;
         color: Theme.text;
         horizontal-alignment: center;
         overflow: elide;
-        font-size: 19px;
+        font-size: 19px * Theme.text-scale;
         font-weight: 700;
     }
     Text {
@@ -226,7 +229,7 @@ component LyricLines inherits VerticalLayout {
         color: Theme.text-dim;
         horizontal-alignment: center;
         overflow: elide;
-        font-size: 14px;
+        font-size: 14px * Theme.text-scale;
     }
 }
 
@@ -252,14 +255,14 @@ export component AppWindow inherits Window {
     // 420px: the longest menu (Playback) must fit below the menu bar; Slint
     // menus can't scroll, so a shorter window cut it off.
     min-height: root.view == 1 ? 210px : root.view == 2 ? (root.classic-docked ? 196px + 120px : 196px)
-        : root.view == 3 ? (root.playlist-open ? 340px + 120px : 340px) : root.nav-docked ? 420px + root.nav-dock-height : 420px;
+        : root.view == 3 ? (root.classic-docked ? 340px + 120px : 340px) : root.nav-docked ? 420px + root.nav-dock-height : 420px;
     // The classic deck on its own only resizes horizontally. (Anything at or
     // above i32::MAX means "no limit" to Slint: no size hint goes to the
     // window manager, so maximizing keeps working in the other views.)
     // An open panel needs more room than they have (main.rs `fit_panel`).
     max-height: root.panel-open ? 10000000000px
         : root.view == 2 && !root.classic-docked ? 196px
-        : root.view == 3 && !root.playlist-open ? 340px : 10000000000px;
+        : root.view == 3 && !root.classic-docked ? 340px : 10000000000px;
     // The silver deck is drawn for its width; only its playlist drawer
     // resizes (downwards).
     max-width: root.view == 3 ? 600px : 10000000000px;
@@ -328,12 +331,12 @@ export component AppWindow inherits Window {
     out property <bool> panel-open: root.compact && (root.info-open || root.signal-open || root.library-open
         || root.subsearch-open || root.subsync-open || root.media-info-open || root.transcript-open || root.clip-open || root.remote-open
         || root.cast-open || root.party-open || root.palette-open || root.eq-open || root.settings-open
-        || root.ask-open || root.makemkv-open || root.check-open || root.ripfiles-open);
+        || root.ask-open || root.makemkv-open || root.check-open || root.ripfiles-open || root.colours-open);
     // A skin with nothing over it: right-clicks are for its menu, not for a
     // dialog's text field.
     out property <bool> skin-alone: root.compact && !root.panel-open && !drive-popup.is-open && !url-popup.is-open
         && !jump-popup.is-open && !about-popup.is-open && !shortcuts-popup.is-open && !disc-popup.is-open
-        && !tracks-popup.is-open;
+        && !tracks-popup.is-open && !skin-list-popup.is-open;
     in-out property <bool> info-open: false;
     property <bool> show-lyric-lines: root.s-show-lyrics && root.lyrics-synced
         && (root.lyric-current != "" || root.lyric-next != "");
@@ -355,6 +358,7 @@ export component AppWindow inherits Window {
     in-out property <bool> playlist-open: false;
     // The classic deck's playlist is in its own window (main.rs).
     in-out property <bool> playlist-detached: false;
+    // A deck's playlist hangs under it (not in its own window).
     property <bool> classic-docked: root.playlist-open && !root.playlist-detached;
     in-out property <bool> drop-hover: false;
 
@@ -365,8 +369,29 @@ export component AppWindow inherits Window {
     in property <[string]> skin-names: ["Media player", "Compact", "Classic deck (Winamp-style)", "Silver deck (MMD3-style)"];
     in property <[int]> skin-views: [0, 1, 2, 3];
     in-out property <int> s-skin: 0;
+    // The colour theme (an index into main.rs's theme list; -1: none).
+    in-out property <int> s-theme: -1;
     callback reload-skins();
     callback open-skins-folder();
+    // The colour editor (colours.slint): its lines, filled by main.rs.
+    in-out property <bool> colours-open: false;
+    in property <[ColourRow]> colour-rows;
+    in property <int> colour-generation;
+    in property <bool> colours-dirty;
+    in property <string> colours-note;
+    in property <bool> colours-own-file;
+    in-out property <int> colour-selected: 1;
+    callback colours-fill();
+    callback colour-set(string, color);
+    callback colour-hex(string, string) -> bool;
+    callback colours-save();
+    callback colours-undo();
+    // The Looks panel's themes and short list of colours (main.rs), and the
+    // text size (an index into settings::TEXT_SIZES).
+    in property <[ThemeCard]> theme-cards;
+    in property <[ColourRow]> simple-rows;
+    callback simple-colour-set(int, color);
+    in-out property <int> s-text-size: 1;
     in-out property <int> s-visualizer: 0;
     in-out property <int> s-artist-pos: 2;
     in-out property <bool> s-artist-online: false;
@@ -431,7 +456,7 @@ export component AppWindow inherits Window {
     property <bool> own-bar: root.s-title-bar == 0 && root.own-bar-possible;
     // Our own frame is showing: rounded corners, and edges that resize.
     out property <bool> own-frame: root.own-bar && !root.compact && !root.fullscreen && !root.window-maximized;
-    out property <color> bar-color: Theme.bg-2;
+    out property <color> bar-color: Theme.title-bar;
     callback toggle-maximize();
     callback system-window-menu(length, length) -> bool;
     in-out property <bool> s-single-instance: true;
@@ -719,6 +744,8 @@ export component AppWindow inherits Window {
     callback refresh-makemkv();
     callback install-makemkv();
     callback open-url(string);
+    // Ctrl+V: plays files copied in the file manager; false when there are none.
+    callback paste-files() -> bool;
     public function show-makemkv-key() {
         root.makemkv-open = true;
         root.refresh-makemkv();
@@ -882,6 +909,13 @@ export component AppWindow inherits Window {
     // when the dialog closes: not to a menu that is gone. Those with a text
     // field open once the menu has closed, as it takes the keyboard back then.
     public function show-url() { open-url.running = true; }
+    // The skins as a scrolling list (the skins' menu: "Skin…").
+    public function show-skin-list() { open-skin-list.running = true; }
+    open-skin-list := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => { self.running = false; keys.focus(); skin-list-popup.show(); }
+    }
     open-url := Timer {
         interval: 1ms;
         running: false;
@@ -913,6 +947,10 @@ export component AppWindow inherits Window {
 
     public function show-about() { keys.focus(); about-popup.show(); }
     public function show-settings() { root.settings-open = true; }
+    public function show-colours() {
+        root.colours-open = true;
+        root.colours-fill();
+    }
     // Switch to a plain view (its default skin).
     function set-view(mode: int) {
         if (root.s-view-mode != mode || root.s-skin != mode) {
@@ -923,6 +961,19 @@ export component AppWindow inherits Window {
     }
     function set-skin(i: int) {
         if (root.s-skin != i) {
+            root.s-skin = i;
+            root.s-view-mode = root.skin-views[i];
+            root.settings-changed();
+        }
+    }
+    // A picture in the Looks panel: a colour theme (kept apart from the
+    // skin, for the media player and compact views), or a skin of the view.
+    function choose-card(is-theme: bool, i: int) {
+        if (is-theme) {
+            root.s-theme = i;
+            root.settings-changed();
+        } else {
+            if (root.s-view-mode <= 1) { root.s-theme = -1; }
             root.s-skin = i;
             root.s-view-mode = root.skin-views[i];
             root.settings-changed();
@@ -1125,6 +1176,7 @@ export component AppWindow inherits Window {
                 MenuItem { title: "Reload skins"; activated => { root.reload-skins(); } }
                 MenuItem { title: "Open skins folder"; activated => { root.open-skins-folder(); } }
             }
+            MenuItem { title: "Themes and colours…"; activated => { root.show-colours(); } }
             Menu {
                 title: "Music visualization";
                 for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
@@ -1304,6 +1356,11 @@ export component AppWindow inherits Window {
             if (e.text == Key.PageUp && !root.idle) { root.basic("chapter-step", -1); return accept; }
             if (e.text == Key.PageDown && !root.idle) { root.basic("chapter-step", 1); return accept; }
             if (e.text == Key.Escape && root.picture-open) { root.picture-open = false; return accept; }
+            if (e.text == Key.Escape && root.colours-open) {
+                if (root.colours-dirty) { root.colours-undo(); }
+                root.colours-open = false;
+                return accept;
+            }
             if (e.text == Key.Escape && root.media-info-open) { root.media-info-open = false; return accept; }
             if (e.text == Key.Escape && root.subsearch-open) { root.subsearch-open = false; return accept; }
             if (e.text == Key.Escape && root.ripfiles-open) { root.ripfiles-open = false; return accept; }
@@ -1348,7 +1405,10 @@ export component AppWindow inherits Window {
             if (e.text == "l" && !e.modifiers.control) { root.playlist-open = !root.playlist-open; return accept; }
             if (e.text == "c" && !e.modifiers.control && !e.modifiers.alt && (root.has-video || root.s-auto-crop)) { root.toggle-auto-crop(); return accept; }
             if (e.text == "s" && !e.modifiers.control) { root.screenshot(); return accept; }
-            if (e.text == "v" && e.modifiers.control) { root.paste-on-open = true; root.show-url(); return accept; }
+            if (e.text == "v" && e.modifiers.control) {
+                if (!root.paste-files()) { root.paste-on-open = true; root.show-url(); }
+                return accept;
+            }
             // The menu bar handles these, except where it is hidden: in
             // fullscreen and in the skinned players.
             if ((root.fullscreen || root.compact) && e.modifiers.control) {
@@ -1406,7 +1466,7 @@ export component AppWindow inherits Window {
             spacing: 18px;
             Text {
                 text: "Super Media Player";
-                font-size: 44px;
+                font-size: 44px * Theme.text-scale;
                 font-weight: 800;
                 horizontal-alignment: center;
                 color: Theme.text;
@@ -1628,7 +1688,7 @@ export component AppWindow inherits Window {
                 Text {
                     text: root.media-artist;
                     color: Theme.text;
-                    font-size: 11px;
+                    font-size: 11px * Theme.text-scale;
                     font-weight: 600;
                     overflow: elide;
                     width: parent.width - 12px;
@@ -1816,19 +1876,10 @@ export component AppWindow inherits Window {
                 }
                 Menu {
                     title: "View";
-                    Menu {
-                        title: "Skin";
-                        MenuItem { title: "Next skin"; activated => { root.set-skin(Math.mod(root.s-skin + 1, root.skin-names.length)); } }
-                        MenuSeparator { }
-                        for name[i] in root.skin-names: MenuItem {
-                            title: name;
-                            checked: root.s-skin == i;
-                            activated => { root.set-skin(i); }
-                        }
-                        MenuSeparator { }
-                        MenuItem { title: "Reload skins"; activated => { root.reload-skins(); } }
-                        MenuItem { title: "Open skins folder"; activated => { root.open-skins-folder(); } }
-                    }
+                    // Skins' windows are too short for a long sub-menu (Slint
+                    // menus can't scroll): the list opens in a popup that does.
+                    MenuItem { title: "Skin…"; activated => { root.show-skin-list(); } }
+                    MenuItem { title: "Themes and colours…"; activated => { root.show-colours(); } }
                     Menu {
                         title: "Music visualization";
                         for v[i] in ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"]: MenuItem {
@@ -2041,6 +2092,7 @@ export component AppWindow inherits Window {
                 repeat-mode: root.repeat-mode;
                 playlist: root.playlist;
                 playlist-open <=> root.playlist-open;
+                playlist-detached <=> root.playlist-detached;
                 toggle-pause => { root.toggle-pause(); }
                 stop => { root.stop(); }
                 next => { root.next(); }
@@ -2261,7 +2313,7 @@ export component AppWindow inherits Window {
             opacity: root.show-controls ? 1 : 0;
             animate y, opacity, width { duration: Theme.normal; easing: ease-in-out; }
             border-radius: Theme.radius + 4px;
-            background: Theme.surface;
+            background: Theme.controls;
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 30px;
@@ -2389,7 +2441,7 @@ export component AppWindow inherits Window {
                                 x: 23px;
                                 y: 6px;
                                 text: "1";
-                                font-size: 10px;
+                                font-size: 10px * Theme.text-scale;
                                 font-weight: 800;
                                 color: Theme.accent;
                             }
@@ -2468,7 +2520,7 @@ export component AppWindow inherits Window {
             animate slide { duration: Theme.normal; easing: ease-in-out; }
             x: parent.width + 10px - self.slide * (self.width + 24px);
             border-radius: Theme.radius + 4px;
-            background: Theme.surface-hi;
+            background: Theme.playlist;
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 30px;
@@ -2482,7 +2534,7 @@ export component AppWindow inherits Window {
                     spacing: 4px;
                     Text {
                         text: "Playlist";
-                        font-size: 18px;
+                        font-size: 18px * Theme.text-scale;
                         font-weight: 700;
                         color: Theme.text;
                         vertical-alignment: center;
@@ -2560,7 +2612,7 @@ export component AppWindow inherits Window {
             rec-text := Text {
                 text: "● REC  " + root.recording-text;
                 color: white;
-                font-size: 12px;
+                font-size: 12px * Theme.text-scale;
                 font-weight: 700;
             }
         }
@@ -2602,7 +2654,7 @@ export component AppWindow inherits Window {
                 background: Theme.accent.with-alpha(0.06);
                 Text {
                     text: root.playlist-open && !root.idle ? "Drop to add to the playlist" : "Drop to play";
-                    font-size: 26px;
+                    font-size: 26px * Theme.text-scale;
                     font-weight: 700;
                     color: Theme.text;
                 }
@@ -2843,6 +2895,36 @@ export component AppWindow inherits Window {
             close => { root.eq-open = false; keys.focus(); }
         }
 
+        if root.colours-open: ColoursPanel {
+            // Leaves a skinned player's deck in view, to see the colours change.
+            keep-clear: root.view == 1 ? 210px : root.view == 2 ? 196px : root.view == 3 ? 340px : 0px;
+            skin: root.s-skin;
+            rows: root.colour-rows;
+            generation: root.colour-generation;
+            dirty: root.colours-dirty;
+            note: root.colours-note;
+            own-file: root.colours-own-file;
+            selected <=> root.colour-selected;
+            cards: root.theme-cards;
+            simple-rows: root.simple-rows;
+            text-size: root.s-text-size;
+            theme: root.s-view-mode <= 1 ? root.s-theme : -1;
+            choose-card(t, i) => { root.choose-card(t, i); }
+            set-text-size(i) => { root.s-text-size = i; root.settings-changed(); }
+            set-simple(i, c) => { root.simple-colour-set(i, c); }
+            set-colour(k, c) => { root.colour-set(k, c); }
+            set-hex(k, t) => { return root.colour-hex(k, t); }
+            save => { root.colours-save(); }
+            undo => { root.colours-undo(); }
+            reload => { root.reload-skins(); }
+            open-folder => { root.open-skins-folder(); }
+            close => {
+                if (root.colours-dirty) { root.colours-undo(); }
+                root.colours-open = false;
+                keys.focus();
+            }
+        }
+
         if root.settings-open: SettingsPanel {
             tab <=> root.settings-tab;
             audio-devices: root.audio-devices;
@@ -2874,6 +2956,7 @@ export component AppWindow inherits Window {
             view-mode <=> root.s-view-mode;
             skin <=> root.s-skin;
             skin-names: root.skin-names;
+            open-colours => { root.settings-open = false; root.show-colours(); }
             skin-views: root.skin-views;
             reload-skins => { root.reload-skins(); }
             open-skins-folder => { root.open-skins-folder(); }
@@ -2984,7 +3067,7 @@ export component AppWindow inherits Window {
                 spacing: 20px;
                 Text {
                     text: "Super Media Player";
-                    font-size: 44px;
+                    font-size: 44px * Theme.text-scale;
                     font-weight: 800;
                     horizontal-alignment: center;
                     color: Theme.text;
@@ -3043,9 +3126,15 @@ export component AppWindow inherits Window {
     property <bool> paste-on-open: false;
     // Rip & play with several discs in: which drive?
     drive-popup := PopupWindow {
-        x: (root.width - self.width) / 2;
-        y: Math.max(10px, root.height * 0.25);
-        width: Math.min(440px, root.width - 24px);
+        property <length> base-x: (root.width - self.width) / 2;
+        property <length> base-y: Math.max(10px, root.height * 0.25);
+        property <length> drag-x;
+        property <length> drag-y;
+        x: self.base-x + Drag.within(self.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(self.drag-y, -self.base-y, root.height - self.height - self.base-y);
+        // Reads the drag offset (times zero): Slint places a popup anew
+        // only when its size changes, not when its x or y does.
+        width: Math.min(440px, root.width - 24px) + (self.drag-x + self.drag-y) * 0;
         close-policy: close-on-click-outside;
         Rectangle {
             border-radius: Theme.radius;
@@ -3054,12 +3143,21 @@ export component AppWindow inherits Window {
             border-color: Theme.border;
             drop-shadow-blur: 40px;
             drop-shadow-color: #000000a0;
+            // Drag it around within the window (drag.slint).
+            DragMove {
+                dx <=> drive-popup.drag-x;
+                dy <=> drive-popup.drag-y;
+                min-dx: -drive-popup.base-x;
+                max-dx: root.width - drive-popup.width - drive-popup.base-x;
+                min-dy: -drive-popup.base-y;
+                max-dy: root.height - drive-popup.height - drive-popup.base-y;
+            }
             VerticalLayout {
                 padding: 16px;
                 spacing: 8px;
                 Text {
                     text: root.drive-picker-play ? "Play the disc in which drive?" : "Rip from which drive?";
-                    font-size: 16px;
+                    font-size: 16px * Theme.text-scale;
                     font-weight: 700;
                     color: Theme.text;
                 }
@@ -3101,10 +3199,75 @@ export component AppWindow inherits Window {
         }
     }
 
+    // The skins' "Skin…": the same entries as the menu bar's Skin menu, in
+    // a list that scrolls, since a skin's window is too short for them.
+    skin-list-popup := PopupWindow {
+        x: Math.max(8px, (root.width - self.width) / 2);
+        y: 8px;
+        width: Math.min(300px, root.width - 16px);
+        height: root.height - 16px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            border-radius: 8px;
+            background: Theme.popup;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: #00000070;
+            list-keys := FocusScope {
+                init => { self.focus(); }
+                key-pressed(e) => {
+                    if (e.text == Key.Escape) {
+                        skin-list-popup.close();
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+            ScrollView {
+                x: 4px;
+                y: 4px;
+                width: parent.width - 8px;
+                height: parent.height - 8px;
+                // Start with the chosen skin in view.
+                content-y: -Math.max(0px, Math.min(36px + root.s-skin * 30px - (self.visible-height - 30px) / 2,
+                    self.content-height - self.visible-height));
+                VerticalLayout {
+                    SkinListRow {
+                        text: "Next skin";
+                        clicked => { root.set-skin(Math.mod(root.s-skin + 1, root.skin-names.length)); skin-list-popup.close(); }
+                    }
+                    Rectangle { height: 6px; Rectangle { height: 1px; background: Theme.border; } }
+                    for name[i] in root.skin-names: SkinListRow {
+                        text: name;
+                        checked: root.s-skin == i;
+                        clicked => { root.set-skin(i); skin-list-popup.close(); }
+                    }
+                    Rectangle { height: 6px; Rectangle { height: 1px; background: Theme.border; } }
+                    SkinListRow {
+                        text: "Reload skins";
+                        clicked => { root.reload-skins(); skin-list-popup.close(); }
+                    }
+                    SkinListRow {
+                        text: "Open skins folder";
+                        clicked => { root.open-skins-folder(); skin-list-popup.close(); }
+                    }
+                }
+            }
+        }
+    }
+
     url-popup := PopupWindow {
-        x: (root.width - 460px) / 2;
-        y: root.height * 0.3;
-        width: Math.min(460px, root.width - 24px);
+        property <length> base-x: (root.width - 460px) / 2;
+        property <length> base-y: root.height * 0.3;
+        property <length> drag-x;
+        property <length> drag-y;
+        x: self.base-x + Drag.within(self.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(self.drag-y, -self.base-y, root.height - self.height - self.base-y);
+        // Reads the drag offset (times zero): Slint places a popup anew
+        // only when its size changes, not when its x or y does.
+        width: Math.min(460px, root.width - 24px) + (self.drag-x + self.drag-y) * 0;
         close-policy: close-on-click-outside;
         Rectangle {
             border-radius: Theme.radius;
@@ -3113,12 +3276,21 @@ export component AppWindow inherits Window {
             border-color: Theme.border;
             drop-shadow-blur: 40px;
             drop-shadow-color: #000000a0;
+            // Drag it around within the window (drag.slint).
+            DragMove {
+                dx <=> url-popup.drag-x;
+                dy <=> url-popup.drag-y;
+                min-dx: -url-popup.base-x;
+                max-dx: root.width - url-popup.width - url-popup.base-x;
+                min-dy: -url-popup.base-y;
+                max-dy: root.height - url-popup.height - url-popup.base-y;
+            }
             VerticalLayout {
                 padding: 18px;
                 spacing: 12px;
                 Text {
                     text: "Open location";
-                    font-size: 17px;
+                    font-size: 17px * Theme.text-scale;
                     font-weight: 700;
                     color: Theme.text;
                 }
@@ -3199,9 +3371,15 @@ export component AppWindow inherits Window {
     }
 
     jump-popup := PopupWindow {
-        x: (root.width - self.width) / 2;
-        y: root.height * 0.3;
-        width: Math.min(380px, root.width - 24px);
+        property <length> base-x: (root.width - self.width) / 2;
+        property <length> base-y: root.height * 0.3;
+        property <length> drag-x;
+        property <length> drag-y;
+        x: self.base-x + Drag.within(self.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(self.drag-y, -self.base-y, root.height - self.height - self.base-y);
+        // Reads the drag offset (times zero): Slint places a popup anew
+        // only when its size changes, not when its x or y does.
+        width: Math.min(380px, root.width - 24px) + (self.drag-x + self.drag-y) * 0;
         close-policy: close-on-click-outside;
         property <bool> bad: false;
         Rectangle {
@@ -3211,12 +3389,21 @@ export component AppWindow inherits Window {
             border-color: Theme.border;
             drop-shadow-blur: 40px;
             drop-shadow-color: #000000a0;
+            // Drag it around within the window (drag.slint).
+            DragMove {
+                dx <=> jump-popup.drag-x;
+                dy <=> jump-popup.drag-y;
+                min-dx: -jump-popup.base-x;
+                max-dx: root.width - jump-popup.width - jump-popup.base-x;
+                min-dy: -jump-popup.base-y;
+                max-dy: root.height - jump-popup.height - jump-popup.base-y;
+            }
             VerticalLayout {
                 padding: 18px;
                 spacing: 12px;
                 Text {
                     text: "Jump to time";
-                    font-size: 17px;
+                    font-size: 17px * Theme.text-scale;
                     font-weight: 700;
                     color: Theme.text;
                 }
@@ -3267,17 +3454,32 @@ export component AppWindow inherits Window {
     }
 
     about-popup := PopupWindow {
-        x: (root.width - 440px) / 2;
-        y: Math.max(16px, (root.height - 470px) / 2);
-        width: 440px;
+        property <length> base-x: (root.width - 440px) / 2;
+        property <length> base-y: Math.max(16px, (root.height - 470px) / 2);
+        property <length> drag-x;
+        property <length> drag-y;
+        x: self.base-x + Drag.within(self.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(self.drag-y, -self.base-y, root.height - self.height - self.base-y);
+        // Reads the drag offset (times zero): Slint places a popup anew
+        // only when its size changes, not when its x or y does.
+        width: 440px + (self.drag-x + self.drag-y) * 0;
         close-policy: close-on-click-outside;
         Rectangle {
             border-radius: Theme.radius + 4px;
-            background: #171c2e; // opaque: text behind would show through
+            background: Theme.panel; // opaque: text behind would show through
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 40px;
             drop-shadow-color: #000000a0;
+            // Drag it around within the window (drag.slint).
+            DragMove {
+                dx <=> about-popup.drag-x;
+                dy <=> about-popup.drag-y;
+                min-dx: -about-popup.base-x;
+                max-dx: root.width - about-popup.width - about-popup.base-x;
+                min-dy: -about-popup.base-y;
+                max-dy: root.height - about-popup.height - about-popup.base-y;
+            }
             VerticalLayout {
                 padding: 26px;
                 padding-top: 30px;
@@ -3292,7 +3494,7 @@ export component AppWindow inherits Window {
                 }
                 Text {
                     text: "Super Media Player";
-                    font-size: 24px;
+                    font-size: 24px * Theme.text-scale;
                     font-weight: 800;
                     color: Theme.text;
                     horizontal-alignment: center;
@@ -3353,23 +3555,38 @@ export component AppWindow inherits Window {
     }
 
     shortcuts-popup := PopupWindow {
-        x: (root.width - 460px) / 2;
-        y: 16px;
-        width: 460px;
+        property <length> base-x: (root.width - 460px) / 2;
+        property <length> base-y: 16px;
+        property <length> drag-x;
+        property <length> drag-y;
+        x: self.base-x + Drag.within(self.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(self.drag-y, -self.base-y, root.height - self.height - self.base-y);
+        // Reads the drag offset (times zero): Slint places a popup anew
+        // only when its size changes, not when its x or y does.
+        width: 460px + (self.drag-x + self.drag-y) * 0;
         close-policy: close-on-click-outside;
         Rectangle {
             border-radius: Theme.radius + 4px;
-            background: #171c2e;
+            background: Theme.panel;
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 40px;
             drop-shadow-color: #000000a0;
+            // Drag it around within the window (drag.slint).
+            DragMove {
+                dx <=> shortcuts-popup.drag-x;
+                dy <=> shortcuts-popup.drag-y;
+                min-dx: -shortcuts-popup.base-x;
+                max-dx: root.width - shortcuts-popup.width - shortcuts-popup.base-x;
+                min-dy: -shortcuts-popup.base-y;
+                max-dy: root.height - shortcuts-popup.height - shortcuts-popup.base-y;
+            }
             VerticalLayout {
                 padding: 22px;
                 spacing: 4px;
                 Text {
                     text: "Keyboard shortcuts";
-                    font-size: 18px;
+                    font-size: 18px * Theme.text-scale;
                     font-weight: 800;
                     color: Theme.text;
                 }

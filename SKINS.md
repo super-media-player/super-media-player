@@ -4,7 +4,7 @@ Super Media Player has two kinds of skin:
 
 1. **Colour skins**: a small `.skin` text file that recolours one of the
    views. No programming and no rebuild: drop the file in the skins folder
-   and choose *View › Reload skins*.
+   and choose *View › Skin › Reload skins*.
 2. **New layouts**: a new view with its own shape and controls, written in
    [Slint](https://slint.dev) like the built-in ones. It needs a rebuild.
 
@@ -20,7 +20,12 @@ and *Silver deck*.
 | Linux | `~/.config/super-media-player/skins/` |
 | Windows | `%APPDATA%\super-media-player\skins\` |
 
-*View › Open skins folder* (or *Settings › Your own skins › Open folder*)
+The easiest way to make one: *View › Themes and colours…* picks a theme,
+changes a few plain colours or (on *Advanced colours*) any colour in the
+app, and *Save as my theme* writes the `.skin` file for you
+(`my-<skin>.skin`, only the colours that differ from the layout's own). The rest of this section is for writing or tweaking files by hand.
+
+*View › Skin › Open skins folder* (or *Settings › Your own skins › Open folder*)
 creates the folder and opens it. It also writes:
 
 - `README.txt`, a short version of this section;
@@ -34,7 +39,7 @@ creates the folder and opens it. It also writes:
 ```ini
 # Lines starting with # are comments.
 name   = Silver deck – Night shift   # shown in the menus
-layout = silver                      # player, compact, classic or silver
+layout = silver                      # player, compact, classic, silver or any
 author = Your name                   # optional
 
 case-1 = #3a3f47                     # a colour of the layout
@@ -42,6 +47,11 @@ led    = #39e0ff
 theme.accent = #39e0ff               # a colour of another palette
 ```
 
+- `layout = any` makes a **theme**: it uses the `theme` palette and
+  colours the media player and compact views without switching between
+  them. The built-in themes (Aurora, Ocean, Graphite…) are such files.
+  Themes are listed in *View › Themes and colours…*, not with the skins,
+  and the settings remember the theme apart from the skin.
 - Colours are `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` (the last pair is
   the opacity) or `transparent`.
 - Anything you leave out keeps the layout's own colour, so a skin can be
@@ -62,13 +72,18 @@ palette explicitly.
 
 | Layout | Palette | Defined in |
 |---|---|---|
-| `player`, `compact` | `theme` | `apps/desktop/ui/theme.slint` (`global Theme`) |
+| `player`, `compact`, `any` | `theme` | `apps/desktop/ui/theme.slint` (`global Theme`) |
 | `classic` | `classic` | `apps/desktop/ui/classic.slint` (`global Classic`) |
 | `silver` | `silver` | `apps/desktop/ui/silver.slint` (`global Silver`) |
 
-The `theme` palette also colours the menus, popups, settings, the pulse
-line and the playlist text in every layout. A silver skin can set
-`theme.accent` to match its lights, for example.
+The `theme` palette also colours the popups, dialogs (`panel`), buttons
+(`button`, `button-hover`, `button-text`), drop-down lists (`popup`), the
+pulse line and the playlist text in every layout. The media player's
+title bar row, control bar, playlist panel and navigation window have
+their own colours (`title-bar`, `controls`, `playlist`, `nav`); a skin
+that leaves them out gets its `bg-2`, `surface`, `surface-hi` and `bg-2`. A silver skin can set
+`theme.accent` to match its lights, for example. The menus (menu bar and
+right-click menu) are drawn by Slint's own style and don't follow skins.
 
 Every `in-out property <color>` (or `<string>`, for fonts) in those
 globals is a name a skin can set. The comments there say what each one

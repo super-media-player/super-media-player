@@ -37,7 +37,8 @@ Pick whichever suits you:
 - Copy a file, folder or link anywhere, then press **Ctrl+V** in the player.
 - Double-click a file in your file manager, once the player is the default app for it.
 - Drag files onto the window. On a Wayland desktop this needs *Settings → System →
-  Window system → X11 (drag and drop)*; Ctrl+V works everywhere.
+  Window system → X11 (drag and drop)*. On Windows it doesn't work while the player
+  runs as administrator. Ctrl+V works everywhere.
 
 ![A film playing](../images/video.png)
 

@@ -8,27 +8,49 @@ import { Theme } from "theme.slint";
 import { Icons, Icon } from "icons.slint";
 import { Fmt, IconButton, PillButton } from "controls.slint";
 import { CastDevice, PaletteItem, SignalStage, TranscriptLine } from "types.slint";
+import { DragMove, Drag } from "drag.slint";
 
 // Dimmed backdrop with a card in the middle: title, close button, content.
+// The card can be dragged within the window (drag.slint).
 export component Panel inherits Rectangle {
     in property <string> title;
     in property <length> card-width: 560px;
     in property <length> card-height: 460px;
+    // Not modal: no dimmed backdrop, the player underneath keeps working,
+    // and the card sits at the bottom right, below `keep-clear` (the top
+    // of the window it leaves uncovered).
+    in property <bool> modal: true;
+    in property <length> keep-clear: 0px;
     callback close();
 
-    background: #000000a0;
-    TouchArea { clicked => { root.close(); } }
+    background: root.modal ? #000000a0 : transparent;
+    if root.modal: TouchArea { clicked => { root.close(); } }
 
+    property <length> drag-x;
+    property <length> drag-y;
     Rectangle {
+        property <length> base-x: root.modal ? (root.width - self.width) / 2 : root.width - self.width - 16px;
+        property <length> base-y: root.modal ? (root.height - self.height) / 2 : root.height - self.height - 16px;
+        x: self.base-x + Drag.within(root.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(root.drag-y, -self.base-y, root.height - self.height - self.base-y);
         width: Math.min(root.card-width, root.width - 32px);
-        height: Math.min(root.card-height, root.height - 32px);
+        height: Math.min(root.card-height, root.height - 32px - root.keep-clear);
         border-radius: Theme.radius + 4px;
-        background: #171c2e;
+        background: Theme.panel;
         border-width: 1px;
         border-color: Theme.border;
         drop-shadow-blur: 40px;
         drop-shadow-color: #000000a0;
-        TouchArea { }  // clicks inside don't close it
+        // Drag it around within the window (drag.slint); also keeps
+        // clicks inside from reaching what is underneath.
+        DragMove {
+            dx <=> root.drag-x;
+            dy <=> root.drag-y;
+            min-dx: -parent.base-x;
+            max-dx: root.width - parent.width - parent.base-x;
+            min-dy: -parent.base-y;
+            max-dy: root.height - parent.height - parent.base-y;
+        }
 
         VerticalLayout {
             padding: 20px;
@@ -37,7 +59,7 @@ export component Panel inherits Rectangle {
                 spacing: 12px;
                 Text {
                     text: root.title;
-                    font-size: 20px;
+                    font-size: 20px * Theme.text-scale;
                     font-weight: 800;
                     color: Theme.text;
                     vertical-alignment: center;
@@ -93,7 +115,7 @@ export component CommandPalette inherits Rectangle {
         width: Math.min(620px, root.width - 32px);
         height: Math.min(440px, root.height - self.y - 16px);
         border-radius: Theme.radius;
-        background: #171c2e;
+        background: Theme.panel;
         border-width: 1px;
         border-color: Theme.border;
         drop-shadow-blur: 40px;
@@ -266,7 +288,7 @@ export component KaraokeView inherits Rectangle {
             Text {
                 text: root.media-title;
                 color: Theme.text-dim;
-                font-size: 16px;
+                font-size: 16px * Theme.text-scale;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
                 overflow: elide;
@@ -289,7 +311,7 @@ export component KaraokeView inherits Rectangle {
         Text {
             text: root.prev;
             color: #ffffff50;
-            font-size: 22px;
+            font-size: 22px * Theme.text-scale;
             horizontal-alignment: center;
             wrap: word-wrap;
         }
@@ -301,7 +323,7 @@ export component KaraokeView inherits Rectangle {
                 width: parent.width;
                 text: root.current != "" ? root.current : root.synced ? "♪" : "These lyrics have no timing";
                 color: #ffffff70;
-                font-size: 40px;
+                font-size: 40px * Theme.text-scale;
                 font-weight: 800;
                 horizontal-alignment: center;
                 wrap: word-wrap;
@@ -317,7 +339,7 @@ export component KaraokeView inherits Rectangle {
                     width: dim.preferred-width;
                     text: dim.text;
                     color: Theme.accent;
-                    font-size: 40px;
+                    font-size: 40px * Theme.text-scale;
                     font-weight: 800;
                 }
             }
@@ -325,7 +347,7 @@ export component KaraokeView inherits Rectangle {
         Text {
             text: root.next;
             color: #ffffffa0;
-            font-size: 26px;
+            font-size: 26px * Theme.text-scale;
             horizontal-alignment: center;
             wrap: word-wrap;
         }
@@ -751,7 +773,7 @@ export component CastBanner inherits Rectangle {
         Text {
             text: "On " + root.name;
             color: Theme.text-dim;
-            font-size: 16px;
+            font-size: 16px * Theme.text-scale;
             horizontal-alignment: center;
             overflow: elide;
         }
@@ -888,7 +910,7 @@ export component SkipButton inherits Rectangle {
         text: root.text + (root.countdown >= 0 ? " (" + Math.ceil(root.countdown) + ")" : "") + "  ›";
         color: #10131c;
         font-weight: 800;
-        font-size: 15px;
+        font-size: 15px * Theme.text-scale;
     }
     touch := TouchArea {
         mouse-cursor: pointer;

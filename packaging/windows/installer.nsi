@@ -21,7 +21,12 @@ InstallDir "$PROGRAMFILES64\${APP}"
 InstallDirRegKey HKLM "Software\SuperMediaPlayer" "InstallDir"
 !define MUI_ICON "${STAGE}\smp.ico"
 !define MUI_UNICON "${STAGE}\smp.ico"
-!define MUI_FINISHPAGE_RUN "$INSTDIR\${EXE}"
+; "Run Super Media Player" on the last page. The installer runs as admin,
+; and a player started straight from it would too: Windows then blocks files
+; dragged from Explorer (a normal-user program) onto it. Explorer starts it
+; as the signed-in user instead.
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_FUNCTION RunAsUser
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${STAGE}\LICENSE.txt"
@@ -45,6 +50,10 @@ VIAddVersionKey "LegalCopyright" "GPL-3.0-or-later"
   WriteRegStr HKLM "Software\Classes\${EXT}\OpenWithProgids" "SuperMediaPlayer.Media" ""
   WriteRegStr HKLM "Software\Classes\Applications\${EXE}\SupportedTypes" "${EXT}" ""
 !macroend
+
+Function RunAsUser
+  Exec '"$WINDIR\explorer.exe" "$INSTDIR\${EXE}"'
+FunctionEnd
 
 Function .onInit
   ${IfNot} ${RunningX64}

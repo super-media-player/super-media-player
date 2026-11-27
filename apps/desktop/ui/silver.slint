@@ -2,7 +2,7 @@ import { Icons, Icon } from "icons.slint";
 import { Fmt } from "controls.slint";
 import { PlaylistItem } from "types.slint";
 import { PlaylistList } from "playlist.slint";
-import { MiniBars, Marquee, Holed, GrooveSlider, Knob } from "skin-parts.slint";
+import { MiniBars, Marquee, Holed, GrooveSlider, Knob, HoverTip, TipBubble, Tip } from "skin-parts.slint";
 
 // Colours of the silver deck (MMD3-style): bright chrome, a pale steel-blue
 // glass screen with white text, dark transport wheel. Every colour here can
@@ -94,6 +94,7 @@ component Chrome inherits Rectangle {
     in property <bool> on: false;
     in property <length> size: 24px;
     in property <float> icon-scale: 0.5;
+    in property <string> tip;
     callback clicked();
     width: root.size;
     height: root.size;
@@ -117,6 +118,7 @@ component Chrome inherits Rectangle {
         font-size: root.size * 0.42;
         font-weight: 800;
     }
+    HoverTip { hover: touch.has-hover && !touch.pressed; text: root.tip; }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -208,6 +210,7 @@ component Shape inherits Path {
 // One quarter of the transport wheel.
 component WheelKey inherits Rectangle {
     in property <string> icon;
+    in property <string> tip;
     callback clicked();
     Icon {
         width: 15px;
@@ -215,6 +218,7 @@ component WheelKey inherits Rectangle {
         commands: root.icon;
         color: touch.pressed ? Silver.accent-2 : touch.has-hover ? Silver.wheel-ink-hover : Silver.wheel-ink;
     }
+    HoverTip { hover: touch.has-hover && !touch.pressed; text: root.tip; }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -225,6 +229,7 @@ component WheelKey inherits Rectangle {
 component PadArrow inherits Rectangle {
     // 0 up, 1 right, 2 down, 3 left
     in property <int> direction;
+    in property <string> tip;
     callback clicked();
     width: 16px;
     height: 16px;
@@ -237,6 +242,7 @@ component PadArrow inherits Rectangle {
             : root.direction == 2 ? "M 4 8 L 0 1 L 8 1 Z"
             : "M 0 4 L 7 0 L 7 8 Z";
     }
+    HoverTip { hover: touch.has-hover && !touch.pressed; text: root.tip; }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -273,6 +279,8 @@ export component SilverView inherits Rectangle {
     in property <int> repeat-mode;
     in property <[PlaylistItem]> playlist;
     in-out property <bool> playlist-open;
+    // The playlist shows in its own window (PlaylistWindow) instead of the drawer.
+    in-out property <bool> playlist-detached;
 
     out property <length> vis-x: vis-box.x;
     out property <length> vis-y: vis-box.y;
@@ -308,6 +316,7 @@ export component SilverView inherits Rectangle {
 
     property <bool> drawn-under: root.visual-active || root.has-video;
     property <length> main-height: 340px;
+    property <string> speed-text: "speed " + Math.round(root.speed * 100) / 100 + "×";
 
     // ---- case ----
     Holed {
@@ -533,6 +542,7 @@ export component SilverView inherits Rectangle {
         thumb-width: 18px;
         thumb-height: 10px;
         thumb-radius: 5px;
+        tip: Fmt.time(root.position) + " of " + Fmt.time(root.duration);
         dragged(f) => { root.scrub(f * root.duration); }
         released(f) => { root.seek(f * root.duration); }
     }
@@ -610,19 +620,20 @@ export component SilverView inherits Rectangle {
             border-color: root.playlist-open ? Silver.led : Silver.chrome-edge;
             drop-shadow-blur: root.playlist-open ? 5px : 2px;
             drop-shadow-color: root.playlist-open ? Silver.led : #00000050;
+            HoverTip { hover: pad-touch.has-hover && !pad-touch.pressed; text: root.playlist-open ? "Hide playlist" : "Show playlist"; }
             pad-touch := TouchArea {
                 mouse-cursor: pointer;
                 clicked => { root.playlist-open = !root.playlist-open; }
             }
             Icon { width: 22px; height: 22px; commands: Icons.playlist; color: Silver.ink; }
-            PadArrow { x: 22px; y: 1px; direction: 0; clicked => { root.prev(); } }
-            PadArrow { x: 43px; y: 22px; direction: 1; clicked => { root.seek-relative(10); } }
-            PadArrow { x: 22px; y: 43px; direction: 2; clicked => { root.next(); } }
-            PadArrow { x: 1px; y: 22px; direction: 3; clicked => { root.seek-relative(-10); } }
+            PadArrow { x: 22px; y: 1px; direction: 0; tip: "Previous"; clicked => { root.prev(); } }
+            PadArrow { x: 43px; y: 22px; direction: 1; tip: "Forward 10 s"; clicked => { root.seek-relative(10); } }
+            PadArrow { x: 22px; y: 43px; direction: 2; tip: "Next"; clicked => { root.next(); } }
+            PadArrow { x: 1px; y: 22px; direction: 3; tip: "Back 10 s"; clicked => { root.seek-relative(-10); } }
         }
         // Slower / faster.
-        Chrome { x: 43px; y: 99px; size: 15px; glyph: "−"; clicked => { root.set-speed(Math.max(0.25, root.speed - 0.25)); } }
-        Chrome { x: 76px; y: 99px; size: 15px; glyph: "+"; clicked => { root.set-speed(Math.min(4, root.speed + 0.25)); } }
+        Chrome { x: 43px; y: 99px; size: 15px; glyph: "−"; tip: "Slower · " + root.speed-text; clicked => { root.set-speed(Math.max(0.25, root.speed - 0.25)); } }
+        Chrome { x: 76px; y: 99px; size: 15px; glyph: "+"; tip: "Faster · " + root.speed-text; clicked => { root.set-speed(Math.min(4, root.speed + 0.25)); } }
     }
 
     // ---- right: transport wheel ----
@@ -648,20 +659,22 @@ export component SilverView inherits Rectangle {
             clip: true;
             Rectangle { x: 0; y: 54px; width: parent.width; height: 2px; background: Silver.wheel-cross; }
             Rectangle { x: 54px; y: 0; width: 2px; height: parent.height; background: Silver.wheel-cross; }
-            WheelKey { x: 0; y: 0; width: 54px; height: 54px; icon: Icons.stop; clicked => { root.stop(); } }
+            WheelKey { x: 0; y: 0; width: 54px; height: 54px; icon: Icons.stop; tip: "Stop"; clicked => { root.stop(); } }
             WheelKey {
                 x: 56px; y: 0; width: 54px; height: 54px;
                 icon: Icons.play;
+                tip: "Play";
                 clicked => { if (root.paused || root.idle) { root.toggle-pause(); } }
             }
-            WheelKey { x: 0; y: 56px; width: 54px; height: 54px; icon: Icons.prev; clicked => { root.prev(); } }
-            WheelKey { x: 56px; y: 56px; width: 54px; height: 54px; icon: Icons.next; clicked => { root.next(); } }
+            WheelKey { x: 0; y: 56px; width: 54px; height: 54px; icon: Icons.prev; tip: "Previous"; clicked => { root.prev(); } }
+            WheelKey { x: 56px; y: 56px; width: 54px; height: 54px; icon: Icons.next; tip: "Next"; clicked => { root.next(); } }
         }
         Chrome {
             size: 36px;
             icon: Icons.pause;
             icon-scale: 0.45;
             on: !root.paused && !root.idle;
+            tip: "Pause";
             clicked => { if (!root.paused && !root.idle) { root.toggle-pause(); } }
         }
     }
@@ -677,6 +690,7 @@ export component SilverView inherits Rectangle {
         maximum: 12;
         label: "";
         value-text: (root.treble > 0 ? "+" : "") + Math.round(root.treble) + " dB";
+        tip: self.value-text + " treble";
         mark: Silver.accent;
         face: Silver.knob;
         label-color: Silver.engraved;
@@ -693,6 +707,7 @@ export component SilverView inherits Rectangle {
         maximum: 12;
         label: "";
         value-text: (root.bass > 0 ? "+" : "") + Math.round(root.bass) + " dB";
+        tip: self.value-text + " bass";
         mark: Silver.accent;
         face: Silver.knob;
         label-color: Silver.engraved;
@@ -719,6 +734,7 @@ export component SilverView inherits Rectangle {
         maximum: 150;
         label: "";
         value-text: Math.round(root.volume) + "%";
+        tip: self.value-text + " volume";
         mark: Silver.accent;
         face: Silver.knob;
         label-color: Silver.engraved;
@@ -726,31 +742,32 @@ export component SilverView inherits Rectangle {
     }
 
     // ---- left column ----
-    Chrome { x: 19px; y: 48px; size: 28px; icon: Icons.shuffle; stroked: true; on: root.shuffle; clicked => { root.toggle-shuffle(); } }
+    Chrome { x: 19px; y: 48px; size: 28px; icon: Icons.shuffle; stroked: true; on: root.shuffle; tip: root.shuffle ? "Shuffle on" : "Shuffle off"; clicked => { root.toggle-shuffle(); } }
     Led { x: 51px; y: 58px; on: root.shuffle; }
-    Chrome { x: 19px; y: 86px; size: 28px; icon: Icons.repeat; stroked: true; on: root.repeat-mode > 0; clicked => { root.cycle-repeat(); } }
+    Chrome { x: 19px; y: 86px; size: 28px; icon: Icons.repeat; stroked: true; on: root.repeat-mode > 0; tip: root.repeat-mode == 2 ? "Repeat one" : root.repeat-mode == 1 ? "Repeat all" : "Repeat off"; clicked => { root.cycle-repeat(); } }
     Led { x: 51px; y: 96px; on: root.repeat-mode > 0; }
-    Chrome { x: 19px; y: 125px; size: 28px; icon: root.muted ? Icons.mute : Icons.volume; on: root.muted; clicked => { root.toggle-mute(); } }
+    Chrome { x: 19px; y: 125px; size: 28px; icon: root.muted ? Icons.mute : Icons.volume; on: root.muted; tip: root.muted ? "Unmute" : "Mute · " + Math.round(root.volume) + "% volume"; clicked => { root.toggle-mute(); } }
     Led { x: 51px; y: 135px; on: root.muted; }
-    Chrome { x: 23px; y: 192px; size: 20px; glyph: "V"; clicked => { root.cycle-visual(); } }
+    Chrome { x: 23px; y: 192px; size: 20px; glyph: "V"; tip: "Change visualizer"; clicked => { root.cycle-visual(); } }
     Caption { x: 23px; y: 214px; width: 20px; horizontal-alignment: center; text: "VIS"; }
-    Chrome { x: 9px; y: 273px; size: 40px; icon: Icons.eject; clicked => { root.open-files(); } }
+    Chrome { x: 9px; y: 273px; size: 40px; icon: Icons.eject; tip: "Open files"; clicked => { root.open-files(); } }
     Caption { x: 52px; y: 302px; text: "OPEN"; }
 
     // ---- window buttons: top right, and the menu top left, where its
     // sub-menus have room beside it ----
-    Chrome { x: 533px; y: 11px; size: 17px; glyph: "−"; clicked => { root.minimize(); } }
-    Chrome { x: 562px; y: 18px; size: 19px; glyph: "×"; clicked => { root.close(); } }
+    Chrome { x: 533px; y: 11px; size: 17px; glyph: "−"; tip: "Minimize"; clicked => { root.minimize(); } }
+    Chrome { x: 562px; y: 18px; size: 19px; glyph: "×"; tip: "Close"; clicked => { root.close(); } }
     Chrome {
         x: 14px;
         y: 12px;
         size: 17px;
         glyph: "≡";
+        tip: "Menu";
         clicked => { root.show-menu({ x: self.x, y: self.y + self.height + 2px }); }
     }
 
     // ---- right column ----
-    Chrome { x: 565px; y: 86px; size: 22px; icon: Icons.fullscreen; clicked => { root.expand(); } }
+    Chrome { x: 565px; y: 86px; size: 22px; icon: Icons.fullscreen; tip: "Full player"; clicked => { root.expand(); } }
     // Drawer tab: opens the playlist.
     Rectangle {
         x: 566px;
@@ -775,12 +792,13 @@ export component SilverView inherits Rectangle {
                 horizontal-alignment: center;
             }
         }
+        HoverTip { hover: tab-touch.has-hover && !tab-touch.pressed; text: root.playlist-open ? "Hide playlist" : "Show playlist"; }
         tab-touch := TouchArea {
             mouse-cursor: pointer;
             clicked => { root.playlist-open = !root.playlist-open; }
         }
     }
-    Chrome { x: 565px; y: 228px; size: 22px; icon: Icons.settings; stroked: true; clicked => { root.open-settings(); } }
+    Chrome { x: 565px; y: 228px; size: 22px; icon: Icons.settings; stroked: true; tip: "Settings"; clicked => { root.open-settings(); } }
 
     // Maker's mark, bottom right.
     Text {
@@ -797,7 +815,8 @@ export component SilverView inherits Rectangle {
     Caption { x: 478px; y: 322px; width: 100px; horizontal-alignment: right; text: "SUPER MEDIA PLAYER"; font-size: 5px; }
 
     // ---- playlist drawer, hanging under the case ----
-    if root.playlist-open: Rectangle {
+    property <bool> docked: root.playlist-open && !root.playlist-detached;
+    if root.docked: Rectangle {
         x: 14px;
         y: root.main-height - 6px;
         width: root.width - 28px;
@@ -807,11 +826,45 @@ export component SilverView inherits Rectangle {
         border-bottom-right-radius: 12px;
         border-width: 1px;
         border-color: Silver.case-edge;
+        // Double-click the header to pop the playlist out into its own window.
+        TouchArea {
+            y: 6px;
+            height: 22px;
+            double-clicked => { root.playlist-detached = true; }
+        }
+        Caption {
+            x: 14px;
+            y: 13px;
+            text: "PLAYLIST · " + root.playlist.length + (root.playlist.length == 1 ? " ITEM" : " ITEMS");
+            font-size: 8px;
+        }
+        Rectangle {
+            x: parent.width - self.width - 12px;
+            y: 8px;
+            width: detach-label.preferred-width + 18px;
+            height: 17px;
+            border-radius: 8.5px;
+            background: detach-touch.pressed ? Silver.chrome-pressed : @linear-gradient(180deg, Silver.chrome-1 0%, Silver.chrome-2 55%, Silver.chrome-3 100%);
+            border-width: 1px;
+            border-color: Silver.chrome-edge;
+            detach-label := Text {
+                text: "DETACH";
+                color: detach-touch.has-hover ? Silver.ink-hover : Silver.ink;
+                font-size: 8px;
+                font-weight: 800;
+                letter-spacing: 1px;
+            }
+            HoverTip { hover: detach-touch.has-hover && !detach-touch.pressed; text: "Playlist in its own window"; }
+            detach-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.playlist-detached = true; }
+            }
+        }
         Rectangle {
             x: 10px;
-            y: 10px;
+            y: 30px;
             width: parent.width - 20px;
-            height: parent.height - 20px;
+            height: parent.height - 40px;
             border-radius: 8px;
             background: @linear-gradient(180deg, Silver.playlist-1 0%, Silver.playlist-2 100%);
             border-width: 1px;
@@ -838,7 +891,7 @@ export component SilverView inherits Rectangle {
 
     // Drag the drawer's bottom edge to make the playlist taller or shorter.
     // (The deck itself is drawn for its size, so the window keeps its width.)
-    if root.playlist-open: TouchArea {
+    if root.docked: TouchArea {
         y: root.height - 10px;
         width: root.width;
         height: 10px;
@@ -855,5 +908,15 @@ export component SilverView inherits Rectangle {
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) { root.start-resize(1); }
         }
+    }
+
+    // Tooltips, over everything.
+    if Tip.shown && root.active: TipBubble {
+        origin: root.absolute-position;
+        area-width: root.width;
+        area-height: root.height;
+        face: Silver.bezel;
+        edge: Silver.chrome-edge;
+        ink: Silver.ink-hover;
     }
 }

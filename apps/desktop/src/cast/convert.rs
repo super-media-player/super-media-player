@@ -537,7 +537,7 @@ pub fn keyframe_near(src: &Source, start: f64, from: f64) -> Option<f64> {
         return Some(0.0);
     }
     let text = run_text(
-        Command::new(program("ffprobe")?)
+        crate::process::command(program("ffprobe")?)
             .args(["-v", "error", "-select_streams", "v:0", "-read_intervals"])
             .arg(format!("{start:.3}%+12"))
             .args(["-show_entries", "packet=pts_time,flags", "-of", "csv=p=0"])
@@ -813,7 +813,7 @@ impl Encoder {
 
     fn ffmpeg(job: &Job) -> Result<Self, String> {
         let exe = program("ffmpeg").ok_or("FFmpeg isn't installed")?;
-        let mut child = Command::new(exe)
+        let mut child = crate::process::command(exe)
             .args(ffmpeg_args(job))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -1027,7 +1027,7 @@ pub fn read_cues(src: &Source) -> Vec<Cue> {
         (None, Some(i)) => (src.path.as_str(), format!("0:{i}")),
         _ => return Vec::new(),
     };
-    let text = run_text(Command::new(exe).args([
+    let text = run_text(crate::process::command(exe).args([
         "-v",
         "error",
         "-nostdin",
@@ -1320,7 +1320,7 @@ mod tests {
         let f = dir.join("film.mkv");
         let srt = dir.join("film.srt");
         std::fs::write(&srt, "1\n00:00:02,000 --> 00:00:04,000\nHello\n").ok()?;
-        let ok = Command::new(program("ffmpeg")?)
+        let ok = crate::process::command(program("ffmpeg")?)
             .args([
                 "-v",
                 "error",
@@ -1379,7 +1379,7 @@ mod tests {
         let f = dir.join(name);
         std::fs::write(&f, data).unwrap();
         // Decode all of it too: no errors.
-        let out = Command::new(program("ffmpeg").unwrap())
+        let out = crate::process::command(program("ffmpeg").unwrap())
             .args([
                 "-v",
                 "error",
@@ -1397,7 +1397,7 @@ mod tests {
             "{name}: {}",
             String::from_utf8_lossy(&out.stderr)
         );
-        run_text(Command::new(program("ffprobe").unwrap()).args([
+        run_text(crate::process::command(program("ffprobe").unwrap()).args([
             "-v",
             "error",
             "-show_entries",

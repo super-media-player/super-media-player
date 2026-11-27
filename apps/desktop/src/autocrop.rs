@@ -788,7 +788,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let make = |name: &str, graph: &str| {
             let out = dir.join(name);
-            let ok = std::process::Command::new("ffmpeg")
+            let ok = crate::process::command("ffmpeg")
                 .args([
                     "-v", "error", "-y", "-f", "lavfi", "-i", graph, "-c:v", "mpeg4", "-q:v", "4",
                     "-g", "10",

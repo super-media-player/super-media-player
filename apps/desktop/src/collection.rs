@@ -1367,12 +1367,14 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
     });
 
     on!(on_media_add_folder, |ui| {
-        if let Some(dir) = rfd::FileDialog::new()
+        let dialog = rfd::AsyncFileDialog::new()
             .set_title("Add a folder to the library")
-            .pick_folder()
-        {
-            add_folders(&ui, &[dir]);
-        }
+            .pick_folder();
+        crate::show_dialog(&ui, dialog, |ui, dir| {
+            if let Some(dir) = dir {
+                add_folders(ui, &[dir.into()]);
+            }
+        });
     });
     on!(on_media_add_defaults, |ui| {
         let dirs = default_folders();

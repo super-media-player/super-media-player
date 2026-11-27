@@ -492,7 +492,7 @@ fn recording_path(dir: &Path, title: &str, ext: &str) -> PathBuf {
 
 /// "2026-11-24 21-05", local time (from `date`, else UTC).
 fn local_stamp() -> String {
-    if let Ok(o) = std::process::Command::new("date")
+    if let Ok(o) = crate::process::command("date")
         .arg("+%Y-%m-%d %H-%M")
         .output()
         && o.status.success()
@@ -1421,7 +1421,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("smp-rec-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let src = dir.join("src.mkv");
-        let made = std::process::Command::new("ffmpeg")
+        let made = crate::process::command("ffmpeg")
             .args([
                 "-v",
                 "error",

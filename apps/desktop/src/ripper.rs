@@ -50,7 +50,7 @@ fn home() -> Option<PathBuf> {
 
 impl Tool {
     fn command(&self) -> Command {
-        let mut c = Command::new(&self.program);
+        let mut c = crate::process::command(&self.program);
         c.args(&self.args);
         c
     }
@@ -77,7 +77,7 @@ impl Tool {
 }
 
 pub fn flatpak_installed() -> bool {
-    Command::new("flatpak")
+    crate::process::command("flatpak")
         .args(["info", FLATPAK_ID])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -121,7 +121,7 @@ pub const KEY_PAGE: &str = "https://forum.makemkv.com/forum/viewtopic.php?t=1053
 /// a few hundred MB the first time.
 pub fn install_flatpak() -> Result<(), String> {
     let run = |args: &[&str]| -> Result<(), String> {
-        let out = Command::new("flatpak")
+        let out = crate::process::command("flatpak")
             .args(args)
             .stdin(Stdio::null())
             .output()
@@ -157,7 +157,7 @@ pub fn install_flatpak() -> Result<(), String> {
 
 /// The Flatpak MakeMKV's version, e.g. "2.0.0".
 fn flatpak_version() -> Option<String> {
-    let out = Command::new("flatpak")
+    let out = crate::process::command("flatpak")
         .args(["info", FLATPAK_ID])
         .output()
         .ok()?;
@@ -777,7 +777,7 @@ pub fn free_bytes(dir: &Path) -> Option<u64> {
     while !d.exists() {
         d = d.parent()?;
     }
-    let out = Command::new("df")
+    let out = crate::process::command("df")
         .args(["-B1", "--output=avail"])
         .arg(d)
         .output()

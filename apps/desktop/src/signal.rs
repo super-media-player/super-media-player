@@ -169,7 +169,7 @@ fn parse_pw_metadata(text: &str) -> Option<PwClock> {
 }
 
 fn pipewire_clock() -> Option<PwClock> {
-    let out = std::process::Command::new("pw-metadata")
+    let out = crate::process::command("pw-metadata")
         .args(["-n", "settings"])
         .output()
         .ok()?;
@@ -187,7 +187,7 @@ pub fn allow_rates() -> Result<String, String> {
         .map(i64::to_string)
         .collect::<Vec<_>>()
         .join(" ");
-    let live = std::process::Command::new("pw-metadata")
+    let live = crate::process::command("pw-metadata")
         .args([
             "-n",
             "settings",

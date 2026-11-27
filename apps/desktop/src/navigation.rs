@@ -182,6 +182,8 @@ struct Nav {
     settings: Rc<RefCell<Settings>>,
     ui: slint::Weak<AppWindow>,
     window: Option<NavWindow>,
+    /// `skins::changes()` when the window last took the colours.
+    colours: Cell<u64>,
     enabled: Cell<bool>,
     /// The time last stepped to (see the module comment).
     target: Cell<Option<f64>>,
@@ -702,6 +704,14 @@ fn copy_theme(ui: &AppWindow, w: &NavWindow) {
     b.set_accent_2(a.get_accent_2());
     b.set_danger(a.get_danger());
     b.set_accent_gradient(a.get_accent_gradient());
+    b.set_nav(a.get_nav());
+    b.set_panel(a.get_panel());
+    b.set_popup(a.get_popup());
+    b.set_button(a.get_button());
+    b.set_button_hover(a.get_button_hover());
+    b.set_button_text(a.get_button_text());
+    b.set_on_accent(a.get_on_accent());
+    b.set_text_scale(a.get_text_scale());
 }
 
 pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Settings>>) {
@@ -726,6 +736,7 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
         settings,
         ui: ui.as_weak(),
         window,
+        colours: Cell::new(0),
         enabled: Cell::new(false),
         target: Cell::new(None),
         held: Cell::new(None),
@@ -791,7 +802,13 @@ pub fn install(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<Setting
             let player_view = nav.settings.borrow().view_mode == "player";
             let in_window = on && (!ui.get_s_nav_docked() || !player_view);
             if let Some(w) = &nav.window {
+                // Colours changed while it shows (the Looks panel).
+                if w.window().is_visible() && nav.colours.get() != crate::skins::changes() {
+                    nav.colours.set(crate::skins::changes());
+                    copy_theme(&ui, w);
+                }
                 if in_window && !w.window().is_visible() {
+                    nav.colours.set(crate::skins::changes());
                     copy_theme(&ui, w);
                     // Beside the player, where the window system lets us place it.
                     let scale = ui.window().scale_factor();

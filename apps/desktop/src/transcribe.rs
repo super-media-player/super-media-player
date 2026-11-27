@@ -11,7 +11,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use sha2::{Digest, Sha256};
@@ -265,7 +265,7 @@ pub fn run(job: &Job, cancel: &AtomicBool, progress: impl Fn(Step)) -> Result<Pa
 
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get().clamp(1, 8));
     let stem = out.with_extension("");
-    let mut cmd = Command::new(&cli);
+    let mut cmd = crate::process::command(&cli);
     cmd.arg("-m")
         .arg(&model)
         .arg("-f")

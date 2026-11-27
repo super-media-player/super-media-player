@@ -1110,7 +1110,7 @@ mod tests {
         assert_eq!(t.pictures().len(), 1);
         assert_eq!(file.properties().duration().as_millis(), 1000);
         // The ffmpeg program, when there, decodes every sample back.
-        if let Ok(o) = std::process::Command::new("ffmpeg")
+        if let Ok(o) = crate::process::command("ffmpeg")
             .args(["-v", "error", "-i"])
             .arg(&out)
             .args(["-f", "s16le", "-"])

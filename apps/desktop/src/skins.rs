@@ -12,6 +12,9 @@
 //! theme.accent = #39e0ff
 //! ```
 //!
+//! `layout = any` makes a colour theme: it colours the media player and
+//! compact views (and every dialog) without switching between them.
+//!
 //! Unprefixed names belong to the layout's own palette; `theme.`,
 //! `classic.` and `silver.` name a palette outright. Gradients are built in
 //! Slint from numbered stop colours (`case-1`..`case-4`), so a skin only
@@ -34,10 +37,26 @@ pub const PLAIN: [(&str, &str); 4] = [
     ("silver", "Silver deck (MMD3-style)"),
 ];
 
-/// Skins that ship with the player: (id, file).
+/// Skins and themes that ship with the player: (id, file).
 const BUILT_IN: &[(&str, &str)] = &[
+    ("arctic", include_str!("../skins/arctic.skin")),
     ("aurora", include_str!("../skins/aurora.skin")),
+    ("blossom", include_str!("../skins/blossom.skin")),
     ("ember", include_str!("../skins/ember.skin")),
+    ("espresso", include_str!("../skins/espresso.skin")),
+    ("flamingo", include_str!("../skins/flamingo.skin")),
+    ("forest", include_str!("../skins/forest.skin")),
+    ("graphite", include_str!("../skins/graphite.skin")),
+    ("jade", include_str!("../skins/jade.skin")),
+    ("mint", include_str!("../skins/mint.skin")),
+    ("nebula", include_str!("../skins/nebula.skin")),
+    ("ocean", include_str!("../skins/ocean.skin")),
+    ("rose", include_str!("../skins/rose.skin")),
+    ("sapphire", include_str!("../skins/sapphire.skin")),
+    ("sky", include_str!("../skins/sky.skin")),
+    ("slate", include_str!("../skins/slate.skin")),
+    ("steel", include_str!("../skins/steel.skin")),
+    ("sunset", include_str!("../skins/sunset.skin")),
     ("amber", include_str!("../skins/amber.skin")),
     ("ice", include_str!("../skins/ice.skin")),
     ("midnight", include_str!("../skins/midnight.skin")),
@@ -132,14 +151,32 @@ impl Skin {
         }
     }
 
-    /// Index of its layout in `settings::VIEW_MODES`.
+    /// Index of its layout in `settings::VIEW_MODES`; -1 for a theme
+    /// (`layout = any`), which keeps the view.
     pub fn view_index(&self) -> i32 {
+        if self.is_theme() {
+            return -1;
+        }
         crate::settings::VIEW_MODES
             .iter()
             .position(|v| *v == self.layout)
             .unwrap_or(0) as i32
     }
+
+    /// A colour theme for the media player and compact views.
+    pub fn is_theme(&self) -> bool {
+        self.layout == ANY
+    }
+
+    /// Whether it can dress `view`: its own layout, or a theme on the
+    /// media player or compact view.
+    pub fn fits(&self, view: &str) -> bool {
+        self.layout == view || (self.is_theme() && Palette::of_layout(view) == Palette::Theme)
+    }
 }
+
+/// The layout of a colour theme.
+pub const ANY: &str = "any";
 
 /// `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa` or `transparent`.
 pub fn parse_color(s: &str) -> Option<Color> {
@@ -213,9 +250,9 @@ pub fn parse(id: &str, text: &str) -> Result<(Skin, Vec<String>), String> {
             _ => entries.push((n + 1, k.to_owned(), v.to_owned())),
         }
     }
-    if !crate::settings::VIEW_MODES.contains(&skin.layout.as_str()) {
+    if skin.layout != ANY && !crate::settings::VIEW_MODES.contains(&skin.layout.as_str()) {
         return Err(format!(
-            "layout must be one of {}",
+            "layout must be one of {} or {ANY}",
             crate::settings::VIEW_MODES.join(", ")
         ));
     }
@@ -290,6 +327,7 @@ pub fn load_all() -> (Vec<Skin>, Vec<String>) {
             extra.push(skin);
         }
     }
+    // Themes right after the plain views, then the skins of each view.
     extra.sort_by(|a, b| (a.view_index(), &a.name).cmp(&(b.view_index(), &b.name)));
     let mut all: Vec<Skin> = PLAIN
         .iter()
@@ -341,6 +379,18 @@ thread_local! {
     /// Every palette colour as the .slint files define it, read before the
     /// first skin changes any.
     static DEFAULTS: RefCell<Option<Colours>> = const { RefCell::new(None) };
+    /// Counts colour changes, for windows that copy the colours.
+    static CHANGES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Changes when any colour (or the text size) changes.
+pub fn changes() -> u64 {
+    CHANGES.get()
+}
+
+/// Note a change of colours or text size.
+pub fn changed() {
+    CHANGES.set(CHANGES.get().wrapping_add(1));
 }
 
 fn defaults(ui: &AppWindow) -> Colours {
@@ -360,36 +410,562 @@ fn defaults(ui: &AppWindow) -> Colours {
 }
 
 /// Dress the windows in `skin`: every colour back to its default, then the
-/// skin's. The classic deck's own playlist window (`pw`) follows along.
+/// skin's. The decks' own playlist window (`pw`) follows along.
 pub fn apply(ui: &AppWindow, pw: Option<&PlaylistWindow>, skin: &Skin) {
     let defaults = defaults(ui);
     for p in Palette::ALL {
-        let props = p.props();
-        let value = |key: &str| {
-            skin.colors
-                .iter()
-                .rev()
-                .find(|(sp, k, _)| *sp == p && k == key)
-                .map(|(_, _, v)| v.clone())
-                .or_else(|| {
-                    defaults
-                        .iter()
-                        .find(|(dp, k, _)| *dp == p && *k == key)
-                        .map(|(_, _, v)| v.clone())
-                })
-        };
-        for prop in &props {
-            if let Some(v) = value(prop.key) {
+        for prop in &p.props() {
+            if let Some(v) = resolved(skin, &defaults, p, prop.key) {
                 (prop.set)(ui, &v);
             }
         }
     }
     if let Some(pw) = pw {
-        for prop in classic_props::<PlaylistWindow>() {
-            if let Some(src) = classic_props::<AppWindow>()
+        copy_to_playlist_window(ui, pw);
+    }
+    changed();
+}
+
+/// Colours that a skin which doesn't set them takes from another of its
+/// colours: they were that one colour before they got their own.
+const FOLLOWS: &[(Palette, &str, &str)] = &[
+    (Palette::Theme, "title-bar", "bg-2"),
+    (Palette::Theme, "controls", "surface"),
+    (Palette::Theme, "playlist", "surface-hi"),
+    (Palette::Theme, "nav", "bg-2"),
+];
+
+/// What `skin` makes colour `key` of palette `p`: its own value, else the
+/// value of the colour it follows, else the default.
+fn resolved(skin: &Skin, defaults: &Colours, p: Palette, key: &str) -> Option<Val> {
+    let own = |key: &str| {
+        skin.colors
+            .iter()
+            .rev()
+            .find(|(sp, k, _)| *sp == p && k == key)
+            .map(|(_, _, v)| v.clone())
+    };
+    own(key)
+        .or_else(|| {
+            FOLLOWS
                 .iter()
-                .find(|p| p.key == prop.key)
-            {
+                .find(|(fp, k, _)| *fp == p && *k == key)
+                .and_then(|(_, _, from)| own(from))
+        })
+        .or_else(|| {
+            defaults
+                .iter()
+                .find(|(dp, k, _)| *dp == p && *k == key)
+                .map(|(_, _, v)| v.clone())
+        })
+}
+
+// ---- the colour editor (colours.slint) ----
+
+/// The palettes the editor shows for a layout: its own, then (for the
+/// decks) the theme, which colours the dialogs over them.
+fn edited_palettes(layout: &str) -> Vec<Palette> {
+    let own = Palette::of_layout(layout);
+    if own == Palette::Theme {
+        vec![Palette::Theme]
+    } else {
+        vec![own, Palette::Theme]
+    }
+}
+
+/// A plain name for a colour, for the editor.
+fn colour_label(p: Palette, key: &str) -> String {
+    let named = match (p, key) {
+        (Palette::Theme, "bg") => "Window background",
+        (Palette::Theme, "bg-2") => "Background glow",
+        (Palette::Theme, "surface") => "Panels and bars",
+        (Palette::Theme, "surface-hi") => "Raised panels, small popups",
+        (Palette::Theme, "border") => "Lines and edges",
+        (Palette::Theme, "text") => "Text",
+        (Palette::Theme, "text-dim") => "Dim text",
+        (Palette::Theme, "text-faint") => "Faint text",
+        (Palette::Theme, "accent") => "Accent",
+        (Palette::Theme, "accent-2") => "Second accent",
+        (Palette::Theme, "danger") => "Warnings",
+        (Palette::Theme, "panel") => "Dialogs (settings, library…)",
+        (Palette::Theme, "button") => "Buttons",
+        (Palette::Theme, "button-hover") => "Buttons under the pointer",
+        (Palette::Theme, "button-text") => "Button text",
+        (Palette::Theme, "popup") => "Drop-down lists",
+        (Palette::Theme, "on-accent") => "Text and icons on the accent",
+        (Palette::Theme, "title-bar") => "Title bar",
+        (Palette::Theme, "controls") => "Control bar",
+        (Palette::Theme, "playlist") => "Playlist",
+        (Palette::Theme, "nav") => "Navigation window",
+        (Palette::Classic, "outside") | (Palette::Silver, "outside") => "Around the deck",
+        (Palette::Classic, "lcd") => "Screen",
+        (Palette::Classic, "lcd-edge") => "Screen edge",
+        (Palette::Classic, "green") => "Screen text",
+        (Palette::Classic, "green-dim") => "Screen text, dim",
+        (Palette::Classic, "label") => "Labels",
+        (Palette::Classic, "led-off") => "Lights when off",
+        (Palette::Silver, "led") => "Lights",
+        (Palette::Silver, "led-off") => "Lights when off",
+        _ => "",
+    };
+    if !named.is_empty() {
+        return named.to_owned();
+    }
+    // "button-pressed-1" -> "Button pressed 1"
+    let mut words = key.replace('-', " ");
+    if let Some(first) = words.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+    words
+}
+
+/// One line of the editor: (key such as "theme.accent", label, colour);
+/// a heading has an empty key and no colour.
+pub type EditorLine = (String, String, Option<Color>);
+
+/// The editor's lines for a layout, with the colours shown now.
+pub fn editor_lines(ui: &AppWindow, layout: &str) -> Vec<EditorLine> {
+    let mut lines = Vec::new();
+    for p in edited_palettes(layout) {
+        let heading = match p {
+            Palette::Theme if Palette::of_layout(layout) == Palette::Theme => "COLOURS",
+            Palette::Theme => "DIALOGS, BUTTONS AND LISTS",
+            Palette::Classic => "CLASSIC DECK",
+            Palette::Silver => "SILVER DECK",
+        };
+        lines.push((String::new(), heading.to_owned(), None));
+        for prop in p.props() {
+            if let Val::Color(c) = (prop.get)(ui) {
+                lines.push((
+                    format!("{}.{}", p.name(), prop.key),
+                    colour_label(p, prop.key),
+                    Some(c),
+                ));
+            }
+        }
+    }
+    lines
+}
+
+/// Set one colour by its editor key ("silver.case-1"). False for an
+/// unknown key.
+pub fn set_colour(ui: &AppWindow, key: &str, colour: Color) -> bool {
+    let Some((p, name)) = key.split_once('.') else {
+        return false;
+    };
+    let Some(p) = Palette::from_name(p) else {
+        return false;
+    };
+    match p.props().iter().find(|prop| prop.key == name) {
+        Some(prop) if prop.kind == Kind::Color => {
+            (prop.set)(ui, &Val::Color(colour));
+            changed();
+            true
+        }
+        _ => false,
+    }
+}
+
+/// "#39d0ff" (or "#39d0ff80" when see-through).
+pub fn hex(c: Color) -> String {
+    color_text(c)
+}
+
+/// Save the colours shown now as a skin file: over `skin`'s own file when
+/// it is one of the user's, else as a new "My …" copy. Only colours that
+/// differ from the layout's own are written. Returns the saved skin's id
+/// and name.
+pub fn save_shown(ui: &AppWindow, skin: &Skin) -> std::io::Result<(String, String)> {
+    let dir = user_dir().ok_or_else(|| std::io::Error::other("no config folder"))?;
+    std::fs::create_dir_all(&dir)?;
+    // The media player's and compact's colours are saved as a theme, for
+    // both views.
+    let theme = Palette::of_layout(&skin.layout) == Palette::Theme;
+    let (id, name, path) = match &skin.path {
+        Some(path) if path.parent() == Some(dir.as_path()) => {
+            (skin.id.clone(), skin.name.clone(), path.clone())
+        }
+        _ => {
+            let plain = skin.path.is_none() && skin.colors.is_empty();
+            let (id, name) = if theme && plain {
+                ("my-theme".to_owned(), "My theme".to_owned())
+            } else {
+                (format!("my-{}", skin.id), format!("My {}", skin.name))
+            };
+            let path = dir.join(format!("{id}.skin"));
+            (id, name, path)
+        }
+    };
+    let mut skin = skin.clone();
+    if theme {
+        skin.layout = ANY.to_owned();
+    }
+    let text = shown_skin_text(ui, &skin, &name);
+    std::fs::write(&path, text)?;
+    Ok((id, name))
+}
+
+fn shown_skin_text(ui: &AppWindow, skin: &Skin, name: &str) -> String {
+    let defaults = defaults(ui);
+    let own = Palette::of_layout(&skin.layout);
+    let edited = edited_palettes(&skin.layout);
+    let key_of = |p: Palette, key: &str| {
+        if p == own {
+            key.to_owned()
+        } else {
+            format!("{}.{key}", p.name())
+        }
+    };
+    let mut text = format!(
+        "# Made with Super Media Player's Looks panel (View › Themes and colours).\n\
+         name = {name}\nlayout = {}\n",
+        skin.layout
+    );
+    if !skin.author.is_empty() {
+        text += &format!(
+            "author = {}
+",
+            skin.author
+        );
+    }
+    text += "
+";
+    for &p in &edited {
+        for prop in p.props() {
+            let shown = (prop.get)(ui);
+            match &shown {
+                Val::Color(c) => {
+                    let default = defaults
+                        .iter()
+                        .find(|(dp, k, _)| *dp == p && *k == prop.key)
+                        .map(|(_, _, v)| v);
+                    if default != Some(&shown) {
+                        text += &format!("{} = {}\n", key_of(p, prop.key), color_text(*c));
+                    }
+                }
+                Val::Str(_) => {
+                    // Fonts aren't edited: keep the skin's own.
+                    if let Some((_, _, Val::Str(v))) = skin
+                        .colors
+                        .iter()
+                        .rev()
+                        .find(|(sp, k, _)| *sp == p && k == prop.key)
+                    {
+                        text += &format!("{} = {v}\n", key_of(p, prop.key));
+                    }
+                }
+            }
+        }
+    }
+    // Colours the skin gave other palettes, untouched by the editor.
+    for (p, key, v) in &skin.colors {
+        if edited.contains(p) {
+            continue;
+        }
+        match v {
+            Val::Color(c) => text += &format!("{} = {}\n", key_of(*p, key), color_text(*c)),
+            Val::Str(s) => text += &format!("{} = {s}\n", key_of(*p, key)),
+        }
+    }
+    text
+}
+
+// ---- the Looks panel: theme cards and simple colours ----
+
+/// A theme's colours for its little picture in the Looks panel.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Card {
+    pub ground: Color,
+    pub top: Color,
+    pub panel: Color,
+    pub bar: Color,
+    pub text: Color,
+    pub accent: Color,
+    pub accent_2: Color,
+}
+
+fn colour_of(skin: &Skin, defaults: &Colours, p: Palette, key: &str) -> Color {
+    match resolved(skin, defaults, p, key) {
+        Some(Val::Color(c)) => c,
+        _ => Color::default(),
+    }
+}
+
+/// What the Looks panel offers for `view`, as (a theme?, index in `themes`
+/// or `skins`, card): the plain view first, then the themes (for the media
+/// player and compact), then the view's own skins.
+pub fn cards(
+    ui: &AppWindow,
+    skins: &[Skin],
+    themes: &[Skin],
+    view: &str,
+) -> Vec<(bool, usize, Card)> {
+    let defaults = defaults(ui);
+    let p = Palette::of_layout(view);
+    let card = |skin: &Skin| {
+        let c = |p: Palette, key: &str| colour_of(skin, &defaults, p, key);
+        match p {
+            Palette::Theme => Card {
+                ground: c(p, "bg"),
+                top: c(p, "title-bar"),
+                panel: c(p, "playlist"),
+                bar: c(p, "controls"),
+                text: c(p, "text"),
+                accent: c(p, "accent"),
+                accent_2: c(p, "accent-2"),
+            },
+            Palette::Classic => Card {
+                ground: c(p, "outside"),
+                top: c(p, "body-1"),
+                panel: c(p, "lcd"),
+                bar: c(p, "body-3"),
+                text: c(p, "green"),
+                accent: c(p, "green"),
+                accent_2: c(p, "green-dim"),
+            },
+            Palette::Silver => Card {
+                ground: c(p, "outside"),
+                top: c(p, "case-1"),
+                panel: c(p, "glass-1"),
+                bar: c(p, "case-3"),
+                text: c(p, "text"),
+                accent: c(p, "led"),
+                accent_2: c(p, "accent"),
+            },
+        }
+    };
+    let mut out: Vec<(bool, usize, Card)> = skins
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.id == view && s.colors.is_empty() && s.path.is_none())
+        .map(|(i, s)| (false, i, card(s)))
+        .collect();
+    out.extend(
+        themes
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.fits(view))
+            .map(|(i, s)| (true, i, card(s))),
+    );
+    out.extend(
+        skins
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.layout == view && s.id != view)
+            .map(|(i, s)| (false, i, card(s))),
+    );
+    out
+}
+
+/// The Looks panel's short list of colours for a layout: (label, palette,
+/// colours). Changing one changes the first colour and moves the others
+/// along with it, so their shades keep their places.
+fn simple_groups(layout: &str) -> Vec<(&'static str, Palette, &'static [&'static str])> {
+    use Palette::*;
+    let dialogs = ("Settings and other panels", Theme, &["panel", "popup"][..]);
+    match layout {
+        "classic" => vec![
+            ("Around the deck", Classic, &["outside"][..]),
+            (
+                "Deck",
+                Classic,
+                &[
+                    "body-1",
+                    "body-2",
+                    "body-3",
+                    "body-edge",
+                    "ridge-light",
+                    "ridge-dark",
+                ],
+            ),
+            ("Screen", Classic, &["lcd", "lcd-edge", "playlist-hover"]),
+            (
+                "Screen text",
+                Classic,
+                &["green", "green-dim", "playlist-current"],
+            ),
+            ("Labels", Classic, &["label"]),
+            (
+                "Buttons",
+                Classic,
+                &[
+                    "button-1",
+                    "button-2",
+                    "button-3",
+                    "button-pressed-1",
+                    "button-pressed-2",
+                    "button-edge",
+                    "button-edge-pressed",
+                    "toggle-1",
+                    "toggle-2",
+                    "toggle-pressed",
+                    "toggle-edge",
+                ],
+            ),
+            dialogs,
+        ],
+        "silver" => vec![
+            ("Around the deck", Silver, &["outside"][..]),
+            (
+                "Case",
+                Silver,
+                &[
+                    "case-1",
+                    "case-2",
+                    "case-3",
+                    "case-4",
+                    "case-edge",
+                    "bezel-1",
+                    "bezel-2",
+                    "bezel-3",
+                    "bezel-edge",
+                ],
+            ),
+            (
+                "Screen",
+                Silver,
+                &[
+                    "glass-1",
+                    "glass-2",
+                    "glass-3",
+                    "glass-edge",
+                    "playlist-1",
+                    "playlist-2",
+                ],
+            ),
+            (
+                "Screen text",
+                Silver,
+                &["text", "text-dim", "text-off", "glass-mark"],
+            ),
+            (
+                "Lights",
+                Silver,
+                &["led", "led-glow", "led-edge", "accent", "accent-2"],
+            ),
+            (
+                "Buttons",
+                Silver,
+                &[
+                    "chrome-1",
+                    "chrome-2",
+                    "chrome-3",
+                    "chrome-pressed-1",
+                    "chrome-pressed-2",
+                    "chrome-pressed-3",
+                    "chrome-edge",
+                ],
+            ),
+            dialogs,
+        ],
+        "compact" => vec![
+            ("Background", Theme, &["bg", "bg-2"][..]),
+            ("Text", Theme, &["text", "text-dim", "text-faint"]),
+            ("Highlight", Theme, &["accent", "accent-2"]),
+            dialogs,
+        ],
+        _ => vec![
+            ("Background", Theme, &["bg", "bg-2"][..]),
+            ("Title bar", Theme, &["title-bar"]),
+            ("Control bar", Theme, &["controls"]),
+            ("Playlist", Theme, &["playlist"]),
+            ("Navigation window", Theme, &["nav"]),
+            dialogs,
+            ("Text", Theme, &["text", "text-dim", "text-faint"]),
+            ("Highlight", Theme, &["accent", "accent-2"]),
+        ],
+    }
+}
+
+fn shown(ui: &AppWindow, p: Palette, key: &str) -> Option<Color> {
+    match p
+        .props()
+        .iter()
+        .find(|prop| prop.key == key)
+        .map(|prop| (prop.get)(ui))
+    {
+        Some(Val::Color(c)) => Some(c),
+        _ => None,
+    }
+}
+
+/// The short list for a layout, with the colours shown now.
+pub fn simple_lines(ui: &AppWindow, layout: &str) -> Vec<(String, Color)> {
+    simple_groups(layout)
+        .into_iter()
+        .map(|(label, p, keys)| (label.to_owned(), shown(ui, p, keys[0]).unwrap_or_default()))
+        .collect()
+}
+
+/// The colours that change when line `index` of the short list becomes
+/// `colour`, as (editor key, new colour).
+pub fn simple_change(
+    ui: &AppWindow,
+    layout: &str,
+    index: usize,
+    colour: Color,
+) -> Vec<(String, Color)> {
+    let Some((_, p, keys)) = simple_groups(layout).into_iter().nth(index) else {
+        return Vec::new();
+    };
+    let Some(leader) = shown(ui, p, keys[0]) else {
+        return Vec::new();
+    };
+    keys.iter()
+        .filter_map(|key| {
+            let now = shown(ui, p, key)?;
+            Some((
+                format!("{}.{key}", p.name()),
+                shade_along(leader, colour, now),
+            ))
+        })
+        .collect()
+}
+
+/// `member` moved along when `leader` becomes `to`: the same steps of
+/// hue, strength and brightness away from it, and its own opacity. Steps of
+/// brightness turn round when the colour goes from dark to light (or back),
+/// so dim text stays between the text and the background.
+fn shade_along(leader: Color, to: Color, member: Color) -> Color {
+    let (l, t, m) = (leader.to_hsva(), to.to_hsva(), member.to_hsva());
+    let mut dv = m.value - l.value;
+    if (l.value >= 0.5) != (t.value >= 0.5) {
+        dv = -dv;
+    }
+    // A grey leader says nothing about hue: take the new one.
+    let hue = if l.saturation < 0.08 || m.saturation < 0.08 {
+        t.hue
+    } else {
+        t.hue + m.hue - l.hue
+    };
+    let mut sat = (t.saturation + m.saturation - l.saturation).clamp(0.0, 1.0);
+    if t.saturation < 0.08 {
+        // Greys stay greys.
+        sat = sat.min(t.saturation + 0.03);
+    }
+    Color::from_hsva(
+        hue.rem_euclid(360.0),
+        sat,
+        (t.value + dv).clamp(0.0, 1.0),
+        m.alpha,
+    )
+}
+
+/// The decks' own playlist window takes the decks' colours.
+pub fn copy_to_playlist_window(ui: &AppWindow, pw: &PlaylistWindow) {
+    let pairs = [
+        (
+            classic_props::<PlaylistWindow>(),
+            classic_props::<AppWindow>(),
+        ),
+        (
+            silver_props::<PlaylistWindow>(),
+            silver_props::<AppWindow>(),
+        ),
+    ];
+    for (to, from) in pairs {
+        for prop in to {
+            if let Some(src) = from.iter().find(|p| p.key == prop.key) {
                 (prop.set)(pw, &(src.get)(ui));
             }
         }
@@ -466,6 +1042,16 @@ where
         "accent" => get_accent, set_accent: Color,
         "accent-2" => get_accent_2, set_accent_2: Color,
         "danger" => get_danger, set_danger: Color,
+        "panel" => get_panel, set_panel: Color,
+        "button" => get_button, set_button: Color,
+        "button-hover" => get_button_hover, set_button_hover: Color,
+        "button-text" => get_button_text, set_button_text: Color,
+        "popup" => get_popup, set_popup: Color,
+        "on-accent" => get_on_accent, set_on_accent: Color,
+        "title-bar" => get_title_bar, set_title_bar: Color,
+        "controls" => get_controls, set_controls: Color,
+        "playlist" => get_playlist, set_playlist: Color,
+        "nav" => get_nav, set_nav: Color,
     ])
 }
 
@@ -585,6 +1171,19 @@ where
 mod tests {
     use super::*;
 
+    #[test]
+    fn colour_labels_read_plainly() {
+        assert_eq!(
+            colour_label(Palette::Theme, "panel"),
+            "Dialogs (settings, library…)"
+        );
+        assert_eq!(colour_label(Palette::Silver, "case-1"), "Case 1");
+        assert_eq!(
+            colour_label(Palette::Classic, "button-pressed-2"),
+            "Button pressed 2"
+        );
+    }
+
     /// `in-out property <color|string> name` in global `name` of `source`.
     fn slint_props(source: &str, global: &str) -> Vec<String> {
         let start = source.find(&format!("global {global} {{")).expect("global");
@@ -644,7 +1243,7 @@ mod tests {
             assert!(warnings.is_empty(), "{id}: {warnings:?}");
             assert!(!skin.colors.is_empty(), "{id}");
             assert!(
-                skin.name.contains('–'),
+                skin.is_theme() || skin.name.contains('–'),
                 "{id}: name says which view it dresses"
             );
         }
@@ -661,6 +1260,76 @@ mod tests {
         assert_eq!(w.len(), 4, "{w:?}");
         assert!(parse("t", "name = T\nlayout = round").is_err());
         assert!(parse("t", "case-1 = #fff").is_err());
+    }
+
+    #[test]
+    fn themes_fit_the_media_player_and_compact() {
+        let (theme, _) = parse("t", "name = T\nlayout = any\naccent = #f00").unwrap();
+        assert!(theme.is_theme());
+        assert!(theme.fits("player") && theme.fits("compact"));
+        assert!(!theme.fits("classic") && !theme.fits("silver"));
+        assert_eq!(theme.view_index(), -1);
+        assert_eq!(theme.colors[0].0, Palette::Theme);
+    }
+
+    #[test]
+    fn new_colours_follow_the_old_ones() {
+        let (skin, _) = parse(
+            "t",
+            "name = T\nlayout = any\nbg-2 = #102030\nsurface = #405060",
+        )
+        .unwrap();
+        let defaults: Colours = vec![
+            (
+                Palette::Theme,
+                "title-bar",
+                Val::Color(parse_color("#000").unwrap()),
+            ),
+            (
+                Palette::Theme,
+                "playlist",
+                Val::Color(parse_color("#111").unwrap()),
+            ),
+        ];
+        let c = |key| match resolved(&skin, &defaults, Palette::Theme, key) {
+            Some(Val::Color(c)) => color_text(c),
+            v => panic!("{v:?}"),
+        };
+        assert_eq!(c("title-bar"), "#102030");
+        assert_eq!(c("controls"), "#405060");
+        assert_eq!(c("playlist"), "#111111");
+    }
+
+    #[test]
+    fn shades_move_along() {
+        let col = |s| parse_color(s).unwrap();
+        // The leader itself takes the new colour, keeping its opacity.
+        let to = col("#3dffa8");
+        let moved = shade_along(col("#39d0ff"), to, col("#39d0ffd0"));
+        assert_eq!(color_text(moved), "#3dffa8d0");
+        // Dim text stays dimmer than light text...
+        let dim = shade_along(col("#eef1fa"), col("#ffffff"), col("#9aa3bd"));
+        assert!(
+            dim.to_hsva().value < 0.85 && dim.to_hsva().saturation < 0.05,
+            "{dim:?}"
+        );
+        // ...and lighter than dark text on a light background.
+        let dim = shade_along(col("#eef1fa"), col("#202020"), col("#9aa3bd"));
+        assert!(dim.to_hsva().value > 0.3, "{dim:?}");
+    }
+
+    #[test]
+    fn simple_groups_name_real_colours() {
+        for layout in crate::settings::VIEW_MODES {
+            for (label, p, keys) in simple_groups(layout) {
+                for key in keys {
+                    assert!(
+                        p.props().iter().any(|prop| prop.key == *key),
+                        "{layout}: {label}: {key}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

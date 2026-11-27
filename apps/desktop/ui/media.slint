@@ -81,7 +81,7 @@ component Card inherits Rectangle {
         width: parent.width - 4px;
         text: root.card.title;
         color: Theme.text;
-        font-size: 13px;
+        font-size: 13px * Theme.text-scale;
         font-weight: 600;
         overflow: elide;
         horizontal-alignment: root.card.shape == 1 ? center : left;
@@ -92,7 +92,7 @@ component Card inherits Rectangle {
         width: parent.width - 4px;
         text: root.card.subtitle;
         color: Theme.text-faint;
-        font-size: 11px;
+        font-size: 11px * Theme.text-scale;
         overflow: elide;
         horizontal-alignment: root.card.shape == 1 ? center : left;
     }
@@ -103,7 +103,7 @@ component Card inherits Rectangle {
         height: 18px;
         border-radius: 5px;
         background: #000000b0;
-        corner := Text { text: root.card.corner; color: white; font-size: 11px; }
+        corner := Text { text: root.card.corner; color: white; font-size: 11px * Theme.text-scale; }
     }
     if root.card.progress >= 0: Rectangle {
         x: 8px;
@@ -131,7 +131,7 @@ component Card inherits Rectangle {
         background: Theme.accent-gradient;
         drop-shadow-blur: 12px;
         drop-shadow-color: #000000a0;
-        Icon { width: 18px; height: 18px; commands: Icons.play; color: #0b0d14; }
+        Icon { width: 18px; height: 18px; commands: Icons.play; color: Theme.on-accent; }
         play-touch := TouchArea { mouse-cursor: pointer; clicked => { root.play(); } }
     }
     Rectangle {
@@ -165,7 +165,7 @@ component SongLine inherits Rectangle {
             if !root.hover: Text {
                 text: root.line.number;
                 color: root.playing ? Theme.accent : Theme.text-faint;
-                font-size: 12px;
+                font-size: 12px * Theme.text-scale;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
@@ -184,7 +184,7 @@ component SongLine inherits Rectangle {
             if root.line.detail != "": Text {
                 text: root.line.detail;
                 color: Theme.text-faint;
-                font-size: 11px;
+                font-size: 11px * Theme.text-scale;
                 overflow: elide;
             }
         }
@@ -204,7 +204,7 @@ component SongLine inherits Rectangle {
             width: 56px;
             text: root.line.right;
             color: Theme.text-faint;
-            font-size: 12px;
+            font-size: 12px * Theme.text-scale;
             horizontal-alignment: right;
             vertical-alignment: center;
         }
@@ -276,7 +276,7 @@ export component MediaLibrary inherits Rectangle {
                 Text {
                     text: "Media library";
                     color: Theme.text;
-                    font-size: 16px;
+                    font-size: 16px * Theme.text-scale;
                     font-weight: 800;
                     height: 34px;
                     vertical-alignment: center;
@@ -291,7 +291,7 @@ export component MediaLibrary inherits Rectangle {
                 if root.status != "": Text {
                     text: root.status;
                     color: Theme.text-faint;
-                    font-size: 11px;
+                    font-size: 11px * Theme.text-scale;
                     wrap: word-wrap;
                 }
                 NavItem { text: "Edit folders"; selected: root.page == 7; clicked => { root.nav(7); } }
@@ -348,14 +348,14 @@ export component MediaLibrary inherits Rectangle {
                     Text {
                         text: root.title;
                         color: Theme.text;
-                        font-size: root.has-head ? 24px : 22px;
+                        font-size: root.has-head ? 24px * Theme.text-scale : 22px * Theme.text-scale;
                         font-weight: 800;
                         overflow: elide;
                     }
                     if root.subtitle != "": Text {
                         text: root.subtitle;
                         color: Theme.text-dim;
-                        font-size: 12px;
+                        font-size: 12px * Theme.text-scale;
                         overflow: elide;
                     }
                 }
@@ -395,7 +395,7 @@ export component MediaLibrary inherits Rectangle {
                 Text {
                     text: "Choose the folders with your music and videos";
                     color: Theme.text;
-                    font-size: 18px;
+                    font-size: 18px * Theme.text-scale;
                     font-weight: 700;
                     horizontal-alignment: center;
                     wrap: word-wrap;
@@ -427,7 +427,7 @@ export component MediaLibrary inherits Rectangle {
                 Text {
                     text: "Removing a folder only takes it off the library; its files stay on the disk. New and changed files are found each time the library opens.";
                     color: Theme.text-faint;
-                    font-size: 12px;
+                    font-size: 12px * Theme.text-scale;
                     wrap: word-wrap;
                 }
                 ScrollView {
@@ -471,7 +471,7 @@ export component MediaLibrary inherits Rectangle {
                         height: parent.height;
                         text: line.title;
                         color: Theme.text;
-                        font-size: 15px;
+                        font-size: 15px * Theme.text-scale;
                         font-weight: 700;
                         vertical-alignment: center;
                     }

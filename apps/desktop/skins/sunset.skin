@@ -1,0 +1,17 @@
+# Dusk purple with gold and pink. A theme: it colours the media player and compact views.
+name = Sunset
+layout = any
+author = Super Media Player
+
+bg = #0f0812
+bg-2 = #2a1222
+surface = #2a1424d0
+surface-hi = #3a1c30e8
+panel = #2a1526
+popup = #3b1e33
+text = #fff1ea
+text-dim = #d9b0a8
+text-faint = #8c6466
+accent = #ffb03d
+accent-2 = #ff4f8b
+on-accent = #1a0a08

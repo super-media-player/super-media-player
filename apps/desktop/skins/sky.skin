@@ -1,0 +1,17 @@
+# Steel blue with soft sky blue. A theme: it colours the media player and compact views.
+name = Sky
+layout = any
+author = Super Media Player
+
+bg = #080d14
+bg-2 = #122030
+surface = #152536d0
+surface-hi = #1d3146e8
+panel = #142334
+popup = #1e3246
+text = #f0f7fd
+text-dim = #a6bdd2
+text-faint = #62788e
+accent = #6cc8ff
+accent-2 = #9ab8ff
+on-accent = #06101a

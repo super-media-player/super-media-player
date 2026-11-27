@@ -1,0 +1,17 @@
+# Deep emerald with jade green. A theme: it colours the media player and compact views.
+name = Jade
+layout = any
+author = Super Media Player
+
+bg = #04100a
+bg-2 = #092014
+surface = #0c2618d0
+surface-hi = #123322e8
+panel = #0b2316
+popup = #123422
+text = #eafaf0
+text-dim = #98c4a9
+text-faint = #567d65
+accent = #2fd87a
+accent-2 = #1fb6a6
+on-accent = #03140a

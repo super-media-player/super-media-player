@@ -14,7 +14,7 @@
 //! Everything here blocks; call it from a worker thread.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// Packages that make up FFmpeg and libmpv on Debian/Ubuntu.
 const PACKAGE_PATTERN: &str = "^(libav|libsw|libpostproc|libmpv|ffmpeg)";
@@ -105,7 +105,7 @@ fn parse_upgradable(out: &str) -> Vec<Upgrade> {
 /// of the last refresh (refreshing needs the administrator; [`update_system`]
 /// does it). `None` when this isn't a Debian/Ubuntu system.
 pub fn pending_upgrades() -> Option<Vec<Upgrade>> {
-    let out = Command::new("apt")
+    let out = crate::process::command("apt")
         .args(["list", "--upgradable"])
         .env("LC_ALL", "C")
         .stderr(Stdio::null())
@@ -119,7 +119,7 @@ pub fn pending_upgrades() -> Option<Vec<Upgrade>> {
 /// The installed package providing libavcodec, with its version, e.g.
 /// ("libavcodec-extra60", "7:6.1.1-3ubuntu5+esm15").
 pub fn installed_package(lib: &Path) -> Option<(String, String)> {
-    let out = Command::new("dpkg").arg("-S").arg(lib).output().ok()?;
+    let out = crate::process::command("dpkg").arg("-S").arg(lib).output().ok()?;
     let pkg = String::from_utf8_lossy(&out.stdout)
         .lines()
         .next()?
@@ -127,7 +127,7 @@ pub fn installed_package(lib: &Path) -> Option<(String, String)> {
         .next()?
         .trim()
         .to_owned();
-    let ver = Command::new("dpkg-query")
+    let ver = crate::process::command("dpkg-query")
         .args(["-W", "-f=${Version}", &pkg])
         .output()
         .ok()?;
@@ -149,7 +149,7 @@ pub fn update_command() -> String {
 /// upgraded.
 pub fn update_system() -> Result<bool, String> {
     let before = pending_upgrades().unwrap_or_default();
-    let out = Command::new("pkexec")
+    let out = crate::process::command("pkexec")
         .args(["sh", "-c", &update_command()])
         .env("LC_ALL", "C")
         .stdin(Stdio::null())

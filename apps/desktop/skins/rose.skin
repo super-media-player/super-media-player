@@ -1,0 +1,17 @@
+# Dark plum with rose and peach. A theme: it colours the media player and compact views.
+name = Rose
+layout = any
+author = Super Media Player
+
+bg = #120709
+bg-2 = #261016
+surface = #2a1319d0
+surface-hi = #3a1b23e8
+panel = #2a141b
+popup = #3a1d25
+text = #ffeef1
+text-dim = #d4a9b2
+text-faint = #8a6069
+accent = #ff7aa2
+accent-2 = #ffb38a
+on-accent = #1a070c

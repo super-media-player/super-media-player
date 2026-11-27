@@ -49,7 +49,7 @@ export component IconButton inherits Rectangle {
             height: parent.height;
             commands: root.icon;
             stroked: root.stroked;
-            color: root.primary ? #0b0d14 : root.active ? Theme.accent : touch.has-hover ? Theme.text : Theme.text-dim;
+            color: root.primary ? Theme.on-accent : root.active ? Theme.accent : touch.has-hover ? Theme.text : Theme.text-dim;
             animate color { duration: Theme.fast; }
         }
         // Scale feedback via a short resize on press.
@@ -104,11 +104,11 @@ export component PillButton inherits Rectangle {
             height: 16px;
             commands: root.icon;
             stroked: root.stroked;
-            color: root.filled ? #0b0d14 : Theme.text;
+            color: root.filled ? Theme.on-accent : Theme.text;
         }
         Text {
             text: root.text;
-            color: root.filled ? #0b0d14 : Theme.text;
+            color: root.filled ? Theme.on-accent : Theme.text;
             font-size: Theme.font-normal;
             font-weight: root.filled ? 700 : 500;
             vertical-alignment: center;
@@ -386,7 +386,7 @@ export component MenuRow inherits Rectangle {
 
 export component MenuHeader inherits Text {
     color: Theme.text-faint;
-    font-size: 11px;
+    font-size: 11px * Theme.text-scale;
     font-weight: 700;
     letter-spacing: 1px;
     height: 24px;

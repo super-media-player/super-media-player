@@ -191,3 +191,29 @@ export struct MediaLine {
     columns: int,
     shape: int,
 }
+
+// One line of the colour editor: a colour of the skin, or a heading
+// (`key` empty) above a group of them.
+// A theme in the Looks panel, drawn as a little picture of the player.
+export struct ThemeCard {
+    // Index in the theme list, or (not a theme) in the skin list.
+    skin: int,
+    is-theme: bool,
+    name: string,
+    ground: color,
+    top: color,
+    panel: color,
+    bar: color,
+    text: color,
+    accent: color,
+    accent-2: color,
+}
+
+export struct ColourRow {
+    // "theme.accent", "silver.case-1"…
+    key: string,
+    label: string,
+    colour: color,
+    // "#39d0ff"
+    hex: string,
+}

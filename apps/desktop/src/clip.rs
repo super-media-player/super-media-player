@@ -255,7 +255,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("smp-clip-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let src = dir.join("src.mkv");
-        let made = std::process::Command::new("ffmpeg")
+        let made = crate::process::command("ffmpeg")
             .args([
                 "-v",
                 "error",

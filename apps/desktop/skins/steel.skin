@@ -1,0 +1,17 @@
+# Cool grey with a hint of cyan. A theme: it colours the media player and compact views.
+name = Steel
+layout = any
+author = Super Media Player
+
+bg = #0a0c0d
+bg-2 = #161a1c
+surface = #1a1f21d0
+surface-hi = #24292ce8
+panel = #191e20
+popup = #252b2e
+text = #eff3f4
+text-dim = #a5b0b4
+text-faint = #647074
+accent = #8fc4d0
+accent-2 = #c4d4d8
+on-accent = #0a0c0d
