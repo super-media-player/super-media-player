@@ -54,7 +54,6 @@ scripts/in-container.sh scripts/package-windows.sh   # the Windows packages
 
 Built on Ubuntu 22.04, the Linux packages run on 22.04 / Mint 21 / Debian 12 /
 Fedora 36 and every newer distribution (glibc only works forwards).
-`scripts/vm-job.sh` does all of this on the build machine by itself.
 
 `scripts/package-linux.sh` writes to `dist/`. All of them bundle libmpv, FFmpeg
 and the codec libraries, so the target machine needs nothing downloaded:
@@ -99,7 +98,7 @@ The Linux packages also bundle:
   where its use isn't allowed. The script ends with a list of what was bundled.
 - libcdio-paranoia (reading audio CDs exactly), libprojectM with its presets
   (MilkDrop) and whisper.cpp (subtitles from speech), built once by
-  `scripts/vm-job.sh`.
+  `scripts/fetch-projectm.sh` and `scripts/fetch-whisper.sh`.
 
 ### Newer FFmpeg in the packages
 
@@ -126,66 +125,12 @@ them there for the next release. `scripts/dev-run.sh` uses the same engine,
 and deleting `.devlibs/engine/` goes back to the system's. In the app,
 Tools → Update FFmpeg then reports that FFmpeg travels with the player.
 
-### Building on a separate machine (VM)
-
-`scripts/vm-build.sh` runs the whole build (engine, libdvdcss, packages) on
-another machine over ssh and sends a phone notification through ntfy when it
-is done. The build machine must run the same Ubuntu release as the target
-machines, or an older one.
-
-```sh
-echo 'BUILD_HOST=user@host' > vm-build.conf   # git-ignored; ssh key login
-scripts/vm-build.sh setup     # once: build packages (asks for sudo) + Rust
-scripts/vm-build.sh connect super-media-player/super-media-player  # once
-scripts/vm-build.sh           # start a build of GitHub's newest main
-scripts/vm-build.sh start --copy  # or of this folder, unpushed changes too
-scripts/vm-build.sh status    # end of the build log
-scripts/vm-build.sh fetch     # copy the finished packages into dist/
-```
-
-After `connect`, the build machine's folder is a git checkout: every build
-and every daily check first moves it to GitHub's newest commit
-(`scripts/vm-pull.sh`), so what is built is always a known commit. Push, then
-build. Changes copied over with `--copy` are dropped again by the next build
-from GitHub.
-
-For notifications, put `NTFY_URL=https://ntfy.sh/<topic>` in
-`~/super-media-player/notify.conf` on the build machine. The engine is only
-rebuilt when `scripts/build-engine.sh` changed since its last build.
-
 ### Releases
 
-A build of a commit with a version tag publishes its packages as that tag's
-GitHub release (`scripts/publish-github.sh`), next to the macOS `.dmg` files
-from GitHub Actions:
-
-```sh
-git tag v0.59.0 && git push origin main v0.59.0   # macOS build starts
-scripts/vm-build.sh                               # Linux + Windows, then publish
-```
-
-This needs `github.conf` in `~/super-media-player` on the build machine
-(git-ignored): `GITHUB_TOKEN=` a fine-grained token for the repository only,
-with "Contents: Read and write", and `GITHUB_REPO=super-media-player/super-media-player`.
-`scripts/vm-build.sh publish` publishes the last build again by hand. Daily
-rebuilds (`+auto`) are not published.
-
-`scripts/vm-build.sh schedule` turns on a daily check there
-(`scripts/vm-daily.sh`, from cron at 05:30). It rebuilds the packages by
-itself when FFmpeg, mpv or libplacebo has a new point release on the branch
-in use, or when a system library bundled in the package was updated (Ubuntu
-installs security updates automatically). A newer branch (FFmpeg 9.2, mpv
-0.43) is only reported: move the pin in `scripts/build-engine.sh` to try it.
-Automatic builds are named `<version>+auto<date>`, so apt sees them as
-newer, and a failed engine build keeps the last good one. Every run sends one
-notification, so a missing morning note means the check did not run.
-`scripts/vm-build.sh daily [--force]` runs it now; `unschedule` turns it off.
-
-When the build machine runs build-hub (a web page that
-schedules and records the builds of several projects), let build-hub
-schedule `scripts/vm-daily.sh` instead: run `scripts/vm-build.sh unschedule`
-so it doesn't run twice. build-hub's runs get GitHub's newest code the same
-way.
+Releases are built on a separate build machine with the commands above, and
+published as GitHub releases. The macOS `.dmg` files come from GitHub Actions
+(`.github/workflows/release.yml`), which runs when a version tag
+(`v0.59.0`) is pushed.
 
 ## Tests
 
