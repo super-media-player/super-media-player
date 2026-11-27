@@ -37,8 +37,8 @@ DISPLAYINFO_SHA256=5a2f002a16f42dd3540c8846f80a90b8f4bdcd067a94b9d2087bc2feae974
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 # engine-versions.conf (git-ignored) overrides the pins above with the same
-# variable names; scripts/vm-daily.sh writes it when it moves to a newer
-# point release.
+# variable names; a build machine's daily check can write it to move to a
+# newer point release.
 # shellcheck source=/dev/null
 [[ -f "$root/engine-versions.conf" ]] && source "$root/engine-versions.conf"
 # Built beside the current engine and swapped in only when everything built,

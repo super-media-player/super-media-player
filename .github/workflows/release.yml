@@ -1,10 +1,10 @@
 # Packages that need their own system to build: macOS (Apple silicon and
 # Intel). Linux and Windows packages are built on the build machine
-# (scripts/vm-job.sh, scripts/package-windows.sh in the smp-build container).
+# (scripts/package-linux.sh, scripts/package-windows.sh in the smp-build container).
 #
 # Runs for a version tag (v0.59.0) or by hand; the .dmg files are kept as
 # the run's artifacts and, for a tag, added to its GitHub release (the build
-# machine's scripts/publish-github.sh adds the Linux and Windows packages to
+# machine adds the Linux and Windows packages to
 # the same release; whichever comes first creates it).
 name: Release packages
 

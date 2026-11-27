@@ -40,8 +40,8 @@ for tool in cargo patchelf dpkg-deb ldd curl sha256sum; do
 done
 
 version=$(sed -n '/^\[workspace.package\]/,/^\[/ s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
-# A rebuild of the same code with newer libraries (scripts/vm-daily.sh) adds
-# a suffix such as "+auto20261124", so apt sees the package as newer.
+# A rebuild of the same code with newer libraries can add a suffix
+# (SMP_PACKAGE_SUFFIX=+auto20261124), so apt sees the package as newer.
 version="$version${SMP_PACKAGE_SUFFIX:-}"
 arch=$(uname -m)
 debarch=$(dpkg --print-architecture)
@@ -77,8 +77,8 @@ rm -rf "$stage"
 mkdir -p "$app/lib" "$app/share/applications" "$app/share/icons/hicolor/scalable/apps"
 cp target/release/super-media-player "$app/"
 cp -L "$libmpv" "$app/lib/libmpv.so.2"
-# Where each bundled library came from, so scripts/vm-daily.sh can tell
-# when a system update changed one of them.
+# Where each bundled library came from, so a later check can tell when a
+# system update changed one of them (sha256sum -c dist/bundled-sources.sha256).
 sources=("$libmpv")
 
 # Base libraries taken from the system (by soname). They are part of every

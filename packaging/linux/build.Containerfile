@@ -1,6 +1,6 @@
 # The build environment for every Linux package of Super Media Player
 # (scripts/in-container.sh runs commands in it, on the build machine, with
-# rootless podman; scripts/vm-build.sh image builds it):
+# rootless podman; scripts/in-container.sh --image builds it):
 #
 #   Ubuntu 22.04: programs built on a newer system need its newer glibc, so
 #   the packages built here run on Ubuntu 22.04 / Mint 21 / Debian 12 /
@@ -29,7 +29,7 @@ ARG APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3
 ARG RUNTIME_URL=https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
 ARG RUNTIME_SHA256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 
-# scripts/vm-daily.sh passes the date, so each day's image has that day's
+# `in-container.sh --image=DATE` passes the date, so each day's image has that day's
 # Ubuntu security updates (the packages bundle some of these libraries).
 ARG REFRESH=none
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
