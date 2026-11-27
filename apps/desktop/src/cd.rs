@@ -1106,7 +1106,7 @@ mod tests {
         assert_eq!(t.album().as_deref(), Some("Album"));
         assert_eq!(t.track(), Some(1));
         assert_eq!(t.track_total(), Some(12));
-        assert_eq!(t.get_string(&ItemKey::AlbumArtist), Some("Band"));
+        assert_eq!(t.get_string(ItemKey::AlbumArtist), Some("Band"));
         assert_eq!(t.pictures().len(), 1);
         assert_eq!(file.properties().duration().as_millis(), 1000);
         // The ffmpeg program, when there, decodes every sample back.

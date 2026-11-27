@@ -202,6 +202,8 @@ fn main() {
             .unwrap_or(&all_skins[view as usize]);
         skins::apply(&ui, None, skin);
         ui.set_s_visualizer(if name == "music-particles" { 1 } else { 0 });
+        // The pulse line (settings::OVERLAYS 1) in the music views.
+        ui.set_s_overlay(if name.starts_with("music-") { 1 } else { 0 });
         ui.set_info_open(name == "music-info");
         ui.set_eq_open(name == "equalizer");
         ui.set_settings_open(name.starts_with("settings"));

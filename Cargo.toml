@@ -3,16 +3,16 @@ resolver = "3"
 members = ["crates/mpv-sys", "crates/player-core", "apps/desktop"]
 
 [workspace.package]
-version = "0.68.0"
+version = "0.71.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["Dumitru Orlov"]
-rust-version = "1.88"
+rust-version = "1.89"
 
 [workspace.dependencies]
 mpv-sys = { path = "crates/mpv-sys" }
 player-core = { path = "crates/player-core" }
-libloading = "0.8"
+libloading = "0.9.1"
 thiserror = "2"
 log = "0.4"
 

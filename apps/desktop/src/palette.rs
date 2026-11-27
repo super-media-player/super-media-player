@@ -194,7 +194,7 @@ const ACTIONS: &[(&str, &str, &str, &str)] = &[
     ("vis-2", "Music visual: spectrum bars", "visualizer", ""),
     ("vis-3", "Music visual: waveform", "visualizer", ""),
     ("vis-4", "Music visual: stereo scope", "visualizer", ""),
-    ("vis-5", "Music visual: spectrum (CQT)", "visualizer", ""),
+    ("vis-5", "Music visual: spectrum", "visualizer cqt", ""),
     ("vis-6", "Music visual: spectrogram", "visualizer", ""),
     (
         "vis-7",
@@ -203,6 +203,13 @@ const ACTIONS: &[(&str, &str, &str, &str)] = &[
         "",
     ),
     ("vis-8", "Music visual: none", "visualizer", ""),
+    ("overlay-0", "Music overlay: off", "pulse line beat", ""),
+    ("overlay-1", "Music overlay: pulse line", "beat heartbeat", ""),
+    ("overlay-2", "Music overlay: ribbons", "bass voice beat", ""),
+    ("overlay-3", "Music overlay: melody trail", "notes pitch voice bass", ""),
+    ("overlay-4", "Music overlay: heat map", "spectrogram sound", ""),
+    ("overlay-5", "Music overlay: ring", "artist picture beat", ""),
+    ("overlay-6", "Music overlay: part lamps", "kick bass voice snare cymbals bpm tempo", ""),
     (
         "milkdrop-next",
         "Next MilkDrop preset",
@@ -544,6 +551,10 @@ pub fn run(ui: &AppWindow, id: &str) {
         ui.invoke_choose_visual(v);
         return;
     }
+    if let Some(v) = num("overlay-") {
+        ui.invoke_choose_overlay(v);
+        return;
+    }
     if let Some(v) = num("sleep-") {
         ui.invoke_basic("sleep".into(), v as f32);
         return;
@@ -716,7 +727,7 @@ mod tests {
         let body = &src[src.find("fn run(").unwrap()..src.find("#[cfg(test)]").unwrap()];
         for (id, ..) in ACTIONS {
             let handled = body.contains(&format!("\"{id}\""))
-                || ["speed-", "vis-", "enhance-", "tonemap-", "sleep-", "seek"]
+                || ["speed-", "vis-", "overlay-", "enhance-", "tonemap-", "sleep-", "seek"]
                     .iter()
                     .any(|p| id.starts_with(p));
             assert!(handled, "{id}");

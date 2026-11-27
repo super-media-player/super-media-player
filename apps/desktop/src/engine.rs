@@ -119,7 +119,11 @@ pub fn pending_upgrades() -> Option<Vec<Upgrade>> {
 /// The installed package providing libavcodec, with its version, e.g.
 /// ("libavcodec-extra60", "7:6.1.1-3ubuntu5+esm15").
 pub fn installed_package(lib: &Path) -> Option<(String, String)> {
-    let out = crate::process::command("dpkg").arg("-S").arg(lib).output().ok()?;
+    let out = crate::process::command("dpkg")
+        .arg("-S")
+        .arg(lib)
+        .output()
+        .ok()?;
     let pkg = String::from_utf8_lossy(&out.stdout)
         .lines()
         .next()?

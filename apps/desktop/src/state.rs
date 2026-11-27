@@ -789,9 +789,13 @@ fn network_failure_hint(prefix: &str, text: &str) -> Option<&'static str> {
              The stream may be offline, or blocked outside its country.",
         )
     } else if text.contains("timed out") {
-        Some("Could not play: the server didn't answer. It may be offline, or your connection is down.")
+        Some(
+            "Could not play: the server didn't answer. It may be offline, or your connection is down.",
+        )
     } else if text.contains("Failed to resolve hostname") {
-        Some("Could not play: the server's address wasn't found. Check the link and your connection.")
+        Some(
+            "Could not play: the server's address wasn't found. Check the link and your connection.",
+        )
     } else if text.contains("HTTP error 404") || text.contains("HTTP error 410") {
         Some("Could not play: nothing is at this link any more (it may have moved).")
     } else if text.contains("HTTP error 401") || text.contains("HTTP error 403") {

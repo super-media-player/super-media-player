@@ -230,6 +230,7 @@ impl VideoRenderer {
             }
             RenderingState::RenderingTeardown => {
                 self.milkdrop = None;
+                self.milkdrop_failed = false;
                 self.corners = None;
                 self.ctx = None;
                 self.gl = None;

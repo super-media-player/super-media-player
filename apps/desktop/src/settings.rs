@@ -20,8 +20,9 @@ pub struct Settings {
     /// Look up artist pictures, album covers and artist summaries online
     /// (sends artist and album names to Deezer and Wikipedia).
     pub artist_image_online: bool,
-    /// The heartbeat-like line that scrolls across the music view.
-    pub pulse_line: bool,
+    /// What runs over the music visual: one of `OVERLAYS` ("off", the
+    /// heartbeat-like pulse line, ribbons, ...; overlay.rs).
+    pub music_overlay: String,
     /// Look up lyrics online (sends artist and title to LRCLIB).
     pub lyrics_online: bool,
     /// Show timed lyrics in the music view.
@@ -36,6 +37,8 @@ pub struct Settings {
     pub volume: f64,
     /// Keep yt-dlp and the Blu-ray key database up to date in the background.
     pub auto_update: bool,
+    /// Say so at startup when a newer version of the player is released.
+    pub check_app_updates: bool,
     /// The classic deck's playlist sits in its own window.
     pub playlist_detached: bool,
     /// The classic deck shows its playlist (on at first, then as last left).
@@ -193,7 +196,7 @@ impl Default for Settings {
             visualizer: "disc".into(),
             artist_image: "top-right".into(),
             artist_image_online: false,
-            pulse_line: true,
+            music_overlay: "off".into(),
             lyrics_online: false,
             show_lyrics: true,
             bluray_decryption: "auto".into(),
@@ -202,6 +205,7 @@ impl Default for Settings {
             window_system: "auto".into(),
             volume: 100.0,
             auto_update: true,
+            check_app_updates: true,
             playlist_detached: false,
             classic_playlist: true,
             bass: 0.0,
@@ -298,10 +302,11 @@ impl Settings {
                 "visualizer" => choice(VISUALIZERS, &mut s.visualizer),
                 "artist_image" => choice(&["off", "top-left", "top-right"], &mut s.artist_image),
                 "artist_image_online" => s.artist_image_online = v == "true",
-                "pulse_line" => s.pulse_line = v != "false",
+                "music_overlay" => choice(OVERLAYS, &mut s.music_overlay),
                 "lyrics_online" => s.lyrics_online = v == "true",
                 "show_lyrics" => s.show_lyrics = v != "false",
                 "auto_update" => s.auto_update = v != "false",
+                "check_app_updates" => s.check_app_updates = v != "false",
                 "playlist_detached" => s.playlist_detached = v == "true",
                 "classic_playlist" => s.classic_playlist = v != "false",
                 "bass" | "treble" => {
@@ -431,14 +436,14 @@ impl Settings {
     pub fn to_text(&self) -> String {
         format!(
             "# Super Media Player settings\n\
-             view_mode = {}\nvisualizer = {}\nartist_image = {}\nartist_image_online = {}\npulse_line = {}\nlyrics_online = {}\nshow_lyrics = {}\n\
+             view_mode = {}\nvisualizer = {}\nartist_image = {}\nartist_image_online = {}\nmusic_overlay = {}\nlyrics_online = {}\nshow_lyrics = {}\n\
              bluray_decryption = {}\nstream_quality = {}\nhardware_decoding = {}\n\
-             window_system = {}\nvolume = {}\nauto_update = {}\nplaylist_detached = {}\nclassic_playlist = {}\nbass = {}\ntreble = {}\n",
+             window_system = {}\nvolume = {}\nauto_update = {}\ncheck_app_updates = {}\nplaylist_detached = {}\nclassic_playlist = {}\nbass = {}\ntreble = {}\n",
             self.view_mode,
             self.visualizer,
             self.artist_image,
             self.artist_image_online,
-            self.pulse_line,
+            self.music_overlay,
             self.lyrics_online,
             self.show_lyrics,
             self.bluray_decryption,
@@ -447,6 +452,7 @@ impl Settings {
             self.window_system,
             self.volume.round(),
             self.auto_update,
+            self.check_app_updates,
             self.playlist_detached,
             self.classic_playlist,
             self.bass.round(),
@@ -557,6 +563,10 @@ impl Settings {
 pub const TITLE_BARS: &[&str] = &["player", "system"];
 pub const VIEW_MODES: &[&str] = &["player", "compact", "classic", "silver"];
 
+/// What can run over the music visual (settings `music_overlay`), in the
+/// order of the menus.
+pub const OVERLAYS: &[&str] = &["off", "pulse", "ribbons", "melody", "heatmap", "ring", "lamps"];
+
 pub const VISUALIZERS: &[&str] = &[
     "disc",
     "particles",
@@ -639,6 +649,7 @@ mod tests {
             artist_image_online: true,
             volume: 77.0,
             auto_update: false,
+            check_app_updates: false,
             classic_playlist: false,
             crossfade: 6.0,
             replaygain: "album".into(),

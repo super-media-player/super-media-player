@@ -49,6 +49,7 @@ app() {
         echo "lyrics_online = false"
         echo "artist_image_online = false"
         echo "single_instance = false"
+        echo "check_app_updates = false"
         while [[ $# -gt 0 && "$1" != "--" ]]; do
             echo "${1%%=*} = ${1#*=}"
             shift

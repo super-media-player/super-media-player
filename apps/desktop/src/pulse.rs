@@ -55,6 +55,8 @@ pub struct Pulse {
     avg_bass: f32,
     energy: f32,
     beat: f32,
+    /// Strength of the beat that landed on the last tick, 0 when none did.
+    hit: f32,
     /// Ticks since the last beat and since the last real onset.
     since_beat: u32,
     since_onset: u32,
@@ -73,6 +75,7 @@ impl Pulse {
     /// nothing is heard, e.g. paused: the trace holds still).
     pub fn tick(&mut self, levels: Option<&[f32]>) {
         self.beat *= 0.86;
+        self.hit = 0.0;
         let Some(levels) = levels.filter(|l| !l.is_empty()) else {
             return;
         };
@@ -155,6 +158,7 @@ impl Pulse {
             }
             self.since_beat = 0;
             self.beat = self.beat.max(s);
+            self.hit = s;
         }
 
         // The trace: a wobble following the bass around its average, and on
@@ -228,8 +232,13 @@ impl Pulse {
         self.energy
     }
 
+    /// Strength of the beat that landed on the last tick (0.45..1, a beat
+    /// kept on time without a kick is weaker), 0 when none did.
+    pub fn hit(&self) -> f32 {
+        self.hit
+    }
+
     /// The tempo found, beats a minute.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn bpm(&self) -> Option<f32> {
         self.period.map(|p| 60.0 * RATE / p)
     }

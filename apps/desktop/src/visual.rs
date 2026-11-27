@@ -4,13 +4,10 @@
 //! any video. So the visuals react to the real sound.
 
 /// mpv `lavfi-complex` graph for visualizer `kind` on audio track `aid`.
-/// `None` for the visuals the UI draws itself ("disc", "particles") or none at all.
+/// `None` for the visuals the UI draws itself ("disc", "particles",
+/// "spectrum" bars) or none at all.
 pub fn graph(kind: &str, aid: i64) -> Option<String> {
     let filter = match kind {
-        "spectrum" => {
-            "showfreqs=s=1280x720:mode=bar:ascale=log:fscale=log:win_size=2048:averaging=3:\
-             colors=0x39d0ff|0xa46bff,format=yuv420p"
-        }
         "waves" => {
             "showwaves=s=1280x720:mode=cline:rate=30:scale=sqrt:draw=full:colors=0x39d0ff|0xa46bff,format=yuv420p"
         }
@@ -18,12 +15,16 @@ pub fn graph(kind: &str, aid: i64) -> Option<String> {
             "avectorscope=s=640x640:mode=lissajous_xy:draw=line:scale=sqrt:zoom=1.3:\
              rc=57:gc=208:bc=255:ac=255:rf=8:gf=4:bf=2:af=6,format=yuv420p"
         }
+        // Only the bars, filling the whole picture (no scrolling sonogram).
         "cqt" => {
-            "showcqt=s=1280x720:fps=30:bar_g=2:sono_g=4:bar_v=9:sono_v=17:axis=0:count=2,format=yuv420p"
+            "showcqt=s=1280x720:fps=30:bar_g=2:bar_v=9:axis=0:sono_h=0:count=2,format=yuv420p"
         }
+        // Small (the GPU scales it up smoothly): ~6 s of music across, so it
+        // fills at once and the beats stand out. `fps`: without it, it makes
+        // hundreds of pictures a second.
         "spectrogram" => {
-            "showspectrum=s=1280x720:slide=scroll:mode=combined:color=cool:scale=log:\
-             fscale=log:legend=0:win_func=hann,format=yuv420p"
+            "showspectrum=s=480x270:slide=scroll:mode=combined:color=fiery:scale=log:\
+             fscale=log:legend=0:overlap=0:fps=30:drange=90,format=yuv420p"
         }
         _ => return None,
     };
@@ -36,14 +37,14 @@ mod tests {
 
     #[test]
     fn graphs_route_audio_through() {
-        let g = graph("spectrum", 2).unwrap();
-        assert!(g.starts_with("[aid2]asplit[ao][vis];[vis]showfreqs"));
+        let g = graph("cqt", 2).unwrap();
+        assert!(g.starts_with("[aid2]asplit[ao][vis];[vis]showcqt"));
         assert!(g.ends_with("[vo]"));
         for k in crate::settings::VISUALIZERS {
             let has = graph(k, 1).is_some();
             assert_eq!(
                 has,
-                !matches!(*k, "disc" | "particles" | "milkdrop" | "none"),
+                !matches!(*k, "disc" | "particles" | "spectrum" | "milkdrop" | "none"),
                 "{k}"
             );
         }

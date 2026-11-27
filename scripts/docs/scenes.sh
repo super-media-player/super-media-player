@@ -83,7 +83,7 @@ scene_saved() {
 
 scene_music() {
     forget
-    app visualizer=disc -- "$ALBUM"
+    app visualizer=disc music_overlay=pulse -- "$ALBUM"
     sleep 8
     drive focus move:900,420 key:n sleep:8
     shot music
@@ -91,13 +91,24 @@ scene_music() {
 }
 
 scene_visualizers() {
-    for v in bars particles milkdrop; do
+    for v in bars particles spectrum milkdrop; do
         forget
         app visualizer=$v milkdrop_seconds=6 -- "$ALBUM/01 - First Signal.flac"
         sleep 10
         drive move:1000,480
         shotj visual-$v
         [[ $v == milkdrop ]] && GIF_WIDTH=520 GIF_FPS=8 GIF_COLORS=96 gif milkdrop sleep:3
+    done
+    return 0
+}
+
+scene_overlays() {
+    for v in ribbons melody heatmap ring lamps; do
+        forget
+        app visualizer=disc music_overlay=$v -- "$ALBUM/01 - First Signal.flac"
+        sleep 14
+        drive move:1000,480
+        shotj overlay-$v
     done
     return 0
 }

@@ -99,7 +99,7 @@ export component SettingsPanel inherits Rectangle {
     in-out property <int> visualizer;
     in-out property <int> artist-pos;
     in-out property <bool> artist-online;
-    in-out property <bool> pulse-line;
+    in-out property <int> overlay;
     in-out property <bool> lyrics-online;
     in-out property <bool> show-lyrics;
     in-out property <bool> gapless;
@@ -114,6 +114,7 @@ export component SettingsPanel inherits Rectangle {
     in-out property <int> bluray-decryption;
     in-out property <int> window-system;
     in-out property <bool> auto-update;
+    in-out property <bool> check-app-updates;
     in-out property <bool> night-mode;
     in-out property <bool> dialogue-boost;
     in-out property <bool> seek-thumbnails;
@@ -296,17 +297,19 @@ export component SettingsPanel inherits Rectangle {
                             hint: root.milkdrop-available ? "Spectrum, waves, scope and the rest react to the music as it plays. MilkDrop plays Winamp's MilkDrop presets." : "Spectrum, waves, scope and the rest react to the music as it plays. MilkDrop needs libprojectM (scripts/fetch-projectm.sh).";
                             ComboBox {
                                 width: 190px;
-                                model: ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum (CQT)", "Spectrogram", "MilkDrop (projectM)", "None"];
+                                model: ["Spinning disc", "Particles (beat)", "Spectrum bars", "Waveform", "Stereo scope", "Spectrum", "Spectrogram", "MilkDrop (projectM)", "None"];
                                 current-index <=> root.visualizer;
                                 selected => { root.changed(); }
                             }
                         }
                         Row {
-                            label: "Pulse line";
-                            hint: "A heartbeat-like line that spikes on every beat, scrolling across the music view (about 25 seconds of it). Shown with any visualization.";
-                            CheckBox {
-                                checked <=> root.pulse-line;
-                                toggled => { root.changed(); }
+                            label: "Music overlay";
+                            hint: "Drawn over any visualization. Pulse line: a spike on every beat. Ribbons: bass, voice and bright sounds as lanes. Melody trail: the tune's notes and the bass note. Heat map: all of the sound, low to high. Ring: around the artist picture. Part lamps: kick, bass, voice, snare, cymbals and the tempo.";
+                            ComboBox {
+                                width: 190px;
+                                model: ["Off", "Pulse line (beat)", "Ribbons", "Melody trail", "Heat map", "Ring", "Part lamps"];
+                                current-index <=> root.overlay;
+                                selected => { root.changed(); }
                             }
                         }
                         Row {
@@ -823,6 +826,14 @@ export component SettingsPanel inherits Rectangle {
                             hint: "Checks for a new yt-dlp once a week and refreshes the Blu-ray key database once a month (only if you downloaded it). Only copies the player installed are updated.";
                             CheckBox {
                                 checked <=> root.auto-update;
+                                toggled => { root.changed(); }
+                            }
+                        }
+                        Row {
+                            label: "Tell me about new versions";
+                            hint: "When the player opens, it asks GitHub for the newest release and tells you if there is one. Nothing is downloaded or installed by itself.";
+                            CheckBox {
+                                checked <=> root.check-app-updates;
                                 toggled => { root.changed(); }
                             }
                         }
