@@ -8,6 +8,7 @@ import { Icons } from "icons.slint";
 import { IconButton } from "controls.slint";
 import { Panel } from "extras.slint";
 import { InfoRow, PictureState, SubHit, LibraryRow, RipRow } from "types.slint";
+import { DragMove, Drag } from "drag.slint";
 
 // One slider of the picture card: label, value, and a double-click resets it.
 component PicSlider inherits HorizontalLayout {
@@ -50,20 +51,33 @@ export component PictureCard inherits Rectangle {
     callback set(string, float);
     callback close();
 
+    property <length> drag-x;
+    property <length> drag-y;
     // Fills the view; only the card takes clicks.
     card := Rectangle {
+    property <length> base-x: root.width - self.width - 16px;
+    property <length> base-y: 16px;
+    x: self.base-x + Drag.within(root.drag-x, -self.base-x, root.width - self.width - self.base-x);
+    y: self.base-y + Drag.within(root.drag-y, -self.base-y, root.height - self.height - self.base-y);
     width: Math.min(380px, root.width - 32px);
     height: Math.min(lay.preferred-height, root.height - 32px);
-    x: root.width - self.width - 16px;
-    y: 16px;
     border-radius: Theme.radius + 4px;
-    background: #171c2ef0;
+    background: Theme.panel.with-alpha(0.94);
     border-width: 1px;
     border-color: Theme.border;
     drop-shadow-blur: 30px;
     drop-shadow-color: #00000090;
     clip: true;
-    TouchArea { }
+    // Drag it around within the window (drag.slint); also keeps
+    // clicks inside from reaching what is underneath.
+    DragMove {
+        dx <=> root.drag-x;
+        dy <=> root.drag-y;
+        min-dx: -parent.base-x;
+        max-dx: root.width - parent.width - parent.base-x;
+        min-dy: -parent.base-y;
+        max-dy: root.height - parent.height - parent.base-y;
+    }
 
     lay := VerticalLayout {
         padding: 16px;
@@ -71,7 +85,7 @@ export component PictureCard inherits Rectangle {
         HorizontalLayout {
             Text {
                 text: "Picture";
-                font-size: 17px;
+                font-size: 17px * Theme.text-scale;
                 font-weight: 800;
                 color: Theme.text;
                 horizontal-stretch: 1;
@@ -157,7 +171,7 @@ export component PictureCard inherits Rectangle {
         Text {
             text: "Alt + and Alt − zoom, Alt + arrows move, Alt+Backspace resets. Applies to every video until you reset it.";
             color: Theme.text-faint;
-            font-size: 11px;
+            font-size: 11px * Theme.text-scale;
             wrap: word-wrap;
         }
     }
@@ -186,7 +200,7 @@ export component MediaInfoPanel inherits Panel {
                 if r.heading: Text {
                     text: r.label;
                     color: Theme.accent;
-                    font-size: 11px;
+                    font-size: 11px * Theme.text-scale;
                     font-weight: 700;
                     letter-spacing: 1px;
                 }
@@ -264,7 +278,7 @@ export component SubSearchPanel inherits Panel {
     Text {
         text: root.status;
         color: Theme.text-dim;
-        font-size: 12px;
+        font-size: 12px * Theme.text-scale;
         wrap: word-wrap;
     }
     ScrollView {
@@ -293,7 +307,7 @@ export component SubSearchPanel inherits Panel {
                         alignment: center;
                         horizontal-stretch: 1;
                         Text { text: h.title; color: Theme.text; overflow: elide; }
-                        Text { text: h.detail; color: Theme.text-faint; font-size: 11px; overflow: elide; }
+                        Text { text: h.detail; color: Theme.text-faint; font-size: 11px * Theme.text-scale; overflow: elide; }
                     }
                     Button {
                         text: "Use";
@@ -309,7 +323,7 @@ export component SubSearchPanel inherits Panel {
         Text {
             text: "Nothing fits? The player can write subtitles from the speech itself.";
             color: Theme.text-faint;
-            font-size: 11px;
+            font-size: 11px * Theme.text-scale;
             vertical-alignment: center;
             horizontal-stretch: 1;
             wrap: word-wrap;
@@ -375,7 +389,7 @@ export component RipFilesPanel inherits Panel {
     if root.summary != "": Text {
         text: root.summary;
         color: Theme.text-dim;
-        font-size: 12px;
+        font-size: 12px * Theme.text-scale;
         wrap: word-wrap;
     }
     ScrollView {
@@ -401,7 +415,7 @@ export component RipFilesPanel inherits Panel {
                         alignment: center;
                         horizontal-stretch: 1;
                         Text { text: r.file; color: r.rip ? Theme.text : Theme.text-faint; overflow: elide; }
-                        Text { text: r.detail; color: Theme.text-faint; font-size: 11px; overflow: elide; }
+                        Text { text: r.detail; color: Theme.text-faint; font-size: 11px * Theme.text-scale; overflow: elide; }
                     }
                 }
             }
@@ -412,7 +426,7 @@ export component RipFilesPanel inherits Panel {
         Text {
             text: "Into " + root.folder;
             color: Theme.text-dim;
-            font-size: 12px;
+            font-size: 12px * Theme.text-scale;
             vertical-alignment: center;
             horizontal-stretch: 1;
             overflow: elide;
@@ -424,7 +438,7 @@ export component RipFilesPanel inherits Panel {
         Text {
             text: root.total;
             color: Theme.text-faint;
-            font-size: 11px;
+            font-size: 11px * Theme.text-scale;
             vertical-alignment: center;
             horizontal-stretch: 1;
             wrap: word-wrap;
@@ -555,7 +569,7 @@ export component LibraryPanel inherits Panel {
     if root.status != "": Text {
         text: root.status;
         color: Theme.text-dim;
-        font-size: 12px;
+        font-size: 12px * Theme.text-scale;
         wrap: word-wrap;
     }
 
@@ -578,7 +592,7 @@ export component LibraryPanel inherits Panel {
                         alignment: center;
                         horizontal-stretch: 1;
                         Text { text: r.title; color: Theme.text; overflow: elide; }
-                        if r.detail != "": Text { text: r.detail; color: Theme.text-faint; font-size: 11px; overflow: elide; }
+                        if r.detail != "": Text { text: r.detail; color: Theme.text-faint; font-size: 11px * Theme.text-scale; overflow: elide; }
                     }
                     VerticalLayout {
                         alignment: center;
@@ -612,7 +626,7 @@ export component LibraryPanel inherits Panel {
             : root.tab == 2 ? "Found with Apple's podcast search; episodes come from each show's own feed."
             : root.tab == 3 ? "Shares connect through GNOME's gvfs, like the Files app; passwords aren't stored." : "Double-click a row to play it.";
         color: Theme.text-faint;
-        font-size: 11px;
+        font-size: 11px * Theme.text-scale;
         wrap: word-wrap;
     }
 }

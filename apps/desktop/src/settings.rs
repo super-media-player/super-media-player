@@ -10,6 +10,9 @@ pub struct Settings {
     /// The skin dressing that view: a skin id (skins.rs), or "" for the
     /// view's own colours.
     pub skin: String,
+    /// The colour theme of the media player and compact views: a theme id
+    /// (skins.rs, `layout = any`), or "" for none.
+    pub theme: String,
     /// Music visual: one of `VISUALIZERS`.
     pub visualizer: String,
     /// Artist picture corner: "off", "top-left", "top-right".
@@ -35,6 +38,8 @@ pub struct Settings {
     pub auto_update: bool,
     /// The classic deck's playlist sits in its own window.
     pub playlist_detached: bool,
+    /// The classic deck shows its playlist (on at first, then as last left).
+    pub classic_playlist: bool,
     /// Tone (silver deck knobs), -12..12 dB.
     pub bass: f64,
     pub treble: f64,
@@ -106,6 +111,8 @@ pub struct Settings {
     pub always_on_top: bool,
     /// The media player's title bar: one of `TITLE_BARS`.
     pub title_bar: String,
+    /// Text in the media player and the panels: one of `TEXT_SIZES`.
+    pub text_size: String,
     /// Files opened while the player runs go to it (instance.rs).
     pub single_instance: bool,
     /// Text subtitles: one of `SUB_SIZES`, `SUB_POSITIONS`, `SUB_COLORS`,
@@ -155,6 +162,9 @@ pub const ENHANCE: &[&str] = &["off", "sharpen", "fsr", "anime4k"];
 /// HDR tone-mapping curves (mpv's `tone-mapping` names); "auto" is mpv's pick.
 pub const TONE_MAPS: &[&str] = &["auto", "bt.2390", "spline", "hable", "mobius", "clip"];
 pub const SUB_SIZES: &[&str] = &["small", "normal", "large", "huge"];
+/// Text size names, and how much bigger than normal each is.
+pub const TEXT_SIZES: &[&str] = &["small", "normal", "large", "larger"];
+pub const TEXT_SCALES: &[f32] = &[0.9, 1.0, 1.15, 1.3];
 pub const SUB_POSITIONS: &[&str] = &["bottom", "higher", "high", "top"];
 pub const SUB_COLORS: &[&str] = &["white", "yellow", "grey", "cyan", "green"];
 pub const SUB_STYLES: &[&str] = &["outline", "shadow", "box", "lightbox"];
@@ -179,6 +189,7 @@ impl Default for Settings {
         Self {
             view_mode: "player".into(),
             skin: String::new(),
+            theme: String::new(),
             visualizer: "disc".into(),
             artist_image: "top-right".into(),
             artist_image_online: false,
@@ -192,6 +203,7 @@ impl Default for Settings {
             volume: 100.0,
             auto_update: true,
             playlist_detached: false,
+            classic_playlist: true,
             bass: 0.0,
             treble: 0.0,
             gapless: true,
@@ -230,6 +242,7 @@ impl Default for Settings {
             audio_device: "auto".into(),
             always_on_top: false,
             title_bar: "player".into(),
+            text_size: "normal".into(),
             single_instance: true,
             sub_size: "normal".into(),
             sub_pos: "bottom".into(),
@@ -276,6 +289,9 @@ impl Settings {
             match k {
                 "view_mode" => choice(VIEW_MODES, &mut s.view_mode),
                 // A file name: letters, digits, - _ . and spaces only.
+                "theme" if v.chars().all(|c| c.is_alphanumeric() || "-_. ".contains(c)) => {
+                    s.theme = v.to_owned();
+                }
                 "skin" if v.chars().all(|c| c.is_alphanumeric() || "-_. ".contains(c)) => {
                     s.skin = v.to_owned();
                 }
@@ -287,6 +303,7 @@ impl Settings {
                 "show_lyrics" => s.show_lyrics = v != "false",
                 "auto_update" => s.auto_update = v != "false",
                 "playlist_detached" => s.playlist_detached = v == "true",
+                "classic_playlist" => s.classic_playlist = v != "false",
                 "bass" | "treble" => {
                     if let Ok(x) = v.parse::<f64>() {
                         let x = x.clamp(-12.0, 12.0);
@@ -368,6 +385,7 @@ impl Settings {
                 }
                 "always_on_top" => s.always_on_top = v == "true",
                 "title_bar" => choice(TITLE_BARS, &mut s.title_bar),
+                "text_size" => choice(TEXT_SIZES, &mut s.text_size),
                 "single_instance" => s.single_instance = v != "false",
                 "sub_size" => choice(SUB_SIZES, &mut s.sub_size),
                 "sub_pos" => choice(SUB_POSITIONS, &mut s.sub_pos),
@@ -415,7 +433,7 @@ impl Settings {
             "# Super Media Player settings\n\
              view_mode = {}\nvisualizer = {}\nartist_image = {}\nartist_image_online = {}\npulse_line = {}\nlyrics_online = {}\nshow_lyrics = {}\n\
              bluray_decryption = {}\nstream_quality = {}\nhardware_decoding = {}\n\
-             window_system = {}\nvolume = {}\nauto_update = {}\nplaylist_detached = {}\nbass = {}\ntreble = {}\n",
+             window_system = {}\nvolume = {}\nauto_update = {}\nplaylist_detached = {}\nclassic_playlist = {}\nbass = {}\ntreble = {}\n",
             self.view_mode,
             self.visualizer,
             self.artist_image,
@@ -430,6 +448,7 @@ impl Settings {
             self.volume.round(),
             self.auto_update,
             self.playlist_detached,
+            self.classic_playlist,
             self.bass.round(),
             self.treble.round(),
         ) + &format!(
@@ -483,7 +502,7 @@ impl Settings {
             "audio_device = {}\nalways_on_top = {}\nsingle_instance = {}\nsub_size = {}\nsub_pos = {}\n\
              sub_color = {}\nsub_style = {}\npassthrough = {}\ndvd_menus = {}\n\
              mouse_wheel = {}\nmouse_double = {}\nmouse_middle = {}\nsub_languages = {}\nradio_country = {}\nsub_auto_sync = {}\n\
-             sponsor_skip = {}\nsponsor_kinds = {}\ntitle_bar = {}\nscripts = {}\nscripts_off = {}\n",
+             sponsor_skip = {}\nsponsor_kinds = {}\ntitle_bar = {}\nscripts = {}\nscripts_off = {}\ntext_size = {}\ntheme = {}\n",
             self.audio_device,
             self.always_on_top,
             self.single_instance,
@@ -504,6 +523,8 @@ impl Settings {
             self.title_bar,
             self.scripts,
             self.scripts_off,
+            self.text_size,
+            self.theme,
         )
     }
 
@@ -612,10 +633,13 @@ mod tests {
         let s = Settings {
             view_mode: "compact".into(),
             skin: "ember".into(),
+            theme: "ocean".into(),
+            text_size: "larger".into(),
             visualizer: "cqt".into(),
             artist_image_online: true,
             volume: 77.0,
             auto_update: false,
+            classic_playlist: false,
             crossfade: 6.0,
             replaygain: "album".into(),
             eq_enabled: true,

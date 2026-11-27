@@ -1,0 +1,157 @@
+// A deck's playlist in a window of its own, to place anywhere (main.rs
+// shows it while the playlist is open and detached). Dressed like the
+// classic deck, or like the silver deck when `silver` is set.
+import { PlaylistItem } from "types.slint";
+import { PlaylistList } from "playlist.slint";
+import { Classic, DeckToggle, DeckPlaylist } from "classic.slint";
+import { Silver } from "silver.slint";
+
+// A small chrome pill with a label, for the silver look.
+component SilverPill inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+    width: label.preferred-width + 20px;
+    height: 20px;
+    border-radius: 10px;
+    background: touch.pressed ? Silver.chrome-pressed : @linear-gradient(180deg, Silver.chrome-1 0%, Silver.chrome-2 55%, Silver.chrome-3 100%);
+    border-width: 1px;
+    border-color: Silver.chrome-edge;
+    drop-shadow-blur: 2px;
+    drop-shadow-color: #00000040;
+    label := Text {
+        text: root.text;
+        color: touch.has-hover ? Silver.ink-hover : Silver.ink;
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 1px;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component PlaylistWindow inherits Window {
+    in property <[PlaylistItem]> items;
+    in property <bool> playing;
+    in property <bool> silver;
+    callback play-index(int);
+    callback remove-index(int);
+    callback dock();
+    callback open-files();
+    title: "Playlist · Super Media Player";
+    icon: @image-url("../../../packaging/linux/super-media-player.svg");
+    preferred-width: 420px;
+    preferred-height: 360px;
+    min-width: 260px;
+    min-height: 140px;
+    background: root.silver ? Silver.outside : Classic.outside;
+
+    property <string> heading: "PLAYLIST · " + root.items.length + (root.items.length == 1 ? " ITEM" : " ITEMS");
+
+    if !root.silver: Rectangle {
+        x: 4px;
+        y: 4px;
+        width: parent.width - 8px;
+        height: parent.height - 8px;
+        background: Classic.body;
+        border-radius: 3px;
+        border-width: 1px;
+        border-color: Classic.body-edge;
+        Text {
+            x: 10px;
+            y: 6px;
+            text: root.heading;
+            color: Classic.label;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+        HorizontalLayout {
+            x: parent.width - self.preferred-width - 8px;
+            y: 3px;
+            spacing: 4px;
+            DeckToggle { text: "+ ADD"; on: false; clicked => { root.open-files(); } }
+            DeckToggle { text: "DOCK"; on: false; clicked => { root.dock(); } }
+        }
+        Rectangle {
+            x: 8px;
+            y: 24px;
+            width: parent.width - 16px;
+            height: parent.height - 32px;
+            background: Classic.lcd;
+            border-width: 1px;
+            border-color: Classic.lcd-edge;
+            clip: true;
+            if root.items.length == 0: Text {
+                text: "Nothing queued: use + ADD to open files.";
+                color: Classic.green-dim;
+                font-family: Classic.mono;
+                font-size: 11px;
+            }
+            DeckPlaylist {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                items: root.items;
+                play(i) => { root.play-index(i); }
+                remove(i) => { root.remove-index(i); }
+            }
+        }
+    }
+
+    if root.silver: Rectangle {
+        x: 4px;
+        y: 4px;
+        width: parent.width - 8px;
+        height: parent.height - 8px;
+        background: Silver.case;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Silver.case-edge;
+        Text {
+            x: 14px;
+            y: 10px;
+            text: root.heading;
+            color: Silver.engraved;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+        HorizontalLayout {
+            x: parent.width - self.preferred-width - 12px;
+            y: 6px;
+            spacing: 6px;
+            SilverPill { text: "+ ADD"; clicked => { root.open-files(); } }
+            SilverPill { text: "DOCK"; clicked => { root.dock(); } }
+        }
+        Rectangle {
+            x: 10px;
+            y: 32px;
+            width: parent.width - 20px;
+            height: parent.height - 42px;
+            border-radius: 8px;
+            background: @linear-gradient(180deg, Silver.playlist-1 0%, Silver.playlist-2 100%);
+            border-width: 1px;
+            border-color: Silver.glass-edge;
+            clip: true;
+            if root.items.length == 0: Text {
+                text: "Nothing queued: use + ADD to open files.";
+                color: Silver.text-dim;
+                font-size: 11px;
+            }
+            PlaylistList {
+                x: 4px;
+                y: 4px;
+                width: parent.width - 8px;
+                height: parent.height - 8px;
+                items: root.items;
+                row-height: 24px;
+                dense: true;
+                play(i) => { root.play-index(i); }
+                remove(i) => { root.remove-index(i); }
+            }
+        }
+    }
+}

@@ -327,15 +327,21 @@ fn save(ui: &AppWindow, list: &[Entry]) {
         ui.set_toast("The playlist is empty".into());
         return;
     }
-    let Some(mut path) = rfd::FileDialog::new()
+    let dialog = rfd::AsyncFileDialog::new()
         .set_title("Save playlist")
         .set_file_name("playlist.m3u8")
         .add_filter("M3U playlist", &["m3u8", "m3u"])
         .add_filter("XSPF playlist", &["xspf"])
-        .save_file()
-    else {
-        return;
-    };
+        .save_file();
+    let list = list.to_vec();
+    crate::show_dialog(ui, dialog, move |ui, path| {
+        if let Some(path) = path {
+            write_playlist(ui, path.into(), &list);
+        }
+    });
+}
+
+fn write_playlist(ui: &AppWindow, mut path: std::path::PathBuf, list: &[Entry]) {
     if path.extension().is_none() {
         path.set_extension("m3u8");
     }
@@ -357,13 +363,15 @@ fn save(ui: &AppWindow, list: &[Entry]) {
 }
 
 fn open(ui: &AppWindow) {
-    if let Some(path) = rfd::FileDialog::new()
+    let dialog = rfd::AsyncFileDialog::new()
         .set_title("Open playlist")
         .add_filter("Playlists", EXTENSIONS)
-        .pick_file()
-    {
-        crate::open_inputs(ui, vec![crate::Input::Path(path)], false);
-    }
+        .pick_file();
+    crate::show_dialog(ui, dialog, |ui, path| {
+        if let Some(path) = path {
+            crate::open_inputs(ui, vec![crate::Input::Path(path.into())], false);
+        }
+    });
 }
 
 /// Which rows match the search (empty: all).

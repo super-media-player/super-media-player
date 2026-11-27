@@ -11,13 +11,32 @@ export global Theme {
     in-out property <color> accent: #39d0ff;
     in-out property <color> accent-2: #a46bff;
     in-out property <color> danger: #ff5c7a;
+    // Dialogs (settings, library…), buttons, drop-down lists, and text or
+    // icons drawn on the accent colour.
+    in-out property <color> panel: #171c2e;
+    in-out property <color> button: #ffffff0f;
+    in-out property <color> button-hover: #ffffff1c;
+    in-out property <color> button-text: #ffffff;
+    in-out property <color> popup: #2c2c2c;
+    in-out property <color> on-accent: #0b0d14;
+    // Parts of the media player with a colour of their own: the title bar
+    // row, the control bar, the playlist panel and the navigation window.
+    // A skin that doesn't set them gets bg-2, surface, surface-hi and bg-2
+    // (skins.rs FOLLOWS).
+    in-out property <color> title-bar: #0f1220;
+    in-out property <color> controls: #141826d0;
+    in-out property <color> playlist: #1e2436e8;
+    in-out property <color> nav: #0f1220;
     in-out property <brush> accent-gradient: @linear-gradient(90deg, Theme.accent 0%, Theme.accent-2 100%);
     in-out property <length> radius: 14px;
     in-out property <duration> fast: 140ms;
     in-out property <duration> normal: 260ms;
-    in-out property <length> font-small: 12px;
-    in-out property <length> font-normal: 14px;
-    in-out property <length> font-title: 26px;
+    // Text size, from the Looks panel: 1 is normal. The media player and
+    // the dialogs follow it; the skinned players keep their own sizes.
+    in-out property <float> text-scale: 1;
+    in-out property <length> font-small: 12px * Theme.text-scale;
+    in-out property <length> font-normal: 14px * Theme.text-scale;
+    in-out property <length> font-title: 26px * Theme.text-scale;
 }
 
 // The clock for decorative motion (ambient glow, spinning disc, scrolling

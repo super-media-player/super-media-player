@@ -1,0 +1,17 @@
+# Royal blue with violet. A theme: it colours the media player and compact views.
+name = Sapphire
+layout = any
+author = Super Media Player
+
+bg = #050817
+bg-2 = #0b1230
+surface = #0e1738d0
+surface-hi = #151f4ae8
+panel = #0e1736
+popup = #16214c
+text = #eef1ff
+text-dim = #a2acd8
+text-faint = #5e6894
+accent = #4d8dff
+accent-2 = #7a5cff
+on-accent = #040818

@@ -1,7 +1,7 @@
 import { Icons, Icon } from "icons.slint";
 import { Fmt } from "controls.slint";
 import { PlaylistItem } from "types.slint";
-import { MiniBars, Marquee, Holed, GrooveSlider, TitleButton } from "skin-parts.slint";
+import { MiniBars, Marquee, Holed, GrooveSlider, TitleButton, HoverTip, TipBubble, Tip } from "skin-parts.slint";
 
 // Colours of the classic deck: dark gunmetal body, green LCD. Every colour
 // here can be changed by a skin file (skins.rs); gradients are built from
@@ -54,6 +54,7 @@ export global Classic {
 component DeckButton inherits Rectangle {
     in property <string> icon;
     in property <bool> stroked: false;
+    in property <string> tip;
     callback clicked();
     width: 34px;
     height: 24px;
@@ -70,6 +71,7 @@ component DeckButton inherits Rectangle {
         stroked: root.stroked;
         color: touch.has-hover ? Classic.button-ink-hover : Classic.button-ink;
     }
+    HoverTip { hover: touch.has-hover && !touch.pressed; text: root.tip; }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -77,9 +79,10 @@ component DeckButton inherits Rectangle {
 }
 
 // A small text toggle with an LED.
-component DeckToggle inherits Rectangle {
+export component DeckToggle inherits Rectangle {
     in property <string> text;
     in property <bool> on;
+    in property <string> tip;
     callback clicked();
     width: label.preferred-width + 24px;
     height: 18px;
@@ -104,6 +107,7 @@ component DeckToggle inherits Rectangle {
         font-weight: 700;
         letter-spacing: 1px;
     }
+    HoverTip { hover: touch.has-hover && !touch.pressed; text: root.tip; }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
@@ -111,7 +115,7 @@ component DeckToggle inherits Rectangle {
 }
 
 // Green-on-black playlist, double-click to play.
-component DeckPlaylist inherits Flickable {
+export component DeckPlaylist inherits Flickable {
     in property <[PlaylistItem]> items;
     callback play(int);
     callback remove(int);
@@ -121,38 +125,39 @@ component DeckPlaylist inherits Flickable {
         for item[i] in root.items: Rectangle {
             height: 18px;
             background: item.current ? Classic.playlist-current : row.has-hover ? Classic.playlist-hover : transparent;
+            // The × sits inside the row's touch area, so hovering it keeps the row hovered.
             row := TouchArea {
                 mouse-cursor: pointer;
                 double-clicked => { root.play(i); }
-            }
-            HorizontalLayout {
-                padding-left: 6px;
-                padding-right: 4px;
-                spacing: 6px;
-                Text {
-                    text: (i + 1) + ". " + item.title;
-                    color: item.current ? Classic.playlist-current-text : Classic.green;
-                    font-family: Classic.mono;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                    overflow: elide;
-                    horizontal-stretch: 1;
-                }
-                if item.detail != "" && !row.has-hover: Text {
-                    text: item.detail;
-                    color: item.current ? Classic.playlist-current-text : Classic.green-dim;
-                    font-family: Classic.mono;
-                    font-size: 11px;
-                    vertical-alignment: center;
-                }
-                if row.has-hover: Text {
-                    text: "×";
-                    color: x-touch.has-hover ? Classic.alert : Classic.green;
-                    font-size: 14px;
-                    vertical-alignment: center;
-                    x-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.remove(i); }
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 4px;
+                    spacing: 6px;
+                    Text {
+                        text: (i + 1) + ". " + item.title;
+                        color: item.current ? Classic.playlist-current-text : Classic.green;
+                        font-family: Classic.mono;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    if item.detail != "" && !row.has-hover: Text {
+                        text: item.detail;
+                        color: item.current ? Classic.playlist-current-text : Classic.green-dim;
+                        font-family: Classic.mono;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                    if row.has-hover: Text {
+                        text: "×";
+                        color: x-touch.has-hover ? Classic.alert : Classic.green;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                        x-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.remove(i); }
+                        }
                     }
                 }
             }
@@ -249,9 +254,9 @@ export component ClassicView inherits Rectangle {
 
     // Title bar: menu button, grooves either side of the name, minimize and
     // close.
-    TitleButton { x: 10px; y: 9px; glyph: "≡"; clicked => { root.show-menu({ x: self.x, y: self.y + self.height + 2px }); } }
-    TitleButton { x: root.width - 10px - 2 * self.width - 3px; y: 9px; glyph: "−"; clicked => { root.minimize(); } }
-    TitleButton { x: root.width - 10px - self.width; y: 9px; glyph: "×"; clicked => { root.close(); } }
+    TitleButton { x: 10px; y: 9px; glyph: "≡"; tip: "Menu"; clicked => { root.show-menu({ x: self.x, y: self.y + self.height + 2px }); } }
+    TitleButton { x: root.width - 10px - 2 * self.width - 3px; y: 9px; glyph: "−"; tip: "Minimize"; clicked => { root.minimize(); } }
+    TitleButton { x: root.width - 10px - self.width; y: 9px; glyph: "×"; tip: "Close"; clicked => { root.close(); } }
     title-bar := Rectangle {
         x: 30px;
         y: 10px;
@@ -389,6 +394,7 @@ export component ClassicView inherits Rectangle {
         groove-height: 8px;
         thumb-width: 16px;
         thumb-height: 14px;
+        tip: Math.round(root.volume) + "% volume";
         dragged(f) => { root.set-volume(f * 150); }
         released(f) => { root.set-volume(f * 150); }
         wheel(d) => { root.set-volume(Math.clamp(root.volume + d * 5, 0, 150)); }
@@ -423,6 +429,7 @@ export component ClassicView inherits Rectangle {
         groove-height: 8px;
         thumb-width: 28px;
         thumb-height: 14px;
+        tip: Fmt.time(root.position) + " of " + Fmt.time(root.duration);
         dragged(f) => { root.scrub(f * root.duration); }
         released(f) => { root.seek(f * root.duration); }
     }
@@ -444,26 +451,27 @@ export component ClassicView inherits Rectangle {
         width: root.width - 28px;
         height: 24px;
         spacing: 2px;
-        DeckButton { icon: Icons.prev; clicked => { root.prev(); } }
-        DeckButton { icon: Icons.play; clicked => { if (root.paused || root.idle) { root.toggle-pause(); } } }
-        DeckButton { icon: Icons.pause; clicked => { if (!root.paused && !root.idle) { root.toggle-pause(); } } }
-        DeckButton { icon: Icons.stop; clicked => { root.stop(); } }
-        DeckButton { icon: Icons.next; clicked => { root.next(); } }
+        DeckButton { icon: Icons.prev; tip: "Previous"; clicked => { root.prev(); } }
+        DeckButton { icon: Icons.play; tip: "Play"; clicked => { if (root.paused || root.idle) { root.toggle-pause(); } } }
+        DeckButton { icon: Icons.pause; tip: "Pause"; clicked => { if (!root.paused && !root.idle) { root.toggle-pause(); } } }
+        DeckButton { icon: Icons.stop; tip: "Stop"; clicked => { root.stop(); } }
+        DeckButton { icon: Icons.next; tip: "Next"; clicked => { root.next(); } }
         Rectangle { width: 8px; }
-        DeckButton { icon: Icons.eject; clicked => { root.open-files(); } }
+        DeckButton { icon: Icons.eject; tip: "Open files"; clicked => { root.open-files(); } }
         Rectangle { horizontal-stretch: 1; }
         VerticalLayout {
             alignment: center;
             HorizontalLayout {
                 spacing: 4px;
-                DeckToggle { text: "SHUFFLE"; on: root.shuffle; clicked => { root.toggle-shuffle(); } }
+                DeckToggle { text: "SHUFFLE"; on: root.shuffle; tip: root.shuffle ? "Shuffle on" : "Shuffle off"; clicked => { root.toggle-shuffle(); } }
                 DeckToggle {
                     text: root.repeat-mode == 2 ? "REPEAT 1" : "REPEAT";
                     on: root.repeat-mode > 0;
+                    tip: root.repeat-mode == 2 ? "Repeat one" : root.repeat-mode == 1 ? "Repeat all" : "Repeat off";
                     clicked => { root.cycle-repeat(); }
                 }
-                DeckToggle { text: "PL"; on: root.playlist-open; clicked => { root.playlist-open = !root.playlist-open; } }
-                DeckToggle { text: "FULL"; on: false; clicked => { root.expand(); } }
+                DeckToggle { text: "PL"; on: root.playlist-open; tip: root.playlist-open ? "Hide playlist" : "Show playlist"; clicked => { root.playlist-open = !root.playlist-open; } }
+                DeckToggle { text: "FULL"; on: false; tip: "Full player"; clicked => { root.expand(); } }
             }
         }
     }
@@ -489,6 +497,7 @@ export component ClassicView inherits Rectangle {
             y: 2px;
             text: "DETACH";
             on: false;
+            tip: "Playlist in its own window";
             clicked => { root.playlist-detached = true; }
         }
         Text {
@@ -578,73 +587,14 @@ export component ClassicView inherits Rectangle {
             }
         }
     }
-}
 
-// The classic deck's playlist in a window of its own, to place anywhere
-// (main.rs shows it while the playlist is open and detached).
-export component PlaylistWindow inherits Window {
-    in property <[PlaylistItem]> items;
-    in property <bool> playing;
-    callback play-index(int);
-    callback remove-index(int);
-    callback dock();
-    callback open-files();
-    title: "Playlist · Super Media Player";
-    icon: @image-url("../../../packaging/linux/super-media-player.svg");
-    preferred-width: 420px;
-    preferred-height: 360px;
-    min-width: 260px;
-    min-height: 140px;
-    background: Classic.outside;
-    Rectangle {
-        x: 4px;
-        y: 4px;
-        width: parent.width - 8px;
-        height: parent.height - 8px;
-        background: Classic.body;
-        border-radius: 3px;
-        border-width: 1px;
-        border-color: Classic.body-edge;
-        Text {
-            x: 10px;
-            y: 6px;
-            text: "PLAYLIST · " + root.items.length + (root.items.length == 1 ? " ITEM" : " ITEMS");
-            color: Classic.label;
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: 2px;
-        }
-        HorizontalLayout {
-            x: parent.width - self.preferred-width - 8px;
-            y: 3px;
-            spacing: 4px;
-            DeckToggle { text: "+ ADD"; on: false; clicked => { root.open-files(); } }
-            DeckToggle { text: "DOCK"; on: false; clicked => { root.dock(); } }
-        }
-        Rectangle {
-            x: 8px;
-            y: 24px;
-            width: parent.width - 16px;
-            height: parent.height - 32px;
-            background: Classic.lcd;
-            border-width: 1px;
-            border-color: Classic.lcd-edge;
-            clip: true;
-            if root.items.length == 0: Text {
-                text: "Nothing queued: use + ADD to open files.";
-                color: Classic.green-dim;
-                font-family: Classic.mono;
-                font-size: 11px;
-            }
-            DeckPlaylist {
-                x: 1px;
-                y: 1px;
-                width: parent.width - 2px;
-                height: parent.height - 2px;
-                items: root.items;
-                play(i) => { root.play-index(i); }
-                remove(i) => { root.remove-index(i); }
-            }
-        }
+    // Tooltips, over everything.
+    if Tip.shown && root.active: TipBubble {
+        origin: root.absolute-position;
+        area-width: root.width;
+        area-height: root.height;
+        face: Classic.lcd;
+        edge: Classic.lcd-edge;
+        ink: Classic.green;
     }
 }

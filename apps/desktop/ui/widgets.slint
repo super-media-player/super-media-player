@@ -2,7 +2,8 @@
 // show the hand cursor, which Slint's can't (std-widgets have no
 // mouse-cursor). Import these instead of the std-widgets ones.
 
-import { Palette, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
 
 component FocusRing inherits Rectangle {
     border-width: 2px;
@@ -31,8 +32,8 @@ export component Button inherits Rectangle {
     border-width: 1px;
     border-color: root.primary ? #ffffff14 : #ffffff17;
     background: root.primary
-        ? (!root.enabled ? #ffffff29 : Palette.accent-background.with-alpha(touch.pressed ? 0.8 : touch.has-hover ? 0.9 : 1))
-        : !root.enabled ? #ffffff0a : touch.pressed ? #ffffff08 : touch.has-hover ? #ffffff1c : #ffffff0f;
+        ? (!root.enabled ? #ffffff29 : Theme.accent.with-alpha(touch.pressed ? 0.8 : touch.has-hover ? 0.9 : 1))
+        : !root.enabled ? #ffffff0a : touch.pressed ? Theme.button.darker(0.2) : touch.has-hover ? Theme.button-hover : Theme.button;
     animate background { duration: 150ms; }
 
     label := Text {
@@ -41,8 +42,8 @@ export component Button inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
         overflow: elide;
-        color: root.primary ? (root.enabled ? (touch.pressed ? #00000080 : Palette.accent-foreground) : #ffffff87)
-            : !root.enabled ? #ffffff5e : touch.pressed ? #ffffffc9 : Palette.control-foreground;
+        color: root.primary ? (root.enabled ? (touch.pressed ? #00000080 : Theme.on-accent) : #ffffff87)
+            : !root.enabled ? #ffffff5e : touch.pressed ? #ffffffc9 : Theme.button-text;
         accessible-role: none;
     }
 
@@ -101,7 +102,7 @@ export component CheckBox inherits Rectangle {
                 border-width: root.checked ? 0px : 1px;
                 border-color: root.enabled && !touch.pressed ? #ffffff99 : #ffffff29;
                 background: root.checked
-                    ? (!root.enabled ? #ffffff29 : Palette.accent-background.with-alpha(touch.pressed ? 0.8 : touch.has-hover ? 0.9 : 1))
+                    ? (!root.enabled ? #ffffff29 : Theme.accent.with-alpha(touch.pressed ? 0.8 : touch.has-hover ? 0.9 : 1))
                     : touch.pressed ? #ffffff12 : touch.has-hover ? #ffffff0a : #0000001a;
                 animate background { duration: 150ms; }
                 if root.checked: Path {
@@ -110,14 +111,14 @@ export component CheckBox inherits Rectangle {
                     viewbox-width: 10;
                     viewbox-height: 8;
                     commands: "M 0.8 4.2 L 3.6 7 L 9.2 1.2";
-                    stroke: root.enabled ? Palette.accent-foreground : #ffffff87;
+                    stroke: root.enabled ? Theme.on-accent : #ffffff87;
                     stroke-width: 1.5px;
                 }
             }
         }
         if root.text != "": Text {
             text: root.text;
-            color: root.enabled ? Palette.foreground : #ffffff5e;
+            color: root.enabled ? Theme.button-text : #ffffff5e;
             vertical-alignment: center;
             accessible-role: none;
         }
@@ -176,7 +177,7 @@ export component ComboBox inherits Rectangle {
     border-radius: 3px;
     border-width: 1px;
     border-color: #ffffff17;
-    background: !root.enabled ? #ffffff0a : touch.pressed ? #ffffff0a : touch.has-hover ? #ffffff1c : #ffffff0f;
+    background: !root.enabled ? #ffffff0a : touch.pressed ? Theme.button.darker(0.2) : touch.has-hover ? Theme.button-hover : Theme.button;
     animate background { duration: 150ms; }
 
     row := HorizontalLayout {
@@ -187,7 +188,7 @@ export component ComboBox inherits Rectangle {
             horizontal-stretch: 1;
             min-width: 0;
             text: root.current-value;
-            color: root.enabled ? Palette.control-foreground : #ffffff5e;
+            color: root.enabled ? Theme.button-text : #ffffff5e;
             vertical-alignment: center;
             overflow: elide;
             accessible-role: none;
@@ -278,7 +279,7 @@ export component ComboBox inherits Rectangle {
                 border-radius: 7px;
                 border-width: 1px;
                 border-color: #00000033;
-                background: Palette.alternate-background;
+                background: Theme.popup;
                 drop-shadow-blur: 16px;
                 drop-shadow-offset-y: 8px;
                 drop-shadow-color: #00000042;
@@ -302,13 +303,13 @@ export component ComboBox inherits Rectangle {
                                     width: 3px;
                                     height: 16px;
                                     border-radius: 2px;
-                                    background: Palette.accent-background;
+                                    background: Theme.accent;
                                 }
                                 Text {
                                     x: 14px;
                                     width: parent.width - 28px;
                                     text: value;
-                                    color: Palette.control-foreground;
+                                    color: Theme.button-text;
                                     vertical-alignment: center;
                                     overflow: elide;
                                 }

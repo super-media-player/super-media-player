@@ -21,6 +21,10 @@ pub enum Level {
     Problem = 3,
 }
 
+/// What to do when the player runs as administrator.
+pub const ELEVATED_HINT: &str = "Windows blocks dragging files onto the player while it runs as \
+     administrator. Close it and start it again from the Start menu or a shortcut.";
+
 /// Something the app can fix itself, shown as a button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -103,6 +107,8 @@ pub struct Facts {
     pub settings: Settings,
     /// Running on a Wayland desktop.
     pub wayland: bool,
+    /// Running as administrator (Windows).
+    pub elevated: bool,
     pub drives: Vec<DriveReport>,
     /// LibreDrive status per device, where MakeMKV could read it.
     pub libredrive: Vec<(String, LibreDrive)>,
@@ -151,6 +157,7 @@ pub fn gather(settings: &Settings, engine: String) -> Facts {
         wayland: cfg!(target_os = "linux")
             && std::env::var_os("WAYLAND_DISPLAY").is_some()
             && !(settings.window_system == "x11" && std::env::var_os("DISPLAY").is_some()),
+        elevated: crate::process::elevated(),
         drives: Vec::new(),
         libredrive: Vec::new(),
         ffmpeg_updates: matches!(crate::engine::source(), crate::engine::Source::System(_))
@@ -183,7 +190,7 @@ pub fn makemkv_works() -> bool {
 /// Run `makemkvcon` with no arguments (it prints its usage and exits) to
 /// see whether it starts. A stale build fails to load its libraries.
 fn makemkv_state() -> MakeMkv {
-    let Ok(mut child) = std::process::Command::new("makemkvcon")
+    let Ok(mut child) = crate::process::command("makemkvcon")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -312,7 +319,7 @@ fn libredrive_info(makemkv: &MakeMkv, snap: bool, dev: &str) -> Option<LibreDriv
     } else {
         return None;
     };
-    let mut child = std::process::Command::new(tool)
+    let mut child = crate::process::command(tool)
         .args(["f", "-d", dev, "-f"])
         .arg(&sdf)
         .arg("--info")
@@ -736,6 +743,13 @@ pub fn findings(f: &Facts) -> Vec<Finding> {
             .action(Action::OpenSettings),
         );
     }
+    if f.elevated {
+        out.push(Finding::new(
+            Warning,
+            "Running as administrator",
+            ELEVATED_HINT,
+        ));
+    }
     if !f.settings.auto_update {
         out.push(
             Finding::new(
@@ -806,6 +820,7 @@ mod tests {
             keydb: Some(("/home/u/.config/aacs/KEYDB.cfg".into(), 30 << 20, 5)),
             settings: Settings::default(),
             wayland: false,
+            elevated: false,
             drives: vec![drive(DriveState::Empty)],
             libredrive: Vec::new(),
             ffmpeg_updates: Some(0),

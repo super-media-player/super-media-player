@@ -3,6 +3,7 @@ import { ComboBox, CheckBox } from "widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { IconButton } from "controls.slint";
+import { DragMove, Drag } from "drag.slint";
 
 // The 10-band graphic equalizer, with presets. Changes are heard at once
 // and saved (main.rs).
@@ -21,16 +22,31 @@ export component EqualizerPanel inherits Rectangle {
     background: #000000a0;
     TouchArea { clicked => { root.close(); } }
 
+    property <length> drag-x;
+    property <length> drag-y;
     panel := Rectangle {
+        property <length> base-x: (root.width - self.width) / 2;
+        property <length> base-y: (root.height - self.height) / 2;
+        x: self.base-x + Drag.within(root.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(root.drag-y, -self.base-y, root.height - self.height - self.base-y);
         width: Math.min(620px, root.width - 32px);
         height: Math.min(400px, root.height - 32px);
         border-radius: Theme.radius + 4px;
-        background: #171c2e;
+        background: Theme.panel;
         border-width: 1px;
         border-color: Theme.border;
         drop-shadow-blur: 40px;
         drop-shadow-color: #000000a0;
-        TouchArea { }  // keep clicks inside from closing the panel
+        // Drag it around within the window (drag.slint); also keeps
+        // clicks inside from reaching what is underneath.
+        DragMove {
+            dx <=> root.drag-x;
+            dy <=> root.drag-y;
+            min-dx: -parent.base-x;
+            max-dx: root.width - parent.width - parent.base-x;
+            min-dy: -parent.base-y;
+            max-dy: root.height - parent.height - parent.base-y;
+        }
 
         VerticalLayout {
             padding: 20px;
@@ -39,7 +55,7 @@ export component EqualizerPanel inherits Rectangle {
                 spacing: 12px;
                 Text {
                     text: "Equalizer";
-                    font-size: 20px;
+                    font-size: 20px * Theme.text-scale;
                     font-weight: 800;
                     color: Theme.text;
                     vertical-alignment: center;
@@ -82,11 +98,11 @@ export component EqualizerPanel inherits Rectangle {
                     width: 34px;
                     padding-top: 6px;
                     padding-bottom: 28px;
-                    Text { text: "+12"; color: Theme.text-faint; font-size: 10px; horizontal-alignment: right; }
+                    Text { text: "+12"; color: Theme.text-faint; font-size: 10px * Theme.text-scale; horizontal-alignment: right; }
                     Rectangle { vertical-stretch: 1; }
-                    Text { text: "0 dB"; color: Theme.text-faint; font-size: 10px; horizontal-alignment: right; }
+                    Text { text: "0 dB"; color: Theme.text-faint; font-size: 10px * Theme.text-scale; horizontal-alignment: right; }
                     Rectangle { vertical-stretch: 1; }
-                    Text { text: "−12"; color: Theme.text-faint; font-size: 10px; horizontal-alignment: right; }
+                    Text { text: "−12"; color: Theme.text-faint; font-size: 10px * Theme.text-scale; horizontal-alignment: right; }
                 }
                 for g[i] in root.gains: VerticalLayout {
                     spacing: 6px;
@@ -104,13 +120,13 @@ export component EqualizerPanel inherits Rectangle {
                     Text {
                         text: root.labels[i];
                         color: Theme.text-dim;
-                        font-size: 11px;
+                        font-size: 11px * Theme.text-scale;
                         horizontal-alignment: center;
                     }
                     Text {
                         text: (g > 0 ? "+" : "") + Math.round(g * 2) / 2;
                         color: root.enabled ? Theme.accent : Theme.text-faint;
-                        font-size: 10px;
+                        font-size: 10px * Theme.text-scale;
                         horizontal-alignment: center;
                     }
                 }

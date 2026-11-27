@@ -1,0 +1,17 @@
+# Soft dark teal with fresh mint green. A theme: it colours the media player and compact views.
+name = Mint
+layout = any
+author = Super Media Player
+
+bg = #06100e
+bg-2 = #0d201c
+surface = #102622d0
+surface-hi = #17332de8
+panel = #10241f
+popup = #18342d
+text = #ecfbf6
+text-dim = #9cc4b8
+text-faint = #5a7d73
+accent = #5ef2c2
+accent-2 = #a6ff8f
+on-accent = #04140e

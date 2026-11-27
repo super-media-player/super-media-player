@@ -1,0 +1,17 @@
+# Night-sky violet and pink. A theme: it colours the media player and compact views.
+name = Nebula
+layout = any
+author = Super Media Player
+
+bg = #0b0714
+bg-2 = #1a0f2e
+surface = #1d1330d0
+surface-hi = #281a42e8
+panel = #1e1433
+popup = #2b1d45
+text = #f3ecff
+text-dim = #b3a3d1
+text-faint = #6f6290
+accent = #c06bff
+accent-2 = #ff5fb8
+on-accent = #12061c

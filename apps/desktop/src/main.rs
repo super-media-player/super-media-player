@@ -35,6 +35,7 @@ mod palette;
 mod party;
 mod pcm;
 mod playlists;
+mod process;
 mod pulse;
 mod remote;
 mod resume;
@@ -134,6 +135,8 @@ fn note_playlist_height(ui: &AppWindow, mode: &str) {
 
 /// The least room the panels (saved links, settings…) need.
 const PANEL_SIZE: (f32, f32) = (600.0, 560.0);
+/// The room the colour editor takes under a skin's deck.
+const COLOURS_HEIGHT: f32 = 480.0;
 
 thread_local! {
     /// The skinned window's size before it grew for a panel.
@@ -147,8 +150,14 @@ fn fit_panel(ui: &AppWindow) -> bool {
     match (ui.get_panel_open(), BEFORE_PANEL.get()) {
         (true, None) => {
             let now = window.size().to_logical(window.scale_factor());
-            let grown =
-                slint::LogicalSize::new(now.width.max(PANEL_SIZE.0), now.height.max(PANEL_SIZE.1));
+            // The colour editor sits under a skin's deck, which stays in view.
+            let need = if ui.get_colours_open() {
+                skin_size(&pick(VIEW_MODES, ui.get_s_view_mode()))
+                    .map_or(PANEL_SIZE, |(_, h, _)| (PANEL_SIZE.0, h + COLOURS_HEIGHT))
+            } else {
+                PANEL_SIZE
+            };
+            let grown = slint::LogicalSize::new(now.width.max(need.0), now.height.max(need.1));
             if grown == now {
                 return false;
             }
@@ -166,8 +175,10 @@ fn fit_panel(ui: &AppWindow) -> bool {
 }
 
 thread_local! {
-    /// The skins in the order the UI lists them (skins.rs).
+    /// The skins in the order the UI lists them (skins.rs): the views and
+    /// their colours. The colour themes are a list of their own.
     static SKINS: RefCell<Vec<skins::Skin>> = const { RefCell::new(Vec::new()) };
+    static THEMES: RefCell<Vec<skins::Skin>> = const { RefCell::new(Vec::new()) };
     /// The classic deck's own playlist window, which follows the skin.
     static PLAYLIST_WIN: RefCell<Option<slint::Weak<PlaylistWindow>>> = const { RefCell::new(None) };
 }
@@ -179,6 +190,8 @@ fn load_skins(ui: &AppWindow) -> Vec<String> {
     for w in &warnings {
         log::warn!("skin {w}");
     }
+    let (themes, all): (Vec<_>, Vec<_>) = all.into_iter().partition(skins::Skin::is_theme);
+    THEMES.with_borrow_mut(|t| *t = themes);
     let names: Vec<slint::SharedString> = all.iter().map(|s| s.name.as_str().into()).collect();
     let views: Vec<i32> = all.iter().map(skins::Skin::view_index).collect();
     ui.set_skin_names(slint::ModelRc::new(slint::VecModel::from(names)));
@@ -207,14 +220,161 @@ fn chosen_skin(ui: &AppWindow) -> String {
     })
 }
 
+/// Index of theme `id` in the theme list (-1: none).
+fn theme_index(id: &str) -> i32 {
+    THEMES.with_borrow(|all| all.iter().position(|s| s.id == id).map_or(-1, |i| i as i32))
+}
+
+/// The id of the theme chosen in the UI ("" for none).
+fn chosen_theme(ui: &AppWindow) -> String {
+    THEMES.with_borrow(|all| {
+        all.get(ui.get_s_theme().max(0) as usize)
+            .filter(|_| ui.get_s_theme() >= 0)
+            .map(|s| s.id.clone())
+            .unwrap_or_default()
+    })
+}
+
 /// Colour the windows with the skin chosen in the UI.
 fn apply_skin(ui: &AppWindow) {
     let pw = PLAYLIST_WIN.with_borrow(|w| w.as_ref().and_then(|w| w.upgrade()));
-    SKINS.with_borrow(|all| {
-        if let Some(skin) = all.get(ui.get_s_skin().max(0) as usize) {
-            skins::apply(ui, pw.as_ref(), skin);
-        }
+    if let Some(skin) = shown_skin(ui) {
+        skins::apply(ui, pw.as_ref(), &skin);
+    }
+    if ui.get_colours_open() {
+        fill_colours(ui);
+    }
+}
+
+/// Text in the media player and the panels at the size chosen in the UI.
+fn apply_text_size(ui: &AppWindow) {
+    let scale = settings::TEXT_SCALES
+        .get(ui.get_s_text_size().max(0) as usize)
+        .copied()
+        .unwrap_or(1.0);
+    ui.global::<Theme>().set_text_scale(scale);
+    skins::changed();
+}
+
+/// What colours the windows: the chosen theme on the media player and
+/// compact views, else the chosen skin.
+fn shown_skin(ui: &AppWindow) -> Option<skins::Skin> {
+    let theme = ui.get_s_theme();
+    if theme >= 0
+        && ui.get_s_view_mode() <= 1
+        && let Some(t) = THEMES.with_borrow(|all| all.get(theme as usize).cloned())
+    {
+        return Some(t);
+    }
+    SKINS.with_borrow(|all| all.get(ui.get_s_skin().max(0) as usize).cloned())
+}
+
+/// Fill the colour editor (colours.slint) with the colours shown now.
+/// Unsaved changes are gone after this: the skin was just applied.
+fn fill_colours(ui: &AppWindow) {
+    let layout = pick(VIEW_MODES, ui.get_s_view_mode());
+    let rows: Vec<ColourRow> = skins::editor_lines(ui, &layout)
+        .into_iter()
+        .map(|(key, label, colour)| ColourRow {
+            key: key.into(),
+            label: label.into(),
+            colour: colour.unwrap_or_default(),
+            hex: colour.map(skins::hex).unwrap_or_default().into(),
+        })
+        .collect();
+    // Keep the picked line when it is still a colour (same layout).
+    let picked = ui.get_colour_selected();
+    let still = rows
+        .get(picked.max(0) as usize)
+        .is_some_and(|r| !r.key.is_empty());
+    if !still {
+        ui.set_colour_selected(1);
+    }
+    ui.set_colour_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+    let own_file = shown_skin(ui)
+        .is_some_and(|s| s.path.as_deref().and_then(Path::parent) == skins::user_dir().as_deref());
+    ui.set_colours_own_file(own_file);
+    ui.set_colours_dirty(false);
+    ui.set_colours_note("".into());
+    ui.set_colour_generation(ui.get_colour_generation().wrapping_add(1));
+    fill_theme_cards(ui, &layout);
+    fill_simple_colours(ui);
+}
+
+/// The Looks panel's themes for the view shown now, as little pictures.
+fn fill_theme_cards(ui: &AppWindow, layout: &str) {
+    let cards: Vec<ThemeCard> = SKINS.with_borrow(|all| {
+        THEMES.with_borrow(|themes| {
+            skins::cards(ui, all, themes, layout)
+                .into_iter()
+                .map(|(is_theme, i, c)| {
+                    let skin = if is_theme { &themes[i] } else { &all[i] };
+                    // "Classic deck – Amber" is "Amber" among the classic deck's.
+                    let name = if skin.id == layout {
+                        "Standard".to_owned()
+                    } else {
+                        skin.name
+                            .rsplit("– ")
+                            .next()
+                            .unwrap_or(&skin.name)
+                            .to_owned()
+                    };
+                    ThemeCard {
+                        skin: i as i32,
+                        is_theme,
+                        name: name.into(),
+                        ground: c.ground,
+                        top: c.top,
+                        panel: c.panel,
+                        bar: c.bar,
+                        text: c.text,
+                        accent: c.accent,
+                        accent_2: c.accent_2,
+                    }
+                })
+                .collect()
+        })
     });
+    ui.set_theme_cards(slint::ModelRc::new(slint::VecModel::from(cards)));
+}
+
+/// The Looks panel's short list of colours, as shown now.
+fn fill_simple_colours(ui: &AppWindow) {
+    let layout = pick(VIEW_MODES, ui.get_s_view_mode());
+    let rows: Vec<ColourRow> = skins::simple_lines(ui, &layout)
+        .into_iter()
+        .map(|(label, colour)| ColourRow {
+            key: "".into(),
+            label: label.into(),
+            colour,
+            hex: skins::hex(colour).into(),
+        })
+        .collect();
+    ui.set_simple_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+}
+
+/// Show one colour changed in the editor: on the windows and in its line.
+fn set_shown_colour(ui: &AppWindow, key: &str, colour: slint::Color) -> bool {
+    use slint::Model;
+    if !skins::set_colour(ui, key, colour) {
+        return false;
+    }
+    if let Some(pw) = PLAYLIST_WIN.with_borrow(|w| w.as_ref().and_then(|w| w.upgrade())) {
+        skins::copy_to_playlist_window(ui, &pw);
+    }
+    let rows = ui.get_colour_rows();
+    if let Some(i) = rows.iter().position(|r| r.key == key) {
+        let mut row = rows.row_data(i).unwrap_or_default();
+        row.colour = colour;
+        row.hex = skins::hex(colour).into();
+        rows.set_row_data(i, row);
+    }
+    ui.set_colours_dirty(true);
+    ui.set_colours_note("".into());
+    if ui.get_colours_open() {
+        fill_simple_colours(ui);
+    }
+    true
 }
 
 /// Show a folder in the desktop's file manager (or a web page in its browser).
@@ -226,10 +386,7 @@ fn open_folder(dir: &Path) -> std::io::Result<()> {
     } else {
         "xdg-open"
     };
-    std::process::Command::new(opener)
-        .arg(dir)
-        .spawn()
-        .map(|_| ())
+    crate::process::command(opener).arg(dir).spawn().map(|_| ())
 }
 
 thread_local! {
@@ -446,7 +603,7 @@ fn parse_input(s: &str) -> Option<Input> {
         Some(rest) => std::env::var_os("HOME").map(|h| Path::new(&h).join(rest))?,
         None => PathBuf::from(s),
     };
-    Some(Input::Path(std::fs::canonicalize(&path).unwrap_or(path)))
+    Some(Input::Path(process::full_path(&path)))
 }
 
 fn percent_decode(s: &str) -> String {
@@ -523,7 +680,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
     // Lets the desktop match the window to super-media-player.desktop (icon, name).
     let _ = slint::set_xdg_app_id("super-media-player");
-    ui.set_playlist_open(args.show_playlist);
+    // The classic deck opens with its playlist, as last left.
+    let classic_pl = {
+        let s = settings.borrow();
+        s.view_mode == "classic" && s.classic_playlist
+    };
+    ui.set_playlist_open(args.show_playlist || classic_pl);
     ui.set_playlist_detached(settings.borrow().playlist_detached);
     ui.set_bass(settings.borrow().bass as f32);
     ui.set_treble(settings.borrow().treble as f32);
@@ -534,16 +696,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     load_skins(&ui);
     settings_to_ui(&ui, &settings.borrow());
     apply_skin(&ui);
+    if process::elevated() {
+        log::warn!("running as administrator: Windows blocks drag and drop");
+        ui.set_toast(doctor::ELEVATED_HINT.into());
+    }
     {
         let weak = ui.as_weak();
         ui.on_reload_skins(move || {
             let Some(ui) = weak.upgrade() else { return };
             let id = chosen_skin(&ui);
+            let theme = chosen_theme(&ui);
             let warnings = load_skins(&ui);
             let view = pick(VIEW_MODES, ui.get_s_view_mode());
             ui.set_s_skin(skin_index(&id, &view));
+            ui.set_s_theme(theme_index(&theme));
             apply_skin(&ui);
-            let count = SKINS.with_borrow(|s| s.len());
+            let count = SKINS.with_borrow(|s| s.len()) + THEMES.with_borrow(|t| t.len());
             ui.set_toast(match warnings.as_slice() {
                 [] => format!("{count} skins loaded").into(),
                 [w] => format!("{count} skins loaded. Skipped: {w}").into(),
@@ -553,6 +721,70 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .into(),
             });
+        });
+        let weak = ui.as_weak();
+        ui.on_colours_fill(move || {
+            if let Some(ui) = weak.upgrade() {
+                fill_colours(&ui);
+            }
+        });
+        let weak = ui.as_weak();
+        ui.on_colour_set(move |key, colour| {
+            if let Some(ui) = weak.upgrade() {
+                set_shown_colour(&ui, &key, colour);
+            }
+        });
+        let weak = ui.as_weak();
+        ui.on_simple_colour_set(move |i, colour| {
+            let Some(ui) = weak.upgrade() else { return };
+            let layout = pick(VIEW_MODES, ui.get_s_view_mode());
+            for (key, c) in skins::simple_change(&ui, &layout, i.max(0) as usize, colour) {
+                set_shown_colour(&ui, &key, c);
+            }
+        });
+        let weak = ui.as_weak();
+        ui.on_colour_hex(move |key, text| {
+            let Some(ui) = weak.upgrade() else {
+                return false;
+            };
+            match skins::parse_color(&text) {
+                Some(c) => set_shown_colour(&ui, &key, c),
+                None => {
+                    ui.set_colours_note(
+                        format!("\"{}\" is not a colour like #12abef", text.trim()).into(),
+                    );
+                    false
+                }
+            }
+        });
+        let weak = ui.as_weak();
+        ui.on_colours_undo(move || {
+            if let Some(ui) = weak.upgrade() {
+                apply_skin(&ui);
+                fill_colours(&ui);
+            }
+        });
+        let weak = ui.as_weak();
+        ui.on_colours_save(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(skin) = shown_skin(&ui) else { return };
+            match skins::save_shown(&ui, &skin) {
+                Ok((id, name)) => {
+                    load_skins(&ui);
+                    let view = pick(VIEW_MODES, ui.get_s_view_mode());
+                    // The media player's and compact's colours are saved as a theme.
+                    match theme_index(&id) {
+                        -1 => ui.set_s_skin(skin_index(&id, &view)),
+                        t => ui.set_s_theme(t),
+                    }
+                    apply_skin(&ui);
+                    fill_colours(&ui);
+                    // Remember it as the chosen skin.
+                    ui.invoke_settings_changed();
+                    ui.set_colours_note(format!("Saved as \u{201c}{name}\u{201d}.").into());
+                }
+                Err(e) => ui.set_colours_note(format!("Couldn't save: {e}").into()),
+            }
         });
         let weak = ui.as_weak();
         ui.on_open_skins_folder(move || {
@@ -668,6 +900,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = settings.borrow_mut();
     s.volume = ui.get_volume() as f64;
     s.playlist_detached = ui.get_playlist_detached();
+    if s.view_mode == "classic" {
+        s.classic_playlist = ui.get_playlist_open();
+    }
     s.bass = ui.get_bass() as f64;
     s.treble = ui.get_treble() as f64;
     s.save();
@@ -937,6 +1172,13 @@ fn pick(list: &[&str], index: i32) -> String {
 
 fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_s_view_mode(index_of(VIEW_MODES, &s.view_mode));
+    // Before themes had a setting of their own, a theme was the skin.
+    let theme = if s.theme.is_empty() && theme_index(&s.skin) >= 0 {
+        &s.skin
+    } else {
+        &s.theme
+    };
+    ui.set_s_theme(theme_index(theme));
     ui.set_s_skin(skin_index(&s.skin, &s.view_mode));
     ui.set_s_visualizer(index_of(settings::VISUALIZERS, &s.visualizer));
     ui.set_s_artist_pos(index_of(ARTIST_POSITIONS, &s.artist_image));
@@ -979,6 +1221,8 @@ fn settings_to_ui(ui: &AppWindow, s: &Settings) {
     ui.set_s_nav_docked(s.nav_docked);
     ui.set_s_always_on_top(s.always_on_top);
     ui.set_s_title_bar(index_of(settings::TITLE_BARS, &s.title_bar));
+    ui.set_s_text_size(index_of(settings::TEXT_SIZES, &s.text_size));
+    apply_text_size(ui);
     ui.set_s_single_instance(s.single_instance);
     ui.set_s_sub_size(index_of(settings::SUB_SIZES, &s.sub_size));
     ui.set_s_sub_pos(index_of(settings::SUB_POSITIONS, &s.sub_pos));
@@ -997,6 +1241,7 @@ fn settings_from_ui(ui: &AppWindow, old: &Settings) -> Settings {
     Settings {
         view_mode: pick(VIEW_MODES, ui.get_s_view_mode()),
         skin: chosen_skin(ui),
+        theme: chosen_theme(ui),
         visualizer: pick(settings::VISUALIZERS, ui.get_s_visualizer()),
         artist_image: pick(ARTIST_POSITIONS, ui.get_s_artist_pos()),
         artist_image_online: ui.get_s_artist_online(),
@@ -1021,6 +1266,7 @@ fn settings_from_ui(ui: &AppWindow, old: &Settings) -> Settings {
         volume: old.volume,
         auto_update: ui.get_s_auto_update(),
         playlist_detached: old.playlist_detached,
+        classic_playlist: old.classic_playlist,
         bass: old.bass,
         treble: old.treble,
         night_mode: ui.get_s_night_mode(),
@@ -1049,6 +1295,7 @@ fn settings_from_ui(ui: &AppWindow, old: &Settings) -> Settings {
             .unwrap_or_else(|| old.audio_device.clone()),
         always_on_top: ui.get_s_always_on_top(),
         title_bar: pick(settings::TITLE_BARS, ui.get_s_title_bar()),
+        text_size: pick(settings::TEXT_SIZES, ui.get_s_text_size()),
         single_instance: ui.get_s_single_instance(),
         sub_size: pick(settings::SUB_SIZES, ui.get_s_sub_size()),
         sub_pos: pick(settings::SUB_POSITIONS, ui.get_s_sub_pos()),
@@ -1081,10 +1328,21 @@ fn apply_settings(ui: &AppWindow, player: &Player, settings: &RefCell<Settings>)
     new.save();
 
     if new.view_mode != old.view_mode {
+        // The classic deck keeps its own playlist on/off.
+        if old.view_mode == "classic" {
+            let open = ui.get_playlist_open();
+            settings.borrow_mut().classic_playlist = open;
+            settings.borrow().save();
+        } else if new.view_mode == "classic" {
+            ui.set_playlist_open(new.classic_playlist);
+        }
         resize_for_view(ui, &new.view_mode);
     }
-    if new.skin != old.skin || new.view_mode != old.view_mode {
+    if new.skin != old.skin || new.theme != old.theme || new.view_mode != old.view_mode {
         apply_skin(ui);
+    }
+    if new.text_size != old.text_size {
+        apply_text_size(ui);
     }
     if new.hardware_decoding != old.hardware_decoding {
         report(
@@ -1191,10 +1449,10 @@ fn resize_for_view(ui: &AppWindow, mode: &str) {
     }
 }
 
-/// The classic deck can show its playlist in a separate window instead of
-/// under the deck.
+/// The classic and silver decks can show their playlist in a separate
+/// window instead of under the deck.
 fn playlist_in_own_window(ui: &AppWindow, mode: &str) -> bool {
-    mode == "classic" && ui.get_playlist_detached()
+    matches!(mode, "classic" | "silver") && ui.get_playlist_detached()
 }
 
 /// "1:02:05" or "3:07".
@@ -1358,26 +1616,31 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
     });
     on!(on_open_files, |ui, p| open_files_dialog(&ui));
     on!(on_open_folder, |ui, p| {
-        if let Some(dir) = rfd::FileDialog::new()
+        let dialog = rfd::AsyncFileDialog::new()
             .set_title("Open folder")
-            .pick_folder()
-        {
-            open_inputs(&ui, vec![Input::Path(dir)], !ui.get_idle());
-        }
+            .pick_folder();
+        show_dialog(&ui, dialog, |ui, dir| {
+            if let Some(dir) = dir {
+                open_inputs(ui, vec![Input::Path(dir.into())], !ui.get_idle());
+            }
+        });
     });
     on!(on_open_location, |ui, p, text| {
         let inputs: Vec<Input> = text.lines().filter_map(parse_input).collect();
         open_inputs(&ui, inputs, false);
     });
     on!(on_add_subtitle, |ui, p| {
-        if let Some(file) = rfd::FileDialog::new()
+        let dialog = rfd::AsyncFileDialog::new()
             .set_title("Load subtitle")
             .add_filter("Subtitles", SUBTITLE_EXTENSIONS)
             .add_filter("All files", &["*"])
-            .pick_file()
-        {
-            report(&ui, p.add_subtitle(&file.to_string_lossy()));
-        }
+            .pick_file();
+        let p = p.clone();
+        show_dialog(&ui, dialog, move |ui, file| {
+            if let Some(file) = file {
+                report(ui, p.add_subtitle(&file.path().to_string_lossy()));
+            }
+        });
     });
     on!(on_load_subtitle_path, |ui, p, path| report(
         &ui,
@@ -1391,7 +1654,7 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
     on!(on_install_ytdlp, |ui, p| install_ytdlp(&ui, None));
     on!(on_install_keydb, |ui, p| install_keydb(&ui));
     on!(on_ytdlp_missing, |ui, p, url| {
-        let yes = rfd::MessageDialog::new()
+        let dialog = rfd::AsyncMessageDialog::new()
             .set_level(rfd::MessageLevel::Info)
             .set_title("yt-dlp is needed")
             .set_description(
@@ -1401,9 +1664,11 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
             )
             .set_buttons(rfd::MessageButtons::YesNo)
             .show();
-        if yes == rfd::MessageDialogResult::Yes {
-            install_ytdlp(&ui, Some(url.to_string()));
-        }
+        show_dialog(&ui, dialog, move |ui, answer| {
+            if answer == rfd::MessageDialogResult::Yes {
+                install_ytdlp(ui, Some(url.to_string()));
+            }
+        });
     });
 
     {
@@ -1456,6 +1721,21 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
                     refresh_makemkv(ui);
                 },
             );
+        });
+        // Ctrl+V: files copied in Explorer (Windows). Without any, the
+        // open-location dialog pastes the clipboard's text instead.
+        let weak = ui.as_weak();
+        ui.on_paste_files(move || {
+            let Some(ui) = weak.upgrade() else {
+                return false;
+            };
+            let files = process::clipboard_files();
+            if files.is_empty() {
+                return false;
+            }
+            let add = ui.get_playlist_open();
+            open_inputs(&ui, files.into_iter().map(Input::Path).collect(), add);
+            true
         });
         ui.on_open_url(|url| {
             // Only web pages: this hands the address to the desktop's browser.
@@ -1568,6 +1848,7 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
                 if show {
                     // Same model as the deck's: a cheap pointer compare when unchanged.
                     pw.set_items(ui.get_playlist());
+                    pw.set_silver(view == "silver");
                     pw.set_playing(!ui.get_idle());
                     if !pw.window().is_visible() {
                         // Open it right under the deck, like a torn-off panel.
@@ -1592,7 +1873,7 @@ fn connect_callbacks(ui: &AppWindow, player: &Rc<Player>, settings: Rc<RefCell<S
     }
 }
 
-/// The classic deck's detached playlist window (shown by the timer above).
+/// The decks' detached playlist window (shown by the timer above).
 fn playlist_window(ui: &AppWindow, player: &Rc<Player>) -> Option<PlaylistWindow> {
     let pw = match PlaylistWindow::new() {
         Ok(w) => w,
@@ -2025,7 +2306,7 @@ fn install_ytdlp(ui: &AppWindow, retry: Option<String>) {
 }
 
 fn install_keydb(ui: &AppWindow) {
-    let yes = rfd::MessageDialog::new()
+    let dialog = rfd::AsyncMessageDialog::new()
         .set_level(rfd::MessageLevel::Info)
         .set_title("Blu-ray key database")
         .set_description(format!(
@@ -2038,9 +2319,14 @@ fn install_keydb(ui: &AppWindow) {
         ))
         .set_buttons(rfd::MessageButtons::YesNo)
         .show();
-    if yes != rfd::MessageDialogResult::Yes {
-        return;
-    }
+    show_dialog(ui, dialog, |ui, answer| {
+        if answer == rfd::MessageDialogResult::Yes {
+            download_keydb(ui);
+        }
+    });
+}
+
+fn download_keydb(ui: &AppWindow) {
     run_busy(
         ui,
         "Downloading the Blu-ray key database…",
@@ -2118,21 +2404,65 @@ fn attach_drop_handler(window: &slint::Window, weak: slint::Weak<AppWindow>, alw
     });
 }
 
+thread_local! {
+    static DIALOG_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Show a file or message dialog without stopping the event loop, then hand
+/// its answer to `then`. A blocking dialog keeps the window from answering
+/// the desktop, which then reports the player as "not responding" after a
+/// few seconds. One dialog at a time: a second request while one is open is
+/// ignored.
+pub fn show_dialog<T: 'static>(
+    ui: &AppWindow,
+    dialog: impl std::future::Future<Output = T> + 'static,
+    then: impl FnOnce(&AppWindow, T) + 'static,
+) {
+    if DIALOG_OPEN.get() {
+        return;
+    }
+    DIALOG_OPEN.set(true);
+    let weak = ui.as_weak();
+    let spawned = slint::spawn_local(async move {
+        let answer = dialog.await;
+        DIALOG_OPEN.set(false);
+        if let Some(ui) = weak.upgrade() {
+            then(&ui, answer);
+        }
+    });
+    if let Err(e) = spawned {
+        log::warn!("{e}");
+        DIALOG_OPEN.set(false);
+    }
+}
+
+/// Paths from a dialog that picks several files.
+pub fn picked_paths(files: Option<Vec<rfd::FileHandle>>) -> Vec<PathBuf> {
+    files
+        .unwrap_or_default()
+        .into_iter()
+        .map(PathBuf::from)
+        .collect()
+}
+
 fn open_files_dialog(ui: &AppWindow) {
-    let Some(files) = rfd::FileDialog::new()
+    let dialog = rfd::AsyncFileDialog::new()
         .set_title("Open media")
         .add_filter("Media files", MEDIA_EXTENSIONS)
         .add_filter("All files", &["*"])
-        .pick_files()
-    else {
-        return;
-    };
-    // Replace when idle, otherwise queue after the current playlist.
-    open_inputs(
-        ui,
-        files.into_iter().map(Input::Path).collect(),
-        !ui.get_idle(),
-    );
+        .pick_files();
+    show_dialog(ui, dialog, |ui, files| {
+        let files = picked_paths(files);
+        if files.is_empty() {
+            return;
+        }
+        // Replace when idle, otherwise queue after the current playlist.
+        open_inputs(
+            ui,
+            files.into_iter().map(Input::Path).collect(),
+            !ui.get_idle(),
+        );
+    });
 }
 
 /// Open files, folders, disc folders and links. Folders are scanned for
@@ -2417,25 +2747,30 @@ fn open_disc(ui: &AppWindow, kind: &str) {
         "cd" | "rip-cd" => Some(DiscKind::AudioCd),
         "auto" => None,
         "image" => {
-            if let Some(path) = rfd::FileDialog::new()
+            let dialog = rfd::AsyncFileDialog::new()
                 .set_title("Open disc image")
                 .add_filter("Disc images", &["iso", "img"])
-                .pick_file()
-            {
-                open_inputs(ui, vec![Input::Path(path)], false);
-            }
+                .pick_file();
+            show_dialog(ui, dialog, |ui, path| {
+                if let Some(path) = path {
+                    open_inputs(ui, vec![Input::Path(path.into())], false);
+                }
+            });
             return;
         }
         "folder" => {
-            if let Some(dir) = rfd::FileDialog::new()
+            let dialog = rfd::AsyncFileDialog::new()
                 .set_title("Open DVD or Blu-ray folder (the one holding VIDEO_TS or BDMV)")
-                .pick_folder()
-            {
+                .pick_folder();
+            show_dialog(ui, dialog, |ui, dir| {
+                let Some(dir) = dir.map(PathBuf::from) else {
+                    return;
+                };
                 match disc::plan_path(&dir).or_else(|| find_disc_folder(&dir)) {
                     Some(plan) => with_player(|p| play_disc(ui, p, plan)),
                     None => ui.set_toast("That folder has no VIDEO_TS or BDMV folder in it".into()),
                 }
-            }
+            });
             return;
         }
         _ => return,
@@ -3154,13 +3489,15 @@ fn setup_rip_files(ui: &AppWindow) {
         let start = RIP_PLAN
             .with_borrow(|r| r.as_ref().map(|r| r.base.clone()))
             .unwrap_or_else(discrip::videos_dir);
-        if let Some(dir) = rfd::FileDialog::new()
+        let dialog = rfd::AsyncFileDialog::new()
             .set_title("Rip into which folder?")
             .set_directory(&start)
-            .pick_folder()
-        {
-            edit(&ui, &|r| r.base = dir.clone());
-        }
+            .pick_folder();
+        show_dialog(&ui, dialog, move |ui, dir| {
+            if let Some(dir) = dir.map(PathBuf::from) {
+                edit(ui, &|r| r.base = dir.clone());
+            }
+        });
     });
     let weak = ui.as_weak();
     ui.on_ripfiles_start(move || {
@@ -3626,7 +3963,7 @@ fn update_ffmpeg(ui: &AppWindow) {
 /// quit this one.
 fn restart_player() {
     match std::env::current_exe() {
-        Ok(exe) => match std::process::Command::new(exe)
+        Ok(exe) => match crate::process::command(exe)
             .args(std::env::args().skip(1))
             .spawn()
         {
@@ -3765,7 +4102,8 @@ mod tests {
 mod menu_tests {
     /// The skins' menu (a copy, since Slint can't share menu definitions)
     /// must offer the same entries as the menu bar, minus the shortcut
-    /// labels context menus can't show.
+    /// labels context menus can't show. One difference on purpose: the
+    /// bar's Skin sub-menu is the skins' "Skin…" (a list that scrolls).
     #[test]
     fn skin_menu_matches_menu_bar() {
         let ui = include_str!("../ui/app.slint");
@@ -3795,7 +4133,28 @@ mod menu_tests {
                 break;
             }
         }
-        let bar = normalize(&ui[bar_start..end]);
+        let mut bar = normalize(&ui[bar_start..end]);
+        let skin = bar
+            .windows(2)
+            .position(|w| w[0] == "Menu {" && w[1] == "title: \"Skin\";")
+            .expect("Skin sub-menu");
+        let mut depth = 0;
+        let mut skin_end = skin;
+        for (i, line) in bar[skin..].iter().enumerate() {
+            depth += line.matches('{').count() as i32 - line.matches('}').count() as i32;
+            if depth == 0 {
+                skin_end = skin + i;
+                break;
+            }
+        }
+        bar.splice(
+            skin..=skin_end,
+            [
+                "// Skins' windows are too short for a long sub-menu (Slint".to_owned(),
+                "// menus can't scroll): the list opens in a popup that does.".to_owned(),
+                "MenuItem { title: \"Skin…\"; activated => { root.show-skin-list(); } }".to_owned(),
+            ],
+        );
         let a = ui
             .find("// ---- skin menu entries ----")
             .expect("skin menu start");

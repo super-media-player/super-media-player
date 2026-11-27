@@ -186,6 +186,16 @@ scene_settings() {
     rm -r "$dir"
 }
 
+scene_colours() {
+    app --
+    sleep 5
+    # Settings › Look › Themes and colours…, then the Advanced colours tab.
+    drive focus key:Ctrl+p sleep:1.5 click:850,225 sleep:1.5 click:398,358 sleep:1.5 move:1000,60
+    shot colours
+    drive click:480,148 sleep:1 move:1000,60
+    shot colours-advanced
+}
+
 scene_cast() {
     "$root/scripts/fake-cast-devices.py" --prefix "" > "$state/fake.log" 2>&1 < /dev/null &
     local fake=$!

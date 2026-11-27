@@ -1,0 +1,17 @@
+# Cold slate with ice blue. A theme: it colours the media player and compact views.
+name = Arctic
+layout = any
+author = Super Media Player
+
+bg = #0a0f14
+bg-2 = #152029
+surface = #18242ed0
+surface-hi = #22313ce8
+panel = #17232c
+popup = #22323e
+text = #f2f8fc
+text-dim = #a9bccb
+text-faint = #66798a
+accent = #9fe3ff
+accent-2 = #d6e8ff
+on-accent = #07121a

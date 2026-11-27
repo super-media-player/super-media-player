@@ -371,7 +371,7 @@ mod tests {
     }
 
     fn ffmpeg(args: &[&str]) -> Option<String> {
-        let out = std::process::Command::new("ffmpeg")
+        let out = crate::process::command("ffmpeg")
             .args(args)
             .output()
             .ok()?;

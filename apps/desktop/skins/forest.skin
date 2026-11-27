@@ -1,0 +1,17 @@
+# Deep green with lime. A theme: it colours the media player and compact views.
+name = Forest
+layout = any
+author = Super Media Player
+
+bg = #060d07
+bg-2 = #0e1d10
+surface = #122416d0
+surface-hi = #1a3220e8
+panel = #122318
+popup = #1b3322
+text = #eef8ec
+text-dim = #a3c2a0
+text-faint = #5f7d5c
+accent = #8fe04a
+accent-2 = #e0d24a
+on-accent = #0a1405

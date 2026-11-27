@@ -1,0 +1,17 @@
+# Blue-grey, quiet and plain. A theme: it colours the media player and compact views.
+name = Slate
+layout = any
+author = Super Media Player
+
+bg = #0b0d10
+bg-2 = #171b21
+surface = #1b2027d0
+surface-hi = #252b34e8
+panel = #1a1f26
+popup = #262c35
+text = #eef1f5
+text-dim = #a3acb9
+text-faint = #646d7a
+accent = #a8b8cc
+accent-2 = #d2dbe6
+on-accent = #0b0d10

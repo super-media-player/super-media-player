@@ -16,7 +16,7 @@ it, often with a button or a command to copy.
 |---|---|
 | No sound | *Audio & Subtitles → Output device*; check the volume and that it isn't muted (M). With *Bit-perfect output* on, other programs can't use the card |
 | Video shows glitches or is black | Turn off *Settings → Video → Hardware video decoding* |
-| Dragging files doesn't work | *Settings → System → Window system → X11 (drag and drop)*, then restart. Or copy the file and press Ctrl+V |
+| Dragging files doesn't work | Linux: *Settings → System → Window system → X11 (drag and drop)*, then restart. Windows: the player may be running as administrator; close it and start it from the Start menu. Or copy the file and press Ctrl+V |
 | A file stays at "Opening…" or never starts, and you use scripts | A script may be stuck: switch it off in *Settings → Scripts*, then restart |
 | The window looks blurry on a scaled screen | Set the same option to *Wayland* |
 | YouTube stopped working | *Tools → Setup & updates → Install / update yt-dlp* |

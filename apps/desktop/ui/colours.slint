@@ -1,0 +1,627 @@
+// Looks: pick a ready-made theme, the text size, and change a few plain
+// colours (background, title bar, playlist…). "Advanced colours" lists
+// every colour of the view. Changes can be saved as your own theme
+// (skins.rs writes it).
+import { ScrollView, LineEdit } from "std-widgets.slint";
+import { Button } from "widgets.slint";
+import { Theme } from "theme.slint";
+import { Panel } from "extras.slint";
+import { Chip } from "nav.slint";
+import { ColourRow, ThemeCard } from "types.slint";
+
+// One entry of a list that looks like a menu (the skins' "Skin…" list),
+// with a tick when chosen.
+export component SkinListRow inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked;
+    callback clicked();
+    height: 30px;
+    border-radius: 4px;
+    background: touch.has-hover ? #ffffff14 : transparent;
+    Text {
+        x: 10px;
+        width: 16px;
+        text: root.checked ? "✓" : "";
+        color: Theme.button-text;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 32px;
+        width: parent.width - self.x - 8px;
+        text: root.text;
+        color: Theme.button-text;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A bar to drag along: the hue, strength, brightness or opacity of a colour.
+component ColourBar inherits Rectangle {
+    in property <string> label;
+    in property <brush> track;
+    in property <float> value; // 0..1
+    in property <length> label-width: 74px * Theme.text-scale;
+    callback changed(float);
+    height: 20px;
+
+    function at(x: length) -> float {
+        Math.clamp((x - bar.x - 7px) / Math.max(1px, bar.width - 14px), 0, 1)
+    }
+
+    Text {
+        x: 0;
+        width: root.label-width - 4px;
+        text: root.label;
+        color: Theme.text-dim;
+        font-size: Theme.font-small;
+        vertical-alignment: center;
+    }
+    bar := Rectangle {
+        x: root.label-width;
+        width: root.width - self.x;
+        // A checked ground, so see-through colours show as see-through.
+        Rectangle {
+            y: 5px;
+            height: 10px;
+            border-radius: 5px;
+            background: #808080;
+            clip: true;
+            for i in 40: Rectangle {
+                x: i * 8px;
+                y: Math.mod(i, 2) * 5px;
+                width: 4px;
+                height: 5px;
+                background: #c0c0c0;
+            }
+        }
+        Rectangle {
+            y: 5px;
+            height: 10px;
+            border-radius: 5px;
+            background: root.track;
+            border-width: 1px;
+            border-color: #ffffff30;
+        }
+        Rectangle {
+            x: (parent.width - self.width) * Math.clamp(root.value, 0, 1);
+            width: 14px;
+            height: 20px;
+            border-radius: 7px;
+            background: #ffffff;
+            border-width: 2px;
+            border-color: #000000a0;
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.changed(root.at(self.mouse-x));
+            }
+        }
+        moved => {
+            if (self.pressed) { root.changed(root.at(self.mouse-x)); }
+        }
+        scroll-event(e) => {
+            root.changed(Math.clamp(root.value + (e.delta-y > 0 ? 0.02 : -0.02), 0, 1));
+            accept
+        }
+    }
+}
+
+// Quick picks: a row of ready colours.
+component QuickColours inherits HorizontalLayout {
+    in property <bool> enabled: true;
+    in property <[color]> colours;
+    callback picked(color);
+    spacing: 4px;
+    for c in root.colours: Rectangle {
+        height: 16px;
+        horizontal-stretch: 1;
+        border-radius: 4px;
+        background: c;
+        border-width: quick.has-hover ? 2px : 1px;
+        border-color: quick.has-hover ? #ffffff : #ffffff40;
+        quick := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { root.picked(c); }
+        }
+    }
+}
+
+// A theme as a little picture of the player: its background, title bar,
+// playlist and control bar, some text and the highlight.
+component ThemeTile inherits Rectangle {
+    in property <ThemeCard> card;
+    in property <bool> chosen;
+    callback clicked();
+    height: 92px;
+    Rectangle {
+        y: 0;
+        height: 68px;
+        border-radius: 8px;
+        clip: true;
+        background: root.card.ground;
+        border-width: root.chosen ? 2px : 1px;
+        border-color: root.chosen ? Theme.accent : touch.has-hover ? #ffffff60 : #ffffff24;
+        // title bar
+        Rectangle { x: 0; y: 0; width: parent.width; height: 11px; background: root.card.top; }
+        // playlist
+        Rectangle {
+            x: parent.width * 0.64;
+            y: 15px;
+            width: parent.width * 0.32;
+            height: 30px;
+            border-radius: 4px;
+            background: root.card.panel;
+            Rectangle { x: 4px; y: 6px; width: parent.width - 10px; height: 3px; border-radius: 1.5px; background: root.card.text.with-alpha(0.7); }
+            Rectangle { x: 4px; y: 13px; width: parent.width - 16px; height: 3px; border-radius: 1.5px; background: root.card.accent; }
+            Rectangle { x: 4px; y: 20px; width: parent.width - 12px; height: 3px; border-radius: 1.5px; background: root.card.text.with-alpha(0.45); }
+        }
+        Text {
+            x: 9px;
+            y: 15px;
+            text: "Aa";
+            color: root.card.text;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        // control bar, with a played part in the highlight
+        Rectangle {
+            x: 5px;
+            y: parent.height - self.height - 5px;
+            width: parent.width - 10px;
+            height: 15px;
+            border-radius: 4px;
+            background: root.card.bar;
+            Rectangle {
+                x: 6px;
+                width: parent.width - 12px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: root.card.text.with-alpha(0.2);
+                Rectangle {
+                    x: 0;
+                    width: parent.width * 0.45;
+                    border-radius: 1.5px;
+                    background: @linear-gradient(90deg, root.card.accent 0%, root.card.accent-2 100%);
+                }
+            }
+        }
+        if root.chosen: Rectangle {
+            x: parent.width - 19px;
+            y: 14px;
+            width: 14px;
+            height: 14px;
+            border-radius: 7px;
+            background: Theme.accent;
+            Text { text: "✓"; color: Theme.on-accent; font-size: 10px; font-weight: 800; }
+        }
+    }
+    Text {
+        y: 72px;
+        width: parent.width;
+        text: root.card.name;
+        color: root.chosen ? Theme.text : Theme.text-dim;
+        font-weight: root.chosen ? 700 : 400;
+        font-size: Theme.font-small;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Heading inherits Text {
+    color: Theme.text;
+    font-weight: 700;
+}
+
+export component ColoursPanel inherits Panel {
+    title: "Looks";
+    card-width: 780px;
+    card-height: 580px;
+    modal: false;
+
+    in property <int> skin;
+    // The chosen colour theme (-1: none, the skin shows).
+    in property <int> theme;
+    in property <[ThemeCard]> cards;
+    in property <[ColourRow]> simple-rows;
+    in property <int> text-size;
+    in property <[ColourRow]> rows;
+    // Bumped when `rows` is filled anew (another skin): reload the picker.
+    in property <int> generation;
+    in property <bool> dirty;
+    // "Saved as My theme", or what went wrong.
+    in property <string> note;
+    // Saving writes over this skin's file (a skin of your own) rather than
+    // making a new one.
+    in property <bool> own-file;
+    in-out property <int> selected: 1;
+    callback choose-card(bool, int);
+    callback set-text-size(int);
+    callback set-simple(int, color);
+    callback set-colour(string, color);
+    callback set-hex(string, string) -> bool;
+    callback save();
+    callback undo();
+    callback reload();
+    callback open-folder();
+
+    // 0: themes and the short list; 1: every colour.
+    property <int> tab: 0;
+    // A skinned player's window leaves less room.
+    property <bool> narrow: self.width < 700px;
+
+    // ---- the advanced list's picked colour ----
+    property <bool> has-pick: root.selected >= 0 && root.selected < root.rows.length && root.rows[root.selected].key != "";
+    property <float> h;
+    property <float> s;
+    property <float> v;
+    property <float> a: 1;
+    property <string> hex-text;
+
+    // ---- the short list's picked colour ----
+    property <int> simple: 0;
+    property <bool> has-simple: root.simple >= 0 && root.simple < root.simple-rows.length;
+    property <color> simple-colour: root.has-simple ? root.simple-rows[root.simple].colour : transparent;
+
+    function load() {
+        if (root.has-pick) {
+            root.hex-text = root.rows[root.selected].hex;
+            root.h = root.rows[root.selected].colour.to-hsv().hue;
+            root.s = root.rows[root.selected].colour.to-hsv().saturation;
+            root.v = root.rows[root.selected].colour.to-hsv().value;
+            root.a = root.rows[root.selected].colour.to-hsv().alpha;
+        }
+    }
+    function push() {
+        if (root.has-pick) {
+            root.set-colour(root.rows[root.selected].key, hsv(root.h, root.s, root.v, root.a));
+            root.hex-text = root.rows[root.selected].hex;
+        }
+    }
+    function pick(i: int) {
+        root.selected = i;
+        root.load();
+    }
+    // The short list's bars move from the colour shown; the hue of a grey
+    // is kept from the last pick, so dragging Strength up from grey works.
+    function push-simple(h: float, s: float, v: float) {
+        if (root.has-simple) {
+            root.set-simple(root.simple, hsv(h, s, v));
+        }
+    }
+    changed generation => { root.load(); }
+    init => { root.load(); }
+
+    VerticalLayout {
+        spacing: 12px;
+        vertical-stretch: 1;
+
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            Chip { text: "Themes"; active: root.tab == 0; min-w: 90px; clicked => { root.tab = 0; } }
+            Chip { text: "Advanced colours"; active: root.tab == 1; min-w: 90px; clicked => { root.tab = 1; root.load(); } }
+        }
+
+        // ---- themes, text size, a few colours ----
+        if root.tab == 0: HorizontalLayout {
+            spacing: 16px;
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 8px;
+                Heading { text: "Theme"; }
+                grid := Rectangle {
+                    vertical-stretch: 1;
+                    min-height: 100px;
+                    border-radius: 8px;
+                    background: #00000030;
+                    property <length> gap: 10px;
+                    property <int> columns: Math.max(1, Math.floor((self.width - 20px + self.gap) / (124px + self.gap)));
+                    property <length> tile-width: (self.width - 20px - (self.columns - 1) * self.gap) / self.columns;
+                    Flickable {
+                        content-height: 20px + Math.ceil(root.cards.length / grid.columns) * (92px + grid.gap);
+                        for card[i] in root.cards: ThemeTile {
+                            x: 10px + Math.mod(i, grid.columns) * (grid.tile-width + grid.gap);
+                            y: 10px + Math.floor(i / grid.columns) * (92px + grid.gap);
+                            width: grid.tile-width;
+                            card: card;
+                            chosen: card.is-theme ? card.skin == root.theme : root.theme < 0 && card.skin == root.skin;
+                            clicked => { root.choose-card(card.is-theme, card.skin); }
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                width: root.narrow ? 250px : 300px;
+                spacing: 8px;
+                Heading { text: "Text size"; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    for name[i] in ["Small", "Normal", "Large", "Larger"]: Chip {
+                        horizontal-stretch: 1;
+                        text: name;
+                        active: root.text-size == i;
+                        clicked => { root.set-text-size(i); }
+                    }
+                }
+                Rectangle { height: 4px; }
+                Heading { text: "Colours"; }
+                Rectangle {
+                    vertical-stretch: 1;
+                    min-height: 80px;
+                    border-radius: 8px;
+                    background: #00000030;
+                    ScrollView {
+                        VerticalLayout {
+                            padding: 4px;
+                            for row[i] in root.simple-rows: Rectangle {
+                                height: 28px;
+                                border-radius: 6px;
+                                background: i == root.simple ? Theme.accent.with-alpha(0.20)
+                                    : simple-touch.has-hover ? #ffffff10 : transparent;
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 10px;
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            width: 20px;
+                                            height: 20px;
+                                            border-radius: 5px;
+                                            background: row.colour;
+                                            border-width: 1px;
+                                            border-color: #ffffff50;
+                                        }
+                                    }
+                                    Text {
+                                        horizontal-stretch: 1;
+                                        text: row.label;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+                                simple-touch := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.simple = i; }
+                                }
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 6px;
+                    vertical-stretch: 0;
+                    Text {
+                        text: root.has-simple ? "Change “" + root.simple-rows[root.simple].label + "”:" : "Pick a colour above";
+                        color: Theme.text-dim;
+                        font-size: Theme.font-small;
+                        overflow: elide;
+                    }
+                    QuickColours {
+                        enabled: root.has-simple;
+                        colours: [#0b0d14, #1a1d26, #2c303c, #6b7080, #c0c4cc, #ffffff, #8a5a3c, #d9b38c];
+                        picked(c) => { root.push-simple(c.to-hsv().hue, c.to-hsv().saturation, c.to-hsv().value); }
+                    }
+                    QuickColours {
+                        enabled: root.has-simple;
+                        colours: [#ff4d5e, #ff9a3d, #ffd23d, #6ef27a, #3dffa8, #39d0ff, #3d7bff, #a46bff, #ff6bd0];
+                        picked(c) => { root.push-simple(c.to-hsv().hue, c.to-hsv().saturation, c.to-hsv().value); }
+                    }
+                    ColourBar {
+                        label: "Colour";
+                        label-width: 72px * Theme.text-scale;
+                        track: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.7%, #00ff00 33.3%, #00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%, #ff0000 100%);
+                        value: root.simple-colour.to-hsv().hue / 360;
+                        changed(f) => { root.push-simple(f * 360, Math.max(root.simple-colour.to-hsv().saturation, 0.35), Math.max(root.simple-colour.to-hsv().value, 0.25)); }
+                    }
+                    ColourBar {
+                        label: "Strength";
+                        label-width: 72px * Theme.text-scale;
+                        track: @linear-gradient(90deg, hsv(root.simple-colour.to-hsv().hue, 0, root.simple-colour.to-hsv().value) 0%, hsv(root.simple-colour.to-hsv().hue, 1, root.simple-colour.to-hsv().value) 100%);
+                        value: root.simple-colour.to-hsv().saturation;
+                        changed(f) => { root.push-simple(root.simple-colour.to-hsv().hue, f, root.simple-colour.to-hsv().value); }
+                    }
+                    ColourBar {
+                        label: "Brightness";
+                        label-width: 72px * Theme.text-scale;
+                        track: @linear-gradient(90deg, hsv(root.simple-colour.to-hsv().hue, root.simple-colour.to-hsv().saturation, 0) 0%, hsv(root.simple-colour.to-hsv().hue, root.simple-colour.to-hsv().saturation, 1) 100%);
+                        value: root.simple-colour.to-hsv().value;
+                        changed(f) => { root.push-simple(root.simple-colour.to-hsv().hue, root.simple-colour.to-hsv().saturation, f); }
+                    }
+                }
+            }
+        }
+
+        // ---- every colour ----
+        if root.tab == 1: VerticalLayout {
+            spacing: 10px;
+            vertical-stretch: 1;
+            Rectangle {
+                vertical-stretch: 1;
+                min-height: 80px;
+                border-radius: 8px;
+                background: #00000030;
+                ScrollView {
+                    VerticalLayout {
+                        padding: 4px;
+                        for row[i] in root.rows: Rectangle {
+                            height: row.key == "" ? 30px : 26px;
+                            border-radius: 6px;
+                            background: row.key != "" && i == root.selected ? Theme.accent.with-alpha(0.20)
+                                : row.key != "" && row-touch.has-hover ? #ffffff10 : transparent;
+                            if row.key == "": Text {
+                                x: 8px;
+                                y: 10px;
+                                text: row.label;
+                                color: Theme.text-faint;
+                                font-size: Theme.font-small;
+                                font-weight: 700;
+                                letter-spacing: 1px;
+                            }
+                            if row.key != "": HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 10px;
+                                spacing: 10px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 18px;
+                                        height: 18px;
+                                        border-radius: 4px;
+                                        background: row.colour;
+                                        border-width: 1px;
+                                        border-color: #ffffff50;
+                                    }
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: row.label;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                Text {
+                                    text: row.hex;
+                                    color: Theme.text-faint;
+                                    font-family: "DejaVu Sans Mono";
+                                    font-size: Theme.font-small;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            row-touch := TouchArea {
+                                enabled: row.key != "";
+                                mouse-cursor: pointer;
+                                clicked => { root.pick(i); }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- the picked colour ----
+            VerticalLayout {
+                spacing: 6px;
+                vertical-stretch: 0;
+                opacity: root.has-pick ? 1 : 0.4;
+                HorizontalLayout {
+                    height: 34px;
+                    spacing: 10px;
+                    Rectangle {
+                        width: 28px;
+                        border-radius: 6px;
+                        background: root.has-pick ? root.rows[root.selected].colour : transparent;
+                        border-width: 1px;
+                        border-color: #ffffff50;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.has-pick ? root.rows[root.selected].label : "Pick a colour above";
+                        color: Theme.text;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    LineEdit {
+                        width: 110px;
+                        text <=> root.hex-text;
+                        enabled: root.has-pick;
+                        placeholder-text: "#rrggbb";
+                        accepted(t) => {
+                            if (root.has-pick && root.set-hex(root.rows[root.selected].key, t)) {
+                                root.load();
+                            }
+                        }
+                    }
+                }
+                // Quick picks: keep the opacity, take the colour.
+                QuickColours {
+                    enabled: root.has-pick;
+                    colours: [#ffffff, #c0c4cc, #6b7080, #20232c, #000000, #ff4d5e, #ff9a3d, #ffd23d, #6ef27a, #3dffa8, #39d0ff, #3d7bff, #a46bff, #ff6bd0, #8a5a3c, #d9b38c];
+                    picked(c) => {
+                        root.h = c.to-hsv().hue;
+                        root.s = c.to-hsv().saturation;
+                        root.v = c.to-hsv().value;
+                        root.push();
+                    }
+                }
+                GridLayout {
+                    spacing-horizontal: 16px;
+                    spacing-vertical: 4px;
+                    Row {
+                        ColourBar {
+                            label: "Colour";
+                            track: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.7%, #00ff00 33.3%, #00ffff 50%, #0000ff 66.7%, #ff00ff 83.3%, #ff0000 100%);
+                            value: root.h / 360;
+                            changed(f) => { root.h = f * 360; root.push(); }
+                        }
+                        ColourBar {
+                            label: "Strength";
+                            track: @linear-gradient(90deg, hsv(root.h, 0, root.v) 0%, hsv(root.h, 1, root.v) 100%);
+                            value: root.s;
+                            changed(f) => { root.s = f; root.push(); }
+                        }
+                    }
+                    Row {
+                        ColourBar {
+                            label: "Brightness";
+                            track: @linear-gradient(90deg, hsv(root.h, root.s, 0) 0%, hsv(root.h, root.s, 1) 100%);
+                            value: root.v;
+                            changed(f) => { root.v = f; root.push(); }
+                        }
+                        ColourBar {
+                            label: "Opacity";
+                            track: @linear-gradient(90deg, hsv(root.h, root.s, root.v, 0) 0%, hsv(root.h, root.s, root.v, 1) 100%);
+                            value: root.a;
+                            changed(f) => { root.a = f; root.push(); }
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            vertical-stretch: 0;
+            Button {
+                text: root.own-file ? "Save" : "Save as my theme";
+                primary: true;
+                enabled: root.dirty;
+                clicked => { root.save(); }
+            }
+            Button {
+                text: "Undo changes";
+                enabled: root.dirty;
+                clicked => { root.undo(); root.load(); }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.note != "" ? root.note
+                    : root.dirty ? "Not saved: closing undoes the changes."
+                    : root.own-file ? "Saves into this theme's file."
+                    : "Saving makes your own copy.";
+                color: Theme.text-dim;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if root.tab == 1 && !root.narrow: Button { text: "Skins folder"; clicked => { root.open-folder(); } }
+            if root.tab == 1 && !root.narrow: Button { text: "Reload"; clicked => { root.reload(); } }
+        }
+    }
+}

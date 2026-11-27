@@ -560,7 +560,7 @@ mod tests {
             fade: 0.5,
             ..Default::default()
         };
-        let Ok(out) = std::process::Command::new("ffmpeg")
+        let Ok(out) = crate::process::command("ffmpeg")
             .args([
                 "-v",
                 "warning",
@@ -604,7 +604,7 @@ mod tests {
                 "{},aformat=channel_layouts={layout}",
                 tone_graph(&t, layout)
             );
-            let Ok(out) = std::process::Command::new("ffmpeg")
+            let Ok(out) = crate::process::command("ffmpeg")
                 .args([
                     "-v", "error", "-f", "lavfi", "-i", &src, "-af", &g, "-f", "null", "-",
                 ])
@@ -628,7 +628,7 @@ mod tests {
         for (layout, _) in LAYOUTS {
             let g = graph(layout, 44_100).unwrap();
             let src = format!("sine=f=440:d=0.2,aformat=channel_layouts={layout}");
-            let Ok(out) = std::process::Command::new("ffmpeg")
+            let Ok(out) = crate::process::command("ffmpeg")
                 .args([
                     "-v", "error", "-f", "lavfi", "-i", &src, "-af", &g, "-f", "null", "-",
                 ])
@@ -652,7 +652,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("smp-meter-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("tone.wav");
-        let made = std::process::Command::new("ffmpeg")
+        let made = crate::process::command("ffmpeg")
             .args([
                 "-v",
                 "error",

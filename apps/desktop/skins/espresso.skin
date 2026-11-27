@@ -1,0 +1,17 @@
+# Dark coffee with gold. A theme: it colours the media player and compact views.
+name = Espresso
+layout = any
+author = Super Media Player
+
+bg = #0e0a06
+bg-2 = #1f160d
+surface = #241a10d0
+surface-hi = #322416e8
+panel = #231a10
+popup = #332518
+text = #fbf3e6
+text-dim = #cdb898
+text-faint = #85725a
+accent = #f2c14e
+accent-2 = #e07a3a
+on-accent = #160f05

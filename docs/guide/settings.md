@@ -9,7 +9,7 @@ says otherwise.
 
 | Page | What is there |
 |---|---|
-| Look | Skin, your own skins, title bar, always on top |
+| Look | Skin, colours, your own skins, title bar, always on top |
 | Music view | Visuals, pulse line, artist picture, lyrics |
 | Audio | Output device, equalizer, gapless, ReplayGain, bit-perfect, night mode |
 | Playback | Resume, remembering the speed, series intros, next episode, preview pictures, speech model |

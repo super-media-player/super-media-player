@@ -168,7 +168,7 @@ pub fn update_ytdlp() -> Result<String, String> {
         // The package's copy may sit in a read-only folder.
         return install_ytdlp().map(|_| "yt-dlp updated".to_owned());
     }
-    let out = std::process::Command::new(&path)
+    let out = crate::process::command(&path)
         .arg("-U")
         .output()
         .map_err(|e| format!("could not run yt-dlp: {e}"))?;
@@ -188,7 +188,7 @@ pub fn update_ytdlp() -> Result<String, String> {
 
 /// yt-dlp's version, e.g. "2026.11.03".
 pub fn ytdlp_version(path: &Path) -> Option<String> {
-    let out = std::process::Command::new(path)
+    let out = crate::process::command(path)
         .arg("--version")
         .output()
         .ok()?;

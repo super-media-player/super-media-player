@@ -1,6 +1,84 @@
 // Building blocks shared by the skinned views (compact, classic, silver).
 import { Theme, Clock } from "theme.slint";
 
+// The tooltip the skinned decks show: which control the pointer rests on,
+// in window coordinates. A HoverTip fills it in, the deck's TipBubble draws
+// it on top of everything.
+export global Tip {
+    in-out property <string> text;
+    in-out property <bool> shown;
+    // Middle, top and bottom of the control.
+    in-out property <length> x;
+    in-out property <length> top;
+    in-out property <length> bottom;
+}
+
+// Put inside a control (it fills it): after the pointer rests on it for two
+// seconds, shows `text` as its tooltip, kept up to date while shown (a
+// volume of "100% volume" follows the knob).
+export component HoverTip {
+    in property <bool> hover;
+    in property <string> text;
+    property <bool> up;
+    // The control's whole box, to place the tooltip under it.
+    width: 100%;
+    height: 100%;
+    function put() {
+        Tip.text = root.text;
+        Tip.x = root.absolute-position.x + root.width / 2;
+        Tip.top = root.absolute-position.y;
+        Tip.bottom = root.absolute-position.y + root.height;
+        Tip.shown = true;
+    }
+    Timer {
+        interval: 2s;
+        running: root.hover && !root.up && root.text != "";
+        triggered => {
+            root.up = true;
+            root.put();
+        }
+    }
+    changed hover => {
+        if (!root.hover && root.up) {
+            root.up = false;
+            Tip.shown = false;
+        }
+    }
+    changed text => {
+        if (root.up) { root.put(); }
+    }
+}
+
+// The tooltip itself, placed in a deck over everything else: under the
+// control, or above it when there is no room below.
+export component TipBubble inherits Rectangle {
+    // Where the deck sits in the window (its absolute-position) and its size.
+    in property <Point> origin;
+    in property <length> area-width;
+    in property <length> area-height;
+    in property <brush> face: #20242cf2;
+    in property <color> edge: #ffffff40;
+    in property <color> ink: #ffffff;
+    property <length> below: Tip.bottom - root.origin.y + 6px;
+    width: label.preferred-width + 14px;
+    height: label.preferred-height + 8px;
+    x: Math.max(4px, Math.min(root.area-width - self.width - 4px, Tip.x - root.origin.x - self.width / 2));
+    y: self.below + self.height <= root.area-height - 2px ? self.below : Math.max(2px, Tip.top - root.origin.y - self.height - 6px);
+    background: root.face;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: root.edge;
+    drop-shadow-blur: 6px;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-color: #00000070;
+    label := Text {
+        text: Tip.text;
+        color: root.ink;
+        font-size: 11px;
+        font-weight: 600;
+    }
+}
+
 // Spectrum bars drawn by the UI, for when no visualizer runs. `levels` are
 // live band heights (0..1, bass first) measured from the music (meter.rs);
 // `count` bars share them out, so any bar count works.
@@ -131,6 +209,8 @@ export component Knob inherits Rectangle {
     in property <float> maximum: 100;
     in property <string> label;
     in property <string> value-text;
+    // Tooltip, e.g. "100% volume".
+    in property <string> tip;
     in property <brush> face: @radial-gradient(circle, #ffffff 0%, #d9dee5 45%, #9aa3ad 100%);
     in property <color> mark: #2b6fd6;
     in property <color> label-color: #3a4350;
@@ -175,6 +255,7 @@ export component Knob inherits Rectangle {
             x: parent.width / 2 + (parent.width / 2 - 11px) * Math.sin(root.turn) - self.width / 2;
             y: parent.height / 2 - (parent.height / 2 - 11px) * Math.cos(root.turn) - self.height / 2;
         }
+        HoverTip { hover: touch.has-hover && !touch.pressed; text: root.tip; }
         touch := TouchArea {
             mouse-cursor: ns-resize;
             pointer-event(e) => {
@@ -220,6 +301,7 @@ export component GrooveSlider inherits Rectangle {
     in property <length> thumb-width: 22px;
     in property <length> thumb-height: 12px;
     in property <length> thumb-radius: 2px;
+    in property <string> tip;
     callback dragged(float);
     callback released(float);
     callback wheel(float);
@@ -260,6 +342,7 @@ export component GrooveSlider inherits Rectangle {
         border-width: 1px;
         border-color: root.thumb-border;
     }
+    HoverTip { hover: touch.has-hover && !root.dragging; text: root.tip; }
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
@@ -292,6 +375,7 @@ export component TitleButton inherits Rectangle {
     in property <brush> face: @linear-gradient(180deg, #6a6f86 0%, #3c4052 100%);
     in property <color> edge: #81869e;
     in property <color> ink: #d6d9e8;
+    in property <string> tip;
     callback clicked();
     width: 16px;
     height: 14px;
@@ -305,6 +389,7 @@ export component TitleButton inherits Rectangle {
         font-size: 11px;
         font-weight: 700;
     }
+    HoverTip { hover: touch.has-hover && !touch.pressed; text: root.tip; }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }

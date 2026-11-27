@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { DragMove, Drag } from "drag.slint";
 
 // A spinning disc being read: rainbow sheen turning with the disc, a laser
 // sweeping across it, and a ring around it filling with `progress`.
@@ -86,7 +87,7 @@ export component DiscReader inherits Rectangle {
                 width: parent.width * 0.42;
                 height: self.width;
                 border-radius: self.width / 2;
-                background: #171c2e;
+                background: Theme.panel;
             }
         }
     }
@@ -157,21 +158,21 @@ export component RipCard inherits Rectangle {
                 text: root.heading != "" ? root.heading
                     : root.progress < 0 ? "MAKEMKV IS READING THE DISC" : "RIPPING WITH MAKEMKV";
                 color: Theme.accent;
-                font-size: 10px;
+                font-size: 10px * Theme.text-scale;
                 font-weight: 800;
                 letter-spacing: 1.5px;
             }
             Text {
                 text: root.title;
                 color: Theme.text;
-                font-size: 16px;
+                font-size: 16px * Theme.text-scale;
                 font-weight: 700;
                 overflow: elide;
             }
             if root.drive != "": Text {
                 text: "from the " + root.drive;
                 color: Theme.text-dim;
-                font-size: 11px;
+                font-size: 11px * Theme.text-scale;
                 overflow: elide;
             }
             if root.progress >= 0 || root.eta != "": HorizontalLayout {
@@ -179,7 +180,7 @@ export component RipCard inherits Rectangle {
                 Text {
                     text: root.progress < 0 ? "…" : Math.round(root.progress * 100) + "%";
                     color: Theme.text;
-                    font-size: 26px;
+                    font-size: 26px * Theme.text-scale;
                     font-weight: 300;
                     vertical-alignment: bottom;
                 }
@@ -189,7 +190,7 @@ export component RipCard inherits Rectangle {
                     Text {
                         text: root.eta;
                         color: Theme.text-dim;
-                        font-size: 11px;
+                        font-size: 11px * Theme.text-scale;
                         overflow: elide;
                     }
                 }
@@ -197,7 +198,7 @@ export component RipCard inherits Rectangle {
             Text {
                 text: root.stage;
                 color: Theme.text-faint;
-                font-size: 11px;
+                font-size: 11px * Theme.text-scale;
                 wrap: word-wrap;
             }
             HorizontalLayout {
@@ -213,7 +214,7 @@ export component RipCard inherits Rectangle {
                     cancel-label := Text {
                         text: "Cancel";
                         color: Theme.text;
-                        font-size: 12px;
+                        font-size: 12px * Theme.text-scale;
                     }
                     cancel-touch := TouchArea {
                         mouse-cursor: pointer;
@@ -236,30 +237,46 @@ export component AskCard inherits Rectangle {
 
     background: #000000a0;
     TouchArea { }  // modal: nothing underneath reacts
+    property <length> drag-x;
+    property <length> drag-y;
     Rectangle {
+        property <length> base-x: (root.width - self.width) / 2;
+        property <length> base-y: (root.height - self.height) / 2;
+        x: self.base-x + Drag.within(root.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(root.drag-y, -self.base-y, root.height - self.height - self.base-y);
         width: Math.min(480px, root.width - 24px);
         height: Math.min(col.preferred-height, root.height - 24px);
         border-radius: 16px;
-        background: #171c2e;
+        background: Theme.panel;
         border-width: 1px;
         border-color: Theme.accent.with-alpha(0.25);
         drop-shadow-blur: 30px;
         drop-shadow-color: #000000b0;
         clip: true;
+        // Drag it around within the window (drag.slint); also keeps
+        // clicks inside from reaching what is underneath.
+        DragMove {
+            dx <=> root.drag-x;
+            dy <=> root.drag-y;
+            min-dx: -parent.base-x;
+            max-dx: root.width - parent.width - parent.base-x;
+            min-dy: -parent.base-y;
+            max-dy: root.height - parent.height - parent.base-y;
+        }
         col := VerticalLayout {
             padding: 18px;
             spacing: 12px;
             Text {
                 text: root.title;
                 color: Theme.text;
-                font-size: 17px;
+                font-size: 17px * Theme.text-scale;
                 font-weight: 700;
                 wrap: word-wrap;
             }
             Text {
                 text: root.text;
                 color: Theme.text-dim;
-                font-size: 12px;
+                font-size: 12px * Theme.text-scale;
                 wrap: word-wrap;
             }
             HorizontalLayout {

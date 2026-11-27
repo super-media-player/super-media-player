@@ -1,0 +1,17 @@
+# Soft cherry-blossom pink. A theme: it colours the media player and compact views.
+name = Blossom
+layout = any
+author = Super Media Player
+
+bg = #120a0f
+bg-2 = #24131d
+surface = #291721d0
+surface-hi = #38202ee8
+panel = #28161f
+popup = #38202d
+text = #fff0f7
+text-dim = #d6adc2
+text-faint = #8c6578
+accent = #ff9ccf
+accent-2 = #ffc9a8
+on-accent = #1a0a12

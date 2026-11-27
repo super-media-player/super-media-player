@@ -205,6 +205,12 @@ impl UiState {
                         self.open_failure_hint = Some(hint.to_owned());
                     }
                 }
+                if self.opening
+                    && self.open_failure_hint.is_none()
+                    && let Some(hint) = network_failure_hint(&prefix, &text)
+                {
+                    self.open_failure_hint = Some(hint.to_owned());
+                }
                 if prefix.contains("ytdl") && text.contains("not found") {
                     self.ytdl_missing = true;
                 }
@@ -771,6 +777,35 @@ fn disc_protection_hint(prefix: &str, text: &str) -> Option<&'static str> {
     }
 }
 
+/// A plain explanation when a link fails to open, from FFmpeg's network log
+/// lines (mpv itself only says "loading failed").
+fn network_failure_hint(prefix: &str, text: &str) -> Option<&'static str> {
+    if !prefix.starts_with("ffmpeg") {
+        return None;
+    }
+    if text.contains("Connection refused") {
+        Some(
+            "Could not play: the server refused the connection. \
+             The stream may be offline, or blocked outside its country.",
+        )
+    } else if text.contains("timed out") {
+        Some("Could not play: the server didn't answer. It may be offline, or your connection is down.")
+    } else if text.contains("Failed to resolve hostname") {
+        Some("Could not play: the server's address wasn't found. Check the link and your connection.")
+    } else if text.contains("HTTP error 404") || text.contains("HTTP error 410") {
+        Some("Could not play: nothing is at this link any more (it may have moved).")
+    } else if text.contains("HTTP error 401") || text.contains("HTTP error 403") {
+        Some(
+            "Could not play: the server won't let this player in. \
+             The stream may need a login, or be blocked in your country.",
+        )
+    } else if text.contains("HTTP error 5") {
+        Some("Could not play: the server has a problem right now. Try again later.")
+    } else {
+        None
+    }
+}
+
 fn playlist_model(entries: &[PlaylistEntry]) -> ModelRc<PlaylistItem> {
     let items: Vec<PlaylistItem> = entries
         .iter()
@@ -823,6 +858,28 @@ mod tests {
             "Audio CD"
         );
         assert_eq!(source_detail("/home/me/Music/Album/01.flac"), "Album");
+    }
+
+    #[test]
+    fn explains_network_failures() {
+        // Lines as logged by the engine for each kind of failure.
+        let hint = |text| network_failure_hint("ffmpeg", text).unwrap_or_default();
+        assert!(
+            hint("tcp: Connection to tcp://radio.example:9420 failed: Connection refused\n")
+                .contains("refused")
+        );
+        assert!(
+            hint("tcp: Connection to tcp://10.0.0.1:8000 failed: Connection timed out\n")
+                .contains("didn't answer")
+        );
+        assert!(
+            hint("tcp: Failed to resolve hostname nope.invalid: Name or service not known\n")
+                .contains("address")
+        );
+        assert!(hint("https: HTTP error 404 Not Found\n").contains("any more"));
+        assert!(hint("https: HTTP error 403 Forbidden\n").contains("won't let"));
+        assert!(hint("https: HTTP error 503 Service Unavailable\n").contains("later"));
+        assert!(network_failure_hint("stream", "Connection refused").is_none());
     }
 
     #[test]

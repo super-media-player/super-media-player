@@ -1,0 +1,17 @@
+# Deep sea blue with aqua. A theme: it colours the media player and compact views.
+name = Ocean
+layout = any
+author = Super Media Player
+
+bg = #04101a
+bg-2 = #08202e
+surface = #0b2636d0
+surface-hi = #113246e8
+panel = #0c2232
+popup = #123044
+text = #e6f6ff
+text-dim = #8fb4c8
+text-faint = #4f7186
+accent = #2ee6d6
+accent-2 = #2e8bff
+on-accent = #031018

@@ -1,0 +1,49 @@
+// Dialogs can be dragged within the player's window: by any empty spot of
+// the dialog (the move cursor shows over its top band). Double-click puts
+// it back in its usual spot.
+//
+// A dialog sits at its usual spot plus an offset (dx, dy). Fill the dialog
+// with a DragMove (in place of the plain TouchArea that keeps clicks from
+// reaching what is underneath), give it the offset's limits, and add
+// `Drag.within(dx, min, max)` to the dialog's x and y, so it also stays
+// inside when the window shrinks.
+export component DragMove inherits TouchArea {
+    in-out property <length> dx;
+    in-out property <length> dy;
+    in property <length> min-dx;
+    in property <length> max-dx;
+    in property <length> min-dy;
+    in property <length> max-dy;
+    mouse-cursor: self.mouse-y < 56px ? MouseCursor.move : MouseCursor.default;
+    // Where the drag started, in window coordinates (popups move a frame
+    // late, so steps measured inside the moving area would jitter).
+    property <length> start-x;
+    property <length> start-y;
+    property <length> start-dx;
+    property <length> start-dy;
+    pointer-event(e) => {
+        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+            root.start-x = self.absolute-position.x + self.mouse-x;
+            root.start-y = self.absolute-position.y + self.mouse-y;
+            root.start-dx = root.dx;
+            root.start-dy = root.dy;
+        }
+    }
+    moved => {
+        if (self.pressed) {
+            root.dx = Drag.within(root.start-dx + self.absolute-position.x + self.mouse-x - root.start-x, root.min-dx, root.max-dx);
+            root.dy = Drag.within(root.start-dy + self.absolute-position.y + self.mouse-y - root.start-y, root.min-dy, root.max-dy);
+        }
+    }
+    double-clicked => {
+        root.dx = 0;
+        root.dy = 0;
+    }
+}
+
+export global Drag {
+    // `offset` kept between `lo` and `hi` (0 when there is no room at all).
+    pure public function within(offset: length, lo: length, hi: length) -> length {
+        hi < lo ? 0px : Math.max(lo, Math.min(hi, offset))
+    }
+}

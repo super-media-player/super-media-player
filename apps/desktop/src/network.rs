@@ -330,7 +330,7 @@ pub fn is_share(uri: &str) -> bool {
 /// the programs it starts: that folder lacks gvfs's client module, and
 /// every share then fails with "Operation not supported".
 fn gio() -> Command {
-    let mut c = Command::new("gio");
+    let mut c = crate::process::command("gio");
     if std::env::var_os("SNAP").is_some()
         || std::env::var("GIO_MODULE_DIR").is_ok_and(|d| d.contains("/snap/"))
     {

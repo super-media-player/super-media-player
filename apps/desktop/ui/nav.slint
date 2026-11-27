@@ -320,7 +320,7 @@ component ClockBlock inherits VerticalLayout {
         Text {
             text: root.state.clock;
             color: Theme.text;
-            font-size: 24px;
+            font-size: 24px * Theme.text-scale;
             font-weight: 700;
             font-family: "monospace";
             vertical-alignment: bottom;
@@ -525,7 +525,7 @@ export component NavPanel inherits Rectangle {
             Text {
                 text: "Keys: Space play/pause · ←/→ one step (Shift ×10) · Ctrl+←/→ one frame · J/K/L shuttle back/stop/forward · [ ] speed ±0.05";
                 color: Theme.text-faint;
-                font-size: 11px;
+                font-size: 11px * Theme.text-scale;
                 wrap: word-wrap;
             }
         }
@@ -620,7 +620,7 @@ export component NavPanel inherits Rectangle {
             Text {
                 text: "Advanced navigation";
                 color: Theme.text;
-                font-size: 16px;
+                font-size: 16px * Theme.text-scale;
                 font-weight: 800;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
@@ -685,7 +685,7 @@ export component NavPanel inherits Rectangle {
                         viewbox-width: 24;
                         viewbox-height: 24;
                         commands: root.state.paused ? Icons.play : Icons.pause;
-                        fill: #0b0d14;
+                        fill: Theme.on-accent;
                     }
                 }
                 play-touch := TouchArea {
@@ -722,7 +722,7 @@ export component NavPanel inherits Rectangle {
         Text {
             text: "Space play/pause · ←/→ step · Ctrl+←/→ frame · J K L shuttle";
             color: Theme.text-faint;
-            font-size: 11px;
+            font-size: 11px * Theme.text-scale;
             horizontal-alignment: center;
             wrap: word-wrap;
         }
@@ -745,7 +745,7 @@ export component NavWindow inherits Window {
     preferred-height: 660px;
     min-width: 330px;
     min-height: 420px;
-    background: Theme.bg-2;
+    background: Theme.nav;
     default-font-size: Theme.font-normal;
     forward-focus: keys;
 

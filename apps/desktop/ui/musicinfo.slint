@@ -2,6 +2,7 @@ import { ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { IconButton } from "controls.slint";
+import { DragMove, Drag } from "drag.slint";
 
 component Tab inherits Rectangle {
     in property <string> text;
@@ -53,17 +54,32 @@ export component MusicInfoPanel inherits Rectangle {
     background: #000000a0;
     TouchArea { clicked => { root.close(); } }
 
+    property <length> drag-x;
+    property <length> drag-y;
     panel := Rectangle {
+        property <length> base-x: (root.width - self.width) / 2;
+        property <length> base-y: (root.height - self.height) / 2;
+        x: self.base-x + Drag.within(root.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(root.drag-y, -self.base-y, root.height - self.height - self.base-y);
         width: Math.min(760px, root.width - 32px);
         height: Math.min(560px, root.height - 32px);
         border-radius: Theme.radius + 4px;
-        background: #171c2e;
+        background: Theme.panel;
         border-width: 1px;
         border-color: Theme.border;
         drop-shadow-blur: 40px;
         drop-shadow-color: #000000a0;
         clip: true;
-        TouchArea { }  // keep clicks inside from closing the panel
+        // Drag it around within the window (drag.slint); also keeps
+        // clicks inside from reaching what is underneath.
+        DragMove {
+            dx <=> root.drag-x;
+            dy <=> root.drag-y;
+            min-dx: -parent.base-x;
+            max-dx: root.width - parent.width - parent.base-x;
+            min-dy: -parent.base-y;
+            max-dy: root.height - parent.height - parent.base-y;
+        }
 
         // A blurred-looking wash of the cover behind everything.
         if root.has-cover: Image {
@@ -98,7 +114,7 @@ export component MusicInfoPanel inherits Rectangle {
                     }
                     if !root.has-cover && !root.has-artist-image: Text {
                         text: "♪";
-                        font-size: 72px;
+                        font-size: 72px * Theme.text-scale;
                         color: #ffffff50;
                     }
                 }
@@ -137,14 +153,14 @@ export component MusicInfoPanel inherits Rectangle {
                         spacing: 4px;
                         Text {
                             text: root.title;
-                            font-size: 22px;
+                            font-size: 22px * Theme.text-scale;
                             font-weight: 800;
                             color: Theme.text;
                             wrap: word-wrap;
                         }
                         if root.artist != "": Text {
                             text: root.artist;
-                            font-size: 16px;
+                            font-size: 16px * Theme.text-scale;
                             color: Theme.accent;
                             wrap: word-wrap;
                         }
@@ -195,12 +211,12 @@ export component MusicInfoPanel inherits Rectangle {
                                     : "No lyrics found. Put a .lrc file next to the song, or turn on \"Look up lyrics online\" in Settings.");
                             color: (root.tab == 0 ? root.about : root.lyrics) != "" ? Theme.text : Theme.text-dim;
                             wrap: word-wrap;
-                            font-size: root.tab == 1 ? 15px : Theme.font-normal;
+                            font-size: root.tab == 1 ? 15px * Theme.text-scale : Theme.font-normal;
                         }
                         if root.tab == 0 && root.about-source != "": Text {
                             text: "Source: " + root.about-source + " (CC BY-SA)";
                             color: Theme.text-faint;
-                            font-size: 11px;
+                            font-size: 11px * Theme.text-scale;
                         }
                     }
                 }

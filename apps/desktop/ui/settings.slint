@@ -4,6 +4,7 @@ import { ShortcutRow, ScriptRow } from "types.slint";
 import { Theme } from "theme.slint";
 import { Icons } from "icons.slint";
 import { IconButton } from "controls.slint";
+import { DragMove, Drag } from "drag.slint";
 
 component Row inherits HorizontalLayout {
     in property <string> label;
@@ -20,7 +21,7 @@ component Row inherits HorizontalLayout {
         if root.hint != "": Text {
             text: root.hint;
             color: Theme.text-faint;
-            font-size: 11px;
+            font-size: 11px * Theme.text-scale;
             wrap: word-wrap;
         }
     }
@@ -94,6 +95,7 @@ export component SettingsPanel inherits Rectangle {
     in property <[int]> skin-views;
     callback reload-skins();
     callback open-skins-folder();
+    callback open-colours();
     in-out property <int> visualizer;
     in-out property <int> artist-pos;
     in-out property <bool> artist-online;
@@ -149,17 +151,32 @@ export component SettingsPanel inherits Rectangle {
     // A small window (the skinned players).
     property <bool> narrow: root.width < 680px;
 
+    property <length> drag-x;
+    property <length> drag-y;
     panel := Rectangle {
+        property <length> base-x: (root.width - self.width) / 2;
+        property <length> base-y: (root.height - self.height) / 2;
+        x: self.base-x + Drag.within(root.drag-x, -self.base-x, root.width - self.width - self.base-x);
+        y: self.base-y + Drag.within(root.drag-y, -self.base-y, root.height - self.height - self.base-y);
         width: Math.min(820px, root.width - 32px);
         height: Math.min(620px, root.height - 32px);
         border-radius: Theme.radius + 4px;
-        background: #171c2e;
+        background: Theme.panel;
         border-width: 1px;
         border-color: Theme.border;
         drop-shadow-blur: 40px;
         drop-shadow-color: #000000a0;
         clip: true;
-        TouchArea { }  // keep clicks inside from closing the panel
+        // Drag it around within the window (drag.slint); also keeps
+        // clicks inside from reaching what is underneath.
+        DragMove {
+            dx <=> root.drag-x;
+            dy <=> root.drag-y;
+            min-dx: -parent.base-x;
+            max-dx: root.width - parent.width - parent.base-x;
+            min-dy: -parent.base-y;
+            max-dy: root.height - parent.height - parent.base-y;
+        }
 
         HorizontalLayout {
             // Sidebar: the tabs.
@@ -172,7 +189,7 @@ export component SettingsPanel inherits Rectangle {
                     spacing: 2px;
                     Text {
                         text: "Settings";
-                        font-size: 20px;
+                        font-size: 20px * Theme.text-scale;
                         font-weight: 800;
                         color: Theme.text;
                     }
@@ -201,7 +218,7 @@ export component SettingsPanel inherits Rectangle {
                 HorizontalLayout {
                     Text {
                         text: ["Look", "Music view", "Audio", "Playback", "Video", "Subtitles", "Shortcuts", "Online", "Discs", "System", "Scripts"][root.tab];
-                        font-size: 16px;
+                        font-size: 16px * Theme.text-scale;
                         font-weight: 700;
                         color: Theme.text;
                         horizontal-stretch: 1;
@@ -233,6 +250,11 @@ export component SettingsPanel inherits Rectangle {
                                     root.changed();
                                 }
                             }
+                        }
+                        Row {
+                            label: "Theme and text size";
+                            hint: "Ready-made colour themes, a bigger or smaller text, and the colours of the background, title bar, playlist and more.";
+                            Button { text: "Themes and colours…"; clicked => { root.open-colours(); } }
                         }
                         Row {
                             label: "Your own skins";
@@ -588,13 +610,13 @@ export component SettingsPanel inherits Rectangle {
                         Text {
                             text: "While playing, Z and X move the subtitles 100 ms earlier or later. The Audio & Subtitles menu shows the current delay and resets it.";
                             color: Theme.text-faint;
-                            font-size: 11px;
+                            font-size: 11px * Theme.text-scale;
                             wrap: word-wrap;
                         }
                         Text {
                             text: "SUBTITLES ONLINE (OPENSUBTITLES.COM)";
                             color: Theme.accent;
-                            font-size: 11px;
+                            font-size: 11px * Theme.text-scale;
                             font-weight: 700;
                             letter-spacing: 1px;
                         }
@@ -609,7 +631,7 @@ export component SettingsPanel inherits Rectangle {
                         Text {
                             text: root.opensubs-status;
                             color: Theme.text-faint;
-                            font-size: 11px;
+                            font-size: 11px * Theme.text-scale;
                             wrap: word-wrap;
                         }
                         HorizontalLayout {
@@ -678,14 +700,14 @@ export component SettingsPanel inherits Rectangle {
                         Text {
                             text: "YOUR KEYBOARD SHORTCUTS";
                             color: Theme.accent;
-                            font-size: 11px;
+                            font-size: 11px * Theme.text-scale;
                             font-weight: 700;
                             letter-spacing: 1px;
                         }
                         Text {
                             text: "Click the box, press the keys, choose what they do and press Add. Your keys win over the built-in ones (Help → Keyboard shortcuts lists those); \"Nothing\" turns a built-in key off. Ctrl keys shown in the menus stay with the menus.";
                             color: Theme.text-faint;
-                            font-size: 11px;
+                            font-size: 11px * Theme.text-scale;
                             wrap: word-wrap;
                         }
                         HorizontalLayout {
@@ -701,7 +723,7 @@ export component SettingsPanel inherits Rectangle {
                                 Text {
                                     text: capture.keys != "" ? capture.keys : capture-focus.has-focus ? "Press keys…" : root.narrow ? "Click here" : "Click, then press keys";
                                     color: capture.keys != "" ? Theme.text : Theme.text-faint;
-                                    font-size: capture.keys != "" ? 13px : 11px;
+                                    font-size: capture.keys != "" ? 13px * Theme.text-scale : 11px * Theme.text-scale;
                                 }
                                 TouchArea { mouse-cursor: pointer; clicked => { capture-focus.focus(); } }
                                 capture-focus := FocusScope {
@@ -850,7 +872,7 @@ export component SettingsPanel inherits Rectangle {
                         Text {
                             text: root.disc-status;
                             color: Theme.text-faint;
-                            font-size: 11px;
+                            font-size: 11px * Theme.text-scale;
                             wrap: word-wrap;
                         }
                     }
@@ -934,7 +956,7 @@ export component SettingsPanel inherits Rectangle {
                                 Text {
                                     text: r.detail;
                                     color: r.problem ? #ff7a8e : Theme.text-faint;
-                                    font-size: 11px;
+                                    font-size: 11px * Theme.text-scale;
                                     wrap: word-wrap;
                                 }
                             }
