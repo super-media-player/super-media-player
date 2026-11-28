@@ -14,7 +14,7 @@ design notes are in [PLAN.md](../PLAN.md), skins in [SKINS.md](../SKINS.md).
 
 ## Building and running (Linux)
 
-Requirements: Rust 1.89+, and libmpv at runtime.
+Requirements: Rust 1.95+, and libmpv at runtime.
 
 ```sh
 sudo apt install libmpv-dev          # or, without root: scripts/fetch-dev-libmpv.sh

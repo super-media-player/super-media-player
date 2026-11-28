@@ -3,11 +3,11 @@ resolver = "3"
 members = ["crates/mpv-sys", "crates/player-core", "apps/desktop"]
 
 [workspace.package]
-version = "0.71.0"
+version = "0.71.1"
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["Dumitru Orlov"]
-rust-version = "1.89"
+rust-version = "1.95"
 
 [workspace.dependencies]
 mpv-sys = { path = "crates/mpv-sys" }
